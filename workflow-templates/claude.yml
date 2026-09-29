@@ -1,0 +1,106 @@
+name: Claude Code
+
+# Anthropic's official Claude Code GitHub Action (anthropics/claude-code-action),
+# in interactive mode: responds to @claude mentions on issues, PR reviews,
+# and review comments. Claude commits to a branch and links back to a
+# PR-creation page -- it never opens a PR itself.
+#
+# Want automated review on every PR too? That's a separate workflow, not a
+# block to uncomment here (a second `on:`/`jobs:` in one file would collide
+# the moment it's uncommented) -- see Anthropic's own
+# examples/pr-review-comprehensive.yml:
+# https://github.com/anthropics/claude-code-action/blob/main/examples/pr-review-comprehensive.yml
+#
+# This workflow needs one of the three auth methods below (Option 1 is
+# active by default) -- until one is configured it fails cleanly on an
+# @claude mention (an auth error, not a crash or a silent no-op).
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
+
+# Reset, then grant per job.
+permissions: {}
+
+jobs:
+  claude:
+    # Issues and comments are open to anyone on a public repository, so the
+    # `@claude` text match alone would let an outside commenter trigger a job
+    # holding `contents: write` and your auth secret. Each branch below also
+    # requires the `author_association` of the comment's, review's or
+    # issue's author to be OWNER, MEMBER or COLLABORATOR. Two consequences:
+    # an org member whose membership is private can surface as CONTRIBUTOR
+    # and be skipped, and on `issues` the check is on the issue's author, not
+    # on whoever assigned it, so assigning an outsider's issue does not start
+    # a run.
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude') && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude') && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association)) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')) && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association))
+    # One run per issue/PR at a time. A later @claude mention queues behind
+    # the run in flight without cancelling it; GitHub keeps only the latest
+    # pending run per group, so a burst of mentions can drop the middle ones.
+    concurrency:
+      group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      # Required even with a static API key: the default GitHub App
+      # authentication path uses this to fetch a GitHub OIDC token for its
+      # own token exchange, separate from how the action authenticates to
+      # Anthropic.
+      id-token: write
+      actions: read # lets Claude read CI results on the PR it's tagged in
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@9171db3e57d6a3140a37ddc2ba92788584e0ead6 # v1.0.234
+        with:
+          # Option 1 (active default): a stored API key. Install the Claude
+          # GitHub App (https://github.com/apps/claude) and add
+          # ANTHROPIC_API_KEY as a repository secret.
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          # Commit through the GitHub API instead of local `git`, so GitHub
+          # signs the commits -- a branch ruleset requiring signed commits
+          # would otherwise reject whatever this job pushes.
+          use_commit_signing: true
+
+          # Option 2: a Claude subscription's OAuth token instead of an API
+          # key -- generate once locally with `claude setup-token`, then add
+          # it as CLAUDE_CODE_OAUTH_TOKEN and swap it in for the line above.
+          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # Option 3: Workload Identity Federation -- no stored secret at
+          # all, exchanges this workflow's GitHub OIDC token for a
+          # short-lived Anthropic token. Needs a one-time setup in the
+          # Anthropic Console (Settings -> Workload identity): register a
+          # GitHub Actions issuer, create a service account, create a
+          # federation rule. Then replace anthropic_api_key above with:
+          # anthropic_federation_rule_id: fdrl_xxxxxxxxxxxx
+          # anthropic_organization_id: 00000000-0000-0000-0000-000000000000
+          # anthropic_service_account_id: svac_xxxxxxxxxxxx
+
+          # Optional: customize the trigger phrase (default: @claude)
+          # trigger_phrase: "/claude"
+
+          # Optional: configure Claude's behavior with CLI arguments
+          # claude_args: |
+          #   --max-turns 10
+          #   --allowedTools "Bash(npm install),Bash(npm run build),Bash(npm run test:*)"

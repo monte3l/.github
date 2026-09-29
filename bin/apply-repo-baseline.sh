@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# Compare a repository's GitHub settings with the blueprint in ../blueprint,
+# and optionally bring it in line.
+#
+#   apply-repo-baseline.sh OWNER/REPO [--check | --dry-run | --apply]
+#
+#   --check    (default) read-only; prints OK or DRIFT per item, exits 1 on drift
+#   --dry-run  read-only; also prints the gh command each drifted item would run
+#   --apply    runs those commands
+#
+# Every item is compared with the live state first, so a second --apply run
+# changes nothing. Needs gh (authenticated, repository admin) and jq.
+set -euo pipefail
+
+usage() {
+  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-2}"
+}
+
+repo=""
+mode="check"
+for arg in "$@"; do
+  case "$arg" in
+    --check) mode="check" ;;
+    --dry-run) mode="dry-run" ;;
+    --apply) mode="apply" ;;
+    -h | --help) usage 0 ;;
+    -*) echo "unknown option: $arg" >&2; usage ;;
+    *) [[ -z "$repo" ]] || usage; repo="$arg" ;;
+  esac
+done
+[[ "$repo" == */* ]] || usage
+
+command -v gh >/dev/null || { echo "gh is required" >&2; exit 2; }
+command -v jq >/dev/null || { echo "jq is required" >&2; exit 2; }
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/../blueprint" && pwd)"
+ok=0 drift=0
+
+# settle LABEL CURRENT DESIRED METHOD PATH [BODY]
+# CURRENT and DESIRED are JSON already reduced to the keys the blueprint owns.
+# BODY is what METHOD PATH is sent; it defaults to DESIRED.
+settle() {
+  local label="$1" current="$2" desired="$3" method="$4" path="$5"
+  local body="${6:-$3}"
+  if [[ "$(jq -S . <<<"$current")" == "$(jq -S . <<<"$desired")" ]]; then
+    printf 'OK     %s\n' "$label"
+    ok=$((ok + 1))
+    return
+  fi
+  drift=$((drift + 1))
+  printf 'DRIFT  %s\n' "$label"
+  if [[ "$mode" != "apply" ]]; then
+    diff <(jq -S . <<<"$current") <(jq -S . <<<"$desired") | sed 's/^/         /' || true
+  fi
+  case "$mode" in
+    dry-run) printf '         would run: gh api -X %s %s --input <(desired json)\n' "$method" "$path" ;;
+    apply)
+      jq -c . <<<"$body" | gh api -X "$method" "$path" --input - >/dev/null
+      printf '         applied\n'
+      ;;
+  esac
+}
+
+# pick DESIRED_JSON < CURRENT_JSON: keep only the keys DESIRED names.
+pick() {
+  jq --argjson d "$1" '. as $c | $d | with_entries(.value = $c[.key])'
+}
+
+# --- repository settings -----------------------------------------------------
+desired="$(jq -c . "$here/repo-settings.json")"
+current="$(gh api "repos/$repo" | pick "$desired")"
+settle "repository settings" "$current" "$desired" PATCH "repos/$repo"
+
+# --- Actions policy ----------------------------------------------------------
+desired="$(jq -c .workflow "$here/actions.json")"
+current="$(gh api "repos/$repo/actions/permissions/workflow" | pick "$desired")"
+settle "Actions: workflow token and PR approval" "$current" "$desired" PUT "repos/$repo/actions/permissions/workflow"
+
+desired="$(jq -c .fork_pr_approval "$here/actions.json")"
+current="$(gh api "repos/$repo/actions/permissions/fork-pr-contributor-approval" | pick "$desired")"
+settle "Actions: fork PR approval" "$current" "$desired" PUT "repos/$repo/actions/permissions/fork-pr-contributor-approval"
+
+# PUT /actions/permissions also needs `enabled`, so the body carries the live
+# `enabled` and `allowed_actions` along with the one key the blueprint owns.
+desired="$(jq -c .sha_pinning "$here/actions.json")"
+live="$(gh api "repos/$repo/actions/permissions")"
+current="$(pick "$desired" <<<"$live")"
+body="$(jq -c --argjson d "$desired" '{enabled, allowed_actions} + $d' <<<"$live")"
+settle "Actions: SHA pinning required" "$current" "$desired" PUT "repos/$repo/actions/permissions" "$body"
+
+# --- security features -------------------------------------------------------
+# Each GET is 404 (or enabled:false) when the feature is off.
+security_feature() {
+  local label="$1" path="$2" body flag
+  if body="$(gh api "repos/$repo/$path" 2>/dev/null)"; then
+    flag="$(jq -r 'if type == "object" and has("enabled") then .enabled else true end' <<<"${body:-null}" 2>/dev/null || echo true)"
+  else
+    flag=false
+  fi
+  settle "$label" "{\"enabled\": $flag}" '{"enabled": true}' PUT "repos/$repo/$path" '{}'
+}
+security_feature "security: Dependabot alerts" vulnerability-alerts
+security_feature "security: Dependabot security updates" automated-security-fixes
+security_feature "security: private vulnerability reporting" private-vulnerability-reporting
+
+# --- rulesets ----------------------------------------------------------------
+normalize_ruleset() {
+  jq -S '{name, target, enforcement, bypass_actors, conditions, rules: (.rules | sort_by(.type))}'
+}
+existing="$(gh api "repos/$repo/rulesets")"
+for file in "$here"/rulesets/*.json; do
+  desired="$(normalize_ruleset <"$file")"
+  name="$(jq -r .name <<<"$desired")"
+  id="$(jq -r --arg n "$name" '.[] | select(.name == $n) | .id' <<<"$existing")"
+  if [[ -z "$id" ]]; then
+    settle "ruleset: $name" '{"missing": true}' '{"missing": false}' POST "repos/$repo/rulesets" "$desired"
+  else
+    current="$(gh api "repos/$repo/rulesets/$id" | normalize_ruleset)"
+    settle "ruleset: $name" "$current" "$desired" PUT "repos/$repo/rulesets/$id"
+  fi
+done
+
+# --- labels (created when missing; an existing label is never rewritten) ------
+have="$(gh label list --repo "$repo" --limit 200 --json name --jq '.[].name')"
+while IFS= read -r label; do
+  name="$(jq -r .name <<<"$label")"
+  if grep -Fxq -- "$name" <<<"$have"; then
+    printf 'OK     label: %s\n' "$name"
+    ok=$((ok + 1))
+    continue
+  fi
+  drift=$((drift + 1))
+  printf 'DRIFT  label: %s (missing)\n' "$name"
+  color="$(jq -r .color <<<"$label")"
+  description="$(jq -r .description <<<"$label")"
+  case "$mode" in
+    dry-run) printf '         would run: gh label create %s --color %s --repo %s\n' "$name" "$color" "$repo" ;;
+    apply)
+      gh label create "$name" --color "$color" --description "$description" --repo "$repo" >/dev/null
+      printf '         applied\n'
+      ;;
+  esac
+done < <(jq -c '.[]' "$here/labels.json")
+
+printf '\n%s ok, %s drift (%s mode)\n' "$ok" "$drift" "$mode"
+if [[ "$mode" == "check" && "$drift" -gt 0 ]]; then
+  exit 1
+fi

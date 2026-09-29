@@ -1,0 +1,11 @@
+{
+  "_comment": "Example only. A PUT replaces the environment's rules, so list every reviewer. Replace the ids with the reviewers' numeric user ids (gh api users/LOGIN --jq .id).",
+  "npm-publish": {
+    "prevent_self_review": true,
+    "reviewers": [
+      { "type": "User", "id": 0 },
+      { "type": "User", "id": 0 }
+    ],
+    "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true }
+  }
+}

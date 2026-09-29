@@ -1,0 +1,6 @@
+{
+  "name": "Dependency Review",
+  "description": "Fail pull requests that add a high-severity vulnerable dependency or a license outside the allowlist.",
+  "iconName": "octicon shield-check",
+  "categories": ["Code Scanning"]
+}

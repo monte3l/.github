@@ -1,0 +1,6 @@
+{
+  "name": "Gitleaks",
+  "description": "Scan pushes, pull requests and the full history for committed secrets.",
+  "iconName": "octicon key",
+  "categories": ["Code Scanning"]
+}

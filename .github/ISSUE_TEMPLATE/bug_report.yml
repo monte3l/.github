@@ -1,0 +1,33 @@
+name: Bug report
+description: Something is broken or behaves differently from what the docs say
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Found a security vulnerability instead? Use private vulnerability reporting on the repository's Security tab, not this form.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The release or commit you are running
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands you ran, and what you ran them against
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs. actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: OS, runtime versions, relevant logs

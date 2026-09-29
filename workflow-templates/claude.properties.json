@@ -1,0 +1,6 @@
+{
+  "name": "Claude Code (@claude mentions)",
+  "description": "Answer @claude mentions from owners, members and collaborators. Needs an ANTHROPIC_API_KEY secret.",
+  "iconName": "octicon comment-discussion",
+  "categories": ["Automation"]
+}

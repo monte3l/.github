@@ -1,0 +1,6 @@
+{
+  "name": "OpenSSF Scorecard",
+  "description": "Score the repository's supply-chain security practices weekly and publish the result.",
+  "iconName": "octicon law",
+  "categories": ["Code Scanning"]
+}

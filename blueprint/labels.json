@@ -1,0 +1,4 @@
+[
+  { "name": "dependencies", "color": "0366d6", "description": "Dependency updates" },
+  { "name": "security", "color": "ee0701", "description": "Security-related issues and audit failures" }
+]
