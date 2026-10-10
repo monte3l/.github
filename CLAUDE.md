@@ -1,0 +1,41 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+The `monte3l` organization's `.github` repository. It has no build, no package manager and no tests — it is data GitHub reads directly, plus one bash script. Changes here reach other repositories, so think in terms of blast radius:
+
+- **Root community files** (`CODE_OF_CONDUCT.md`, `CONTRIBUTING.md`, `SECURITY.md`, `SUPPORT.md`) and **`.github/ISSUE_TEMPLATE/` + `.github/pull_request_template.md`** are *live defaults* for every org repo lacking its own copy — a merge here changes them everywhere at once. Wording in these files is written for *other* repositories (e.g. "usually `pnpm verify`"), not this one.
+- **`profile/README.md`** is the org's public profile page.
+- **`workflow-templates/`** — each `<name>.yml` needs a matching `<name>.properties.json` (name, description, icon, categories) to appear under *Actions → New workflow*. Templates use `$default-branch`, which GitHub substitutes at copy time — keep it, don't hardcode `main`. Already-copied workflows in other repos are *not* updated by edits here.
+- **`blueprint/` + `bin/apply-repo-baseline.sh`** — settings GitHub never inherits (rulesets, merge settings, Actions policy, security features, labels), as JSON data, and a script that diffs a repo against them and optionally applies them. `LICENSE`, `CODEOWNERS` and `dependabot.yml` are never inherited either; each repo keeps its own.
+
+## Commands
+
+```sh
+bin/apply-repo-baseline.sh monte3l/REPO             # read-only, exit 1 on drift
+bin/apply-repo-baseline.sh monte3l/REPO --dry-run   # also prints the gh api call per drifted item
+bin/apply-repo-baseline.sh monte3l/REPO --apply     # mutates the repository — confirm with the user first
+```
+
+Needs `gh` (repo admin) and `jq`. Validate edits with `bash -n bin/apply-repo-baseline.sh`, `jq . <file>` on each blueprint JSON, and `shellcheck`/`actionlint` if available (not installed by default).
+
+## Blueprint script internals
+
+- `settle LABEL CURRENT DESIRED METHOD PATH [BODY]` is the single compare-then-act primitive: both sides are `jq -S`-normalized and compared; only on mismatch does it diff/print/apply. `pick` reduces live API JSON to just the keys the blueprint file names — so **a blueprint JSON file owns exactly the keys it lists**; adding a key extends what's enforced, keys not listed are never touched.
+- Rulesets are matched to live ones **by `name`** (POST if absent, PUT by id if present) and compared after `normalize_ruleset` (rules sorted by `type`). Renaming a ruleset in a file creates a second ruleset rather than renaming the old one.
+- Labels are create-only: an existing label with the same name is never rewritten.
+- `PUT /actions/permissions` requires `enabled`/`allowed_actions`, so the SHA-pinning item carries the live values through in its body — follow that pattern for any endpoint whose PUT needs fields the blueprint doesn't own.
+- `environments.example.json` is deliberately not applied (needs real reviewer ids).
+- `integration_id` 15368 = GitHub Actions, 57789 = code scanning — global, not org-specific.
+- The `main` ruleset requires `verify`, `Dependency Review` and `CodeQL` checks; the `Dependency Review` name must match the job `name:` in `workflow-templates/dependency-review.yml`. Renaming a job in a template silently breaks merges in every repo using the blueprint.
+
+## Conventions
+
+- Every `uses:` in workflow templates is pinned to a full commit SHA with a `# vX` comment (the blueprint enforces SHA pinning, so an unpinned action would fail in adopting repos). `actions/checkout` always gets `persist-credentials: false`.
+- Workflows start with top-level `permissions: {}` (or `read-all`/`contents: read`) and grant per job; each has `concurrency` and `timeout-minutes`.
+- `claude.yml` gates every trigger on `author_association` ∈ OWNER/MEMBER/COLLABORATOR — never relax this; on public repos it is the only thing stopping outsiders from triggering a write-scoped job holding the API secret. `use_commit_signing: true` exists because the `main` ruleset requires signed commits.
+- `gitleaks.yml` pins `GITLEAKS_VERSION` by hand — Dependabot doesn't track it.
+- Commits: Conventional Commits, `git commit -s` (DCO sign-off), and signed. Prose style across docs: short, plain sentences explaining *why*, tables for file/option listings, GitHub `> [!WARNING]`-style callouts.
+- The blueprint's rationale/checklist lives in `m3l-groundwork`'s `docs/github-blueprint.md`; keep `blueprint/README.md`'s file table in sync when changing blueprint JSON.

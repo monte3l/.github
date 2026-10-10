@@ -15,7 +15,7 @@ in `m3l-groundwork`.
 | ------------------------ | ---------------------------------------------------------------------------------------------------------- |
 | `rulesets/main-branch.json` | The `main` ruleset, taken from `m3l-groundwork`: signed commits, no force-push or delete, PRs with resolved threads, and `verify`, `Dependency Review` and `CodeQL` required |
 | `rulesets/tags.json`     | Tags cannot be moved or deleted; creating one stays allowed so releases can tag                            |
-| `repo-settings.json`     | Merge settings: squash and merge only, delete head branches after merge                                   |
+| `repo-settings.json`     | Merge settings: merge commit and squash allowed, rebase off, delete head branches after merge             |
 | `actions.json`           | Read-only workflow token, workflows cannot approve PRs, approve fork PR runs for all outside contributors, SHA pinning required |
 | `labels.json`            | Labels that Dependabot and the baseline's scheduled audit apply                                            |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
