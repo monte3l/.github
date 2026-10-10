@@ -34,6 +34,13 @@ commit would only be rejected later, at merge time.
 4. Resolve every review thread. A pull request merges when its required
    checks pass and its threads are resolved.
 
+## Design
+
+Anything visual, and the markdown in every repository, follows
+**m3l-design**, the organization's design system. A repository records which
+version it follows in `design/README.md`. How to adopt it is in the
+[blueprint](https://github.com/monte3l/.github/tree/main/blueprint#design-system).
+
 ## Conduct
 
 Everyone taking part is bound by the
