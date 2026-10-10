@@ -1,0 +1,43 @@
+name: Verify
+
+# Checks what this repository ships: the baseline script parses and passes
+# shellcheck, every blueprint and workflow-template JSON file is valid, and
+# every workflow (live and template) passes actionlint. The job name `verify`
+# is what the org `main` ruleset requires.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Script syntax and shellcheck
+        run: |
+          bash -n bin/apply-repo-baseline.sh
+          shellcheck bin/apply-repo-baseline.sh
+
+      - name: JSON files parse
+        run: |
+          find blueprint workflow-templates -name '*.json' -print0 \
+            | xargs -0 -n1 jq empty
+
+      - name: actionlint
+        # Templates use `$default-branch`, which is valid text for actionlint.
+        # Pinned by tag: Dependabot does not track this value, bump it by hand.
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color .github/workflows/*.yml workflow-templates/*.yml

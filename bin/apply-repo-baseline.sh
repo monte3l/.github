@@ -9,13 +9,15 @@
 #   --apply    runs those commands
 #
 # Every item is compared with the live state first, so a second --apply run
-# changes nothing. The design-system item only reports: adopting m3l-design is
-# a commit in the repository, which no API call can make. Needs gh
+# changes nothing. Items a private repository on a free plan cannot have
+# (fork-PR approval, private vulnerability reporting, rulesets) print SKIP,
+# which is not drift. The design-system item only reports: adopting m3l-design
+# is a commit in the repository, which no API call can make. Needs gh
 # (authenticated, repository admin) and jq.
 set -euo pipefail
 
 usage() {
-  sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-2}"
 }
 
@@ -37,7 +39,7 @@ command -v gh >/dev/null || { echo "gh is required" >&2; exit 2; }
 command -v jq >/dev/null || { echo "jq is required" >&2; exit 2; }
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/../blueprint" && pwd)"
-ok=0 drift=0
+ok=0 drift=0 skipped=0
 
 # settle LABEL CURRENT DESIRED METHOD PATH [BODY]
 # CURRENT and DESIRED are JSON already reduced to the keys the blueprint owns.
@@ -64,6 +66,12 @@ settle() {
   esac
 }
 
+# skip LABEL REASON: an item this repository's plan cannot have. Not drift.
+skip() {
+  printf 'SKIP   %s (%s)\n' "$1" "$2"
+  skipped=$((skipped + 1))
+}
+
 # pick DESIRED_JSON < CURRENT_JSON: keep only the keys DESIRED names.
 pick() {
   jq --argjson d "$1" '. as $c | $d | with_entries(.value = $c[.key])'
@@ -71,7 +79,9 @@ pick() {
 
 # --- repository settings -----------------------------------------------------
 desired="$(jq -c . "$here/repo-settings.json")"
-current="$(gh api "repos/$repo" | pick "$desired")"
+live_repo="$(gh api "repos/$repo")"
+private="$(jq -r .private <<<"$live_repo")"
+current="$(pick "$desired" <<<"$live_repo")"
 settle "repository settings" "$current" "$desired" PATCH "repos/$repo"
 
 # --- Actions policy ----------------------------------------------------------
@@ -79,9 +89,14 @@ desired="$(jq -c .workflow "$here/actions.json")"
 current="$(gh api "repos/$repo/actions/permissions/workflow" | pick "$desired")"
 settle "Actions: workflow token and PR approval" "$current" "$desired" PUT "repos/$repo/actions/permissions/workflow"
 
-desired="$(jq -c .fork_pr_approval "$here/actions.json")"
-current="$(gh api "repos/$repo/actions/permissions/fork-pr-contributor-approval" | pick "$desired")"
-settle "Actions: fork PR approval" "$current" "$desired" PUT "repos/$repo/actions/permissions/fork-pr-contributor-approval"
+# The contributor-approval endpoint exists for public repositories only.
+if [[ "$private" == "true" ]]; then
+  skip "Actions: fork PR approval" "private repository"
+else
+  desired="$(jq -c .fork_pr_approval "$here/actions.json")"
+  current="$(gh api "repos/$repo/actions/permissions/fork-pr-contributor-approval" | pick "$desired")"
+  settle "Actions: fork PR approval" "$current" "$desired" PUT "repos/$repo/actions/permissions/fork-pr-contributor-approval"
+fi
 
 # PUT /actions/permissions also needs `enabled`, so the body carries the live
 # `enabled` and `allowed_actions` along with the one key the blueprint owns.
@@ -104,14 +119,29 @@ security_feature() {
 }
 security_feature "security: Dependabot alerts" vulnerability-alerts
 security_feature "security: Dependabot security updates" automated-security-fixes
-security_feature "security: private vulnerability reporting" private-vulnerability-reporting
+if [[ "$private" == "true" ]]; then
+  skip "security: private vulnerability reporting" "private repository"
+else
+  security_feature "security: private vulnerability reporting" private-vulnerability-reporting
+fi
 
 # --- rulesets ----------------------------------------------------------------
 normalize_ruleset() {
   jq -S '{name, target, enforcement, bypass_actors, conditions, rules: (.rules | sort_by(.type))}'
 }
-existing="$(gh api "repos/$repo/rulesets")"
+# A private repository on a free plan answers 403 "Upgrade to GitHub Pro". Only
+# that answer is a skip; any other failure still stops the script.
+if ! existing="$(gh api "repos/$repo/rulesets" 2>&1)"; then
+  if grep -q 'Upgrade to GitHub Pro' <<<"$existing"; then
+    existing=""
+    skip "rulesets" "not available on this plan for a private repository"
+  else
+    printf '%s\n' "$existing" >&2
+    exit 1
+  fi
+fi
 for file in "$here"/rulesets/*.json; do
+  [[ -n "$existing" ]] || break
   desired="$(normalize_ruleset <"$file")"
   name="$(jq -r .name <<<"$desired")"
   id="$(jq -r --arg n "$name" '.[] | select(.name == $n) | .id' <<<"$existing")"
@@ -168,7 +198,7 @@ if [[ -n "${problem:-}" ]]; then
   [[ "$mode" == "check" ]] || printf '         needs a commit in %s: see blueprint/README.md "Design system"\n' "$repo"
 fi
 
-printf '\n%s ok, %s drift (%s mode)\n' "$ok" "$drift" "$mode"
+printf '\n%s ok, %s drift, %s skipped (%s mode)\n' "$ok" "$drift" "$skipped" "$mode"
 if [[ "$mode" == "check" && "$drift" -gt 0 ]]; then
   exit 1
 fi

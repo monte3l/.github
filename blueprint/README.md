@@ -13,7 +13,7 @@ in `m3l-groundwork`.
 
 | File                     | What it holds                                                                                              |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `rulesets/main-branch.json` | The `main` ruleset, taken from `m3l-groundwork`: signed commits, no force-push or delete, PRs with resolved threads, and `verify`, `Dependency Review` and `CodeQL` required |
+| `rulesets/main-branch.json` | The `main` ruleset, taken from `m3l-groundwork`: signed commits, no force-push or delete, PRs with resolved threads, and `verify`, `Dependency Review`, `CodeQL` and `Gitleaks` required |
 | `rulesets/tags.json`     | Tags cannot be moved or deleted; creating one stays allowed so releases can tag                            |
 | `repo-settings.json`     | Merge settings: merge commit and squash allowed, rebase off, delete head branches after merge             |
 | `actions.json`           | Read-only workflow token, workflows cannot approve PRs, approve fork PR runs for all outside contributors, SHA pinning required |
@@ -35,13 +35,18 @@ bin/apply-repo-baseline.sh monte3l/NEW-REPO --apply     # changes the repository
 
 It needs `gh` authenticated with admin rights on the repository, and `jq`.
 Each item is compared with the live state first, so running `--apply` twice
-changes nothing the second time. Existing labels are never rewritten.
+changes nothing the second time. Existing labels are never rewritten. A
+private repository on a free plan cannot have fork-PR approval, private
+vulnerability reporting or rulesets: the script prints `SKIP` for those and
+does not count them as drift.
 
 > [!WARNING]
-> The blueprint requires the `verify`, `Dependency Review` and `CodeQL`
-> checks and SHA-pinned actions. Applying it to a repository that does not
-> produce those checks, or that uses unpinned actions, blocks merges and
-> fails workflows until that is fixed. Run `--check` first.
+> The blueprint requires the `verify`, `Dependency Review`, `CodeQL` and
+> `Gitleaks` checks and SHA-pinned actions. `Gitleaks` also needs the
+> `GITLEAKS_LICENSE` organization secret to be shared with the repository.
+> Applying it to a repository that does not produce those checks, or that
+> uses unpinned actions, blocks merges and fails workflows until that is
+> fixed. Run `--check` first.
 
 ## Design system
 
