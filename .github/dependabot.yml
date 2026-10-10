@@ -4,5 +4,17 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    labels:
+      - dependencies
+  # Dependabot only reads .github/workflows for `/`. A non-root directory is
+  # read directly (one level, *.yml), which is how the templates get covered.
+  - package-ecosystem: github-actions
+    directory: /workflow-templates
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
     labels:
       - dependencies
