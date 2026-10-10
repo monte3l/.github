@@ -9,11 +9,13 @@
 #   --apply    runs those commands
 #
 # Every item is compared with the live state first, so a second --apply run
-# changes nothing. Needs gh (authenticated, repository admin) and jq.
+# changes nothing. The design-system item only reports: adopting m3l-design is
+# a commit in the repository, which no API call can make. Needs gh
+# (authenticated, repository admin) and jq.
 set -euo pipefail
 
 usage() {
-  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-2}"
 }
 
@@ -142,6 +144,29 @@ while IFS= read -r label; do
       ;;
   esac
 done < <(jq -c '.[]' "$here/labels.json")
+
+# --- design system (report only: adopting it is a commit in the repository) ---
+# The marker file must exist and name the pinned m3l-design version. Nothing
+# here can be applied through the API, so --dry-run and --apply only say what to do.
+marker_path="$(jq -r .marker "$here/design-system.json")"
+pinned="$(jq -r .version "$here/design-system.json")"
+if marker="$(gh api "repos/$repo/contents/$marker_path" --jq .content 2>/dev/null | base64 -d 2>/dev/null)" && [[ -n "$marker" ]]; then
+  found="$(sed -nE 's/^- \*\*Version (copied|adopted):\*\* `([^`]+)`.*/\2/p' <<<"$marker" | head -n 1)"
+  if [[ "$found" == "$pinned" ]]; then
+    printf 'OK     design system: %s\n' "$pinned"
+    ok=$((ok + 1))
+    problem=""
+  else
+    problem="${marker_path} records version '${found:-none}', blueprint pins '${pinned}'"
+  fi
+else
+  problem="no ${marker_path}"
+fi
+if [[ -n "${problem:-}" ]]; then
+  drift=$((drift + 1))
+  printf 'DRIFT  design system: %s\n' "$problem"
+  [[ "$mode" == "check" ]] || printf '         needs a commit in %s: see blueprint/README.md "Design system"\n' "$repo"
+fi
 
 printf '\n%s ok, %s drift (%s mode)\n' "$ok" "$drift" "$mode"
 if [[ "$mode" == "check" && "$drift" -gt 0 ]]; then

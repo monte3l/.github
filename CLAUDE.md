@@ -10,6 +10,7 @@ The `monte3l` organization's `.github` repository. It has no build, no package m
 - **`profile/README.md`** is the org's public profile page.
 - **`workflow-templates/`** — each `<name>.yml` needs a matching `<name>.properties.json` (name, description, icon, categories) to appear under *Actions → New workflow*. Templates use `$default-branch`, which GitHub substitutes at copy time — keep it, don't hardcode `main`. Already-copied workflows in other repos are *not* updated by edits here.
 - **`blueprint/` + `bin/apply-repo-baseline.sh`** — settings GitHub never inherits (rulesets, merge settings, Actions policy, security features, labels), as JSON data, and a script that diffs a repo against them and optionally applies them. `LICENSE`, `CODEOWNERS` and `dependabot.yml` are never inherited either; each repo keeps its own.
+- **`design/README.md`** — this repo's marker that it follows m3l-design (content tier: no CSS or fonts are vendored here). `blueprint/design-system.json` pins the version every org repo should record; the script only **reports** a missing or stale marker, since adopting is a commit in that repo.
 
 ## Commands
 
@@ -37,5 +38,6 @@ Needs `gh` (repo admin) and `jq`. Validate edits with `bash -n bin/apply-repo-ba
 - Workflows start with top-level `permissions: {}` (or `read-all`/`contents: read`) and grant per job; each has `concurrency` and `timeout-minutes`.
 - `claude.yml` gates every trigger on `author_association` ∈ OWNER/MEMBER/COLLABORATOR — never relax this; on public repos it is the only thing stopping outsiders from triggering a write-scoped job holding the API secret. `use_commit_signing: true` exists because the `main` ruleset requires signed commits.
 - `gitleaks.yml` pins `GITLEAKS_VERSION` by hand — Dependabot doesn't track it.
-- Commits: Conventional Commits, `git commit -s` (DCO sign-off), and signed. Prose style across docs: short, plain sentences explaining *why*, tables for file/option listings, GitHub `> [!WARNING]`-style callouts.
+- Commits: Conventional Commits, `git commit -s` (DCO sign-off), and signed. Prose style across docs: short, plain sentences explaining **why**, tables for file/option listings, GitHub `> [!WARNING]`-style callouts.
+- **m3l-design** is a standing rule for every `monte3l` repo: markdown uses bold (not italics), GitHub alerts matched to severity (max two in a row), plain sentences and tables for tabular data. Copy-based, never a live dependency. When `blueprint/design-system.json`'s version changes, update the version in `design/README.md` in the same commit. The org standard (content vs vendored tier) is in `blueprint/README.md`'s "Design system" section.
 - The blueprint's rationale/checklist lives in `m3l-groundwork`'s `docs/github-blueprint.md`; keep `blueprint/README.md`'s file table in sync when changing blueprint JSON.
