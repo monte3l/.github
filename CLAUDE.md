@@ -35,7 +35,7 @@ Needs `gh` (repo admin) and `jq`. Validate edits with `bash -n bin/apply-repo-ba
 
 ## Conventions
 
-- Every `uses:` in workflow templates is pinned to a full commit SHA with a `# vX` comment (the blueprint enforces SHA pinning, so an unpinned action would fail in adopting repos). `actions/checkout` always gets `persist-credentials: false`.
+- Every `uses:` in workflow templates is pinned to a full commit SHA with a `# vX` comment (the blueprint enforces SHA pinning, so an unpinned action would fail in adopting repos). `actions/checkout` always gets `persist-credentials: false`. `.github/dependabot.yml` tracks those pins through a second `github-actions` entry with `directory: /workflow-templates` (Dependabot reads a non-root directory directly, one level, `*.yml`; this is source-level behavior, not documented by GitHub). Both entries use a 7-day `cooldown`. If a scheduled run never opens a PR for a stale template pin, the entry doesn't work: fall back to Renovate scoped to that folder. A bump only changes what newly adopting repos copy, but review `claude.yml` bumps closely, and note that `m3l-groundwork` keeps its own copies that these PRs do not touch.
 - Workflows start with top-level `permissions: {}` (or `read-all`/`contents: read`) and grant per job; each has `concurrency` and `timeout-minutes`.
 - `claude.yml` gates every trigger on `author_association` ∈ OWNER/MEMBER/COLLABORATOR — never relax this; on public repos it is the only thing stopping outsiders from triggering a write-scoped job holding the API secret. `use_commit_signing: true` exists because the `main` ruleset requires signed commits.
 - `gitleaks.yml` pins `GITLEAKS_VERSION` by hand — Dependabot doesn't track it.
