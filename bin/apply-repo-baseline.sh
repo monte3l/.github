@@ -181,6 +181,7 @@ done < <(jq -c '.[]' "$here/labels.json")
 marker_path="$(jq -r .marker "$here/design-system.json")"
 pinned="$(jq -r .version "$here/design-system.json")"
 if marker="$(gh api "repos/$repo/contents/$marker_path" --jq .content 2>/dev/null | base64 -d 2>/dev/null)" && [[ -n "$marker" ]]; then
+  # shellcheck disable=SC2016 # the backticks are literal markdown in the sed regex
   found="$(sed -nE 's/^- \*\*Version (copied|adopted):\*\* `([^`]+)`.*/\2/p' <<<"$marker" | head -n 1)"
   if [[ "$found" == "$pinned" ]]; then
     printf 'OK     design system: %s\n' "$pinned"
