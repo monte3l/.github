@@ -233,14 +233,14 @@ Rules for edits:
 
 > [!NOTE]
 > **A snapshot, not live data.** Taken on 2026-10-11 with
-> `bin/apply-repo-baseline.sh monte3l/<repo>`, after the design standard moved
-> to release tags. Run the script for the current result.
+> `bin/apply-repo-baseline.sh monte3l/<repo>`, after every design re-sync had
+> merged. Run the script for the current result.
 
 | Repository | Visibility | Last baseline run | Result | Own `CODEOWNERS` |
 | --- | --- | --- | --- | --- |
 | `monte3l/.github` | Public | 2026-10-11 | 12 OK, 0 drift | No |
 | `monte3l/m3l-design` | Public | 2026-10-11 | 12 OK, 0 drift | Yes |
-| `monte3l/m3l-groundwork` | Public | 2026-10-11 | 11 OK, 1 drift: records an artifact id, blueprint pins `v1.0.0` (clears when its re-sync merges) | No |
+| `monte3l/m3l-groundwork` | Public | 2026-10-11 | 12 OK, 0 drift | Yes |
 | `monte3l/m3l-prompt-optimizer` | Public | 2026-10-11 | 12 OK, 0 drift | Yes |
 
 ## License
