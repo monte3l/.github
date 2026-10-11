@@ -18,7 +18,7 @@ in `m3l-groundwork`.
 | `repo-settings.json`     | Merge settings: merge commit and squash allowed, rebase off, delete head branches after merge             |
 | `actions.json`           | Read-only workflow token, workflows cannot approve PRs, approve fork PR runs for all outside contributors, SHA pinning required |
 | `labels.json`            | Labels that Dependabot and the baseline's scheduled audit apply, coloured with m3l-design's status primitives. Labels are create-only, so existing repositories keep their old colours |
-| `design-system.json`     | The m3l-design version every repository should record in `design/README.md`. Checked by the script, never applied |
+| `design-system.json`     | The m3l-design release tag (`vX.Y.Z`) every repository should record in `design/README.md`. Checked by the script, never applied |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
 
 `integration_id` values in the `main` ruleset are GitHub's own apps (15368 is
@@ -51,27 +51,34 @@ does not count them as drift.
 ## Design system
 
 Every `monte3l` repository follows **m3l-design**
-([artifact](https://claude.ai/artifact/AyFoi7PNmQJXLyKUyBxHyk)). It is copied
-into each project, never imported: there is no `@monte3l/m3l-design`
-dependency, and a repository may diverge deliberately. The version to record
-is pinned in `design-system.json`, and the script reports a repository whose
-`design/README.md` is missing or names another version. It cannot fix that,
-because adopting the system is a commit in the repository.
+([monte3l/m3l-design](https://github.com/monte3l/m3l-design)). It is copied
+into each project from a published release, never imported: there is no
+`@monte3l/m3l-design` dependency, and a repository may diverge deliberately.
+The version to record is a release tag, `vX.Y.Z`, pinned in
+`design-system.json`. The script reports a repository whose `design/README.md`
+is missing or names another version. It cannot fix that, because adopting the
+system is a commit in the repository.
 
-| Tier     | When                                                              | What to do                                                                                                                                                       |
-| -------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Content  | Markdown only: no CSS, fonts, rendered pages or terminal colour   | Follow the markdown rules below. Add `design/README.md` with a line ``- **Version adopted:** `<id>` ``. See this repository's own `design/README.md`.            |
-| Vendored | Any CSS, HTML, docs site or coloured terminal output              | Copy the artifact verbatim into `design/source/` and record ``- **Version copied:** `<id>` ``. Keep local divergence in `design/local/`. Never hand-edit `source/`. |
+| Tier     | When                                                              | What to do                                                                                                                                                                                                                              |
+| -------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Content  | Markdown only: no CSS, fonts, rendered pages or terminal colour   | Follow the markdown rules below. Add `design/README.md` with a line ``- **Version adopted:** `vX.Y.Z` ``. See this repository's own `design/README.md`.                                                                                  |
+| Vendored | Any CSS, HTML, docs site or coloured terminal output              | Add `design/README.md` with ``- **Version copied:** `vX.Y.Z` ``, then run `bin/sync-design.sh vX.Y.Z <repo>` from a `m3l-design` checkout. Keep local divergence in `design/local/`. Never hand-edit `source/`. |
+
+`sync-design.sh` downloads the release, verifies its attestation and
+checksums, then replaces `design/source/`, `design/tokens.css` and
+`design/SHA256SUMS` and rewrites the marker. It never creates the marker and
+never touches `design/local/`. Prove a copy is unedited with
+`cd design && shasum -a 256 -c SHA256SUMS`.
 
 Markdown rules, for both tiers: **bold** instead of italics or underlines, a
 GitHub alert matched to the severity of the point (never more than two in a
 row, and `[!CAUTION]` only for data loss or anything irreversible), plain
 direct sentences, and a table for tabular data.
 
-To move to a newer version, re-sync file by file and update the recorded
-version in the same commit. `m3l-groundwork/design/README.md` documents the
-vendored layout in full. Its `templates/**` stay brand-neutral on purpose, so
-anything a repository emits into other projects is not styled.
+To move to a newer version, run the script again and commit the result,
+including the marker. `m3l-groundwork/design/README.md` documents the vendored
+layout in full. Its `templates/**` stay brand-neutral on purpose, so anything a
+repository emits into other projects is not styled.
 
 ## Not covered
 

@@ -3,9 +3,9 @@
 This repository follows **m3l-design**, the shared design system for
 everything published under the `monte3l` GitHub org.
 
-- **Source:** [claude.ai/artifact/AyFoi7PNmQJXLyKUyBxHyk](https://claude.ai/artifact/AyFoi7PNmQJXLyKUyBxHyk)
-- **Version adopted:** `1791621112-523a` (v1, signed off 2026-09-26)
-- **Date adopted:** 2026-10-10
+- **Source:** [github.com/monte3l/m3l-design](https://github.com/monte3l/m3l-design)
+- **Version adopted:** `v1.0.0`
+- **Date adopted:** 2026-10-11
 - **Tier:** content
 
 ## What "content tier" means here
