@@ -90,11 +90,22 @@ GitHub cannot inherit these, so the script only reports a missing file
 | ---- | -------- | -------------- |
 | `CODEOWNERS` | Required: the `main` ruleset asks for a code-owner approval | Write one, usually `* @enri3l @giulmonte` |
 | Gitleaks config | `.gitleaks.toml` extends the default rules; the workflow passes it as `GITLEAKS_CONFIG` | `files/gitleaks.toml` |
-| Line endings and editor | `.gitattributes` with `* text=auto eol=lf`, and `.editorconfig` (utf-8, lf, 2 spaces, final newline) | `files/gitattributes`, `files/editorconfig` |
-| REUSE | `REUSE.toml` plus `LICENSES/`, checked by `reuse lint` in CI. Required because every repository that vendors m3l-design ships its OFL-1.1 fonts next to MIT files | `files/REUSE.toml`, `workflow-templates/reuse.yml` |
-| Workflow lint | actionlint and zizmor on every change to a workflow | `workflow-templates/workflow-lint.yml` |
+| Line endings and editor | `.gitattributes` with `* text=auto eol=lf`, and `.editorconfig` (utf-8, lf, 2 spaces, final newline). A repository that hashes raw bytes keeps `* -text` instead: see the note below | `files/gitattributes`, `files/editorconfig` |
+| REUSE | `REUSE.toml` plus `LICENSES/`, checked by `reuse lint` in CI, from any workflow. Required because every repository that vendors m3l-design ships its OFL-1.1 fonts next to MIT files | `files/REUSE.toml`, `workflow-templates/reuse.yml` |
+| Workflow lint | actionlint and zizmor on every change to a workflow, from any workflow | `workflow-templates/workflow-lint.yml` |
 | Scorecard | Public repositories only | `workflow-templates/scorecard.yml` |
 | Dependabot | `.github/dependabot.yml` with the `github-actions` ecosystem, a 7-day cooldown, and one `npm` entry per lockfile directory (1-day cooldown) | `files/dependabot.yml` |
+
+The workflow items (workflow lint, REUSE check, Scorecard) look for the
+control in the text of the repository's workflows, not for a file name: a
+`reuse lint` step inside `verify.yml` counts, and a second workflow would only
+duplicate it. The file items look for the file.
+
+> [!NOTE]
+> A repository whose `SHA256SUMS` covers raw bytes (`m3l-design`) must keep
+> `.gitattributes` as `* -text`. The script only checks that the file exists,
+> so copying `files/gitattributes` over it passes the check and breaks the
+> checksums.
 
 Rules the script cannot check, so a reviewer does:
 
