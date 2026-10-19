@@ -231,16 +231,40 @@ report_file "Gitleaks config" "copy blueprint/files/gitleaks.toml" .gitleaks.tom
 report_file "line endings" "copy blueprint/files/gitattributes" .gitattributes
 report_file "editor config" "copy blueprint/files/editorconfig" .editorconfig
 report_file "REUSE" "start from blueprint/files/REUSE.toml and add LICENSES/" REUSE.toml
-report_file "workflow lint" "copy workflow-templates/workflow-lint.yml" \
-  .github/workflows/workflow-lint.yml .github/workflows/workflow-lint.yaml
-report_file "REUSE check" "copy workflow-templates/reuse.yml" \
-  .github/workflows/reuse.yml .github/workflows/reuse.yaml
+# The checks below look for the control, not a file name: a repository may run
+# it from its own workflow (for example a `reuse lint` step inside `verify.yml`)
+# and a second copy of the template would only duplicate it.
+workflows_text=""
+while IFS= read -r wf; do
+  workflows_text+="$(file_content ".github/workflows/$wf")"$'\n'
+done < <(gh api "repos/$repo/contents/.github/workflows" --jq '.[] | select(.type == "file") | .name' 2>/dev/null || true)
+
+# report_workflow LABEL HINT PATTERN...: OK when every PATTERN (an extended
+# regex) matches somewhere in the repository's workflows, DRIFT otherwise.
+report_workflow() {
+  local label="$1" hint="$2" pattern
+  shift 2
+  for pattern in "$@"; do
+    if ! grep -Eq -- "$pattern" <<<"$workflows_text"; then
+      drift=$((drift + 1))
+      printf 'DRIFT  %s: no workflow matches /%s/\n' "$label" "$pattern"
+      [[ "$mode" == "check" ]] || printf '         needs a commit in %s: %s\n' "$repo" "$hint"
+      return
+    fi
+  done
+  printf 'OK     %s\n' "$label"
+  ok=$((ok + 1))
+}
+
+report_workflow "workflow lint" "copy workflow-templates/workflow-lint.yml, or add the missing linter to a workflow that already runs" \
+  'actionlint' 'zizmor'
+report_workflow "REUSE check" "copy workflow-templates/reuse.yml, or run reuse lint from a workflow that already runs" \
+  'reuse lint|fsfe/reuse-action'
 # Scorecard publishes results for public repositories only.
 if [[ "$private" == "true" ]]; then
   skip "Scorecard workflow" "private repository"
 else
-  report_file "Scorecard workflow" "copy workflow-templates/scorecard.yml" \
-    .github/workflows/scorecard.yml .github/workflows/scorecard.yaml
+  report_workflow "Scorecard workflow" "copy workflow-templates/scorecard.yml" 'ossf/scorecard-action'
 fi
 
 # Dependabot must exist and keep the github-actions ecosystem, the one every
