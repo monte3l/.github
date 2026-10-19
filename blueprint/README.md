@@ -13,7 +13,7 @@ in `m3l-groundwork`.
 
 | File                     | What it holds                                                                                              |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `rulesets/main-branch.json` | The `main` ruleset, taken from `m3l-groundwork`: signed commits, no force-push or delete, PRs with one code-owner approval (and approval of the last push) and resolved threads, and `verify`, `Dependency Review`, `CodeQL` and `Gitleaks` required |
+| `rulesets/main-branch.json` | The `main` ruleset, taken from `m3l-groundwork`: signed commits, no force-push or delete, PRs with one code-owner approval (and approval of the last push) and resolved threads, and branches up to date with `main`, and `verify`, `Dependency Review`, `CodeQL` and `Gitleaks` required |
 | `rulesets/tags.json`     | Tags cannot be moved or deleted; creating one stays allowed so releases can tag                            |
 | `repo-settings.json`     | Merge settings: merge commit and squash allowed, rebase off, delete head branches after merge             |
 | `actions.json`           | Read-only workflow token, workflows cannot approve PRs, approve fork PR runs for all outside contributors, SHA pinning required |
@@ -116,8 +116,9 @@ Rules the script cannot check, so a reviewer does:
   are the reference implementation.
 
 > [!NOTE]
-> The `main` ruleset now asks for one code-owner approval and an approval of
-> the last push. With two owners, every pull request needs the other one.
+> The `main` ruleset now asks for one code-owner approval, an approval of the
+> last push, and a branch up to date with `main` before merging. With two
+> owners, every pull request needs the other one.
 > Applying it changes the repository the moment `--apply` runs.
 
 ## Not covered
