@@ -19,7 +19,7 @@ in `m3l-groundwork`.
 | `actions.json`           | Read-only workflow token, workflows cannot approve PRs, approve fork PR runs for all outside contributors, SHA pinning required |
 | `labels.json`            | Labels that Dependabot and the baseline's scheduled audit apply, coloured with m3l-design's status primitives. Labels are create-only, so existing repositories keep their old colours |
 | `design-system.json`     | The m3l-design release tag (`vX.Y.Z`) every repository should record in `design/README.md`. Checked by the script, never applied |
-| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml` and `dependabot.yml`. The script only checks that the repository has the matching file |
+| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependabot.yml` and a `README.md` skeleton. The script only checks that the repository has the matching file, and does not check the README at all |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
 
 `integration_id` values in the `main` ruleset are GitHub's own apps (15368 is
@@ -80,6 +80,32 @@ To move to a newer version, run the script again and commit the result,
 including the marker. `m3l-groundwork/design/README.md` documents the vendored
 layout in full. Its `templates/**` stay brand-neutral on purpose, so anything a
 repository emits into other projects is not styled.
+
+## README structure
+
+Every `monte3l` repository's `README.md` follows one order, so a reader who
+knows one knows them all. `files/README.md` is the skeleton to copy, and
+`m3l-groundwork/README.md` is the worked example. Nothing checks it: it is a
+convention a reviewer applies.
+
+| Order | Section | What it holds |
+| ----- | ------- | ------------- |
+| 1 | Title and badges | Only badges for checks the repository really runs |
+| 2 | Opening paragraph | What it is and what it does for the reader, with a docs-site link if there is one. At most one alert before Quickstart |
+| 3 | Who is this for | Two or three bullets, each naming a reader and their problem |
+| 4 | Quickstart | Prerequisites in one sentence, the shortest path to a first result, and what to do next |
+| 5 | How it works | The concept, in prose |
+| 6 | Reference sections | One table per thing a reader looks up |
+| 7 | Requirements | Tools and versions, and where each is pinned |
+| 8 | Working on this repo | The check commands, then Project docs: a link to every other doc in the repository |
+| 9 | Versioning policy | Only for a repository that publishes releases |
+| 10 | License | One line linking `LICENSE` |
+
+A repository drops a section only when it has nothing to say there, and keeps
+the order of the rest. Refer to another section with an anchor link, not with
+its name in quotes. A script that reads a README by section name (for example
+`m3l-prompt-optimizer`'s `doc-parity.mjs`) must change in the same commit as
+the heading it reads.
 
 ## Repository standard
 
