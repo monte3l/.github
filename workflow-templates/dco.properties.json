@@ -1,0 +1,6 @@
+{
+  "name": "DCO sign-off",
+  "description": "Fail a pull request that has a commit without a Signed-off-by trailer matching its author.",
+  "iconName": "octicon verified",
+  "categories": ["Code Scanning"]
+}
