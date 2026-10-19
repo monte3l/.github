@@ -1,0 +1,9 @@
+{
+  // Tables here carry one project description per row, padded to align.
+  // Line length is not enforced inside them and the column style is left
+  // alone. Prose lines are still held to 80.
+  "config": {
+    "MD013": { "tables": false },
+    "MD060": false
+  }
+}
