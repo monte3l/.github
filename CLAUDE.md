@@ -29,6 +29,7 @@ Needs `gh` (repo admin) and `jq`. Validate edits with `bash -n bin/apply-repo-ba
 - Labels are create-only: an existing label with the same name is never rewritten.
 - `PUT /actions/permissions` requires `enabled`/`allowed_actions`, so the SHA-pinning item carries the live values through in its body — follow that pattern for any endpoint whose PUT needs fields the blueprint doesn't own.
 - `skip LABEL REASON` prints `SKIP` for items a private repo on a free plan cannot have (fork-PR approval, private vulnerability reporting, rulesets — the latter only on the 403 "Upgrade to GitHub Pro" answer). SKIP is not drift and never sets exit 1.
+- `report_file LABEL HINT PATH...` is the report-only primitive for repository files (CODEOWNERS, `.gitleaks.toml`, `.gitattributes`, …): OK if any PATH exists, DRIFT otherwise, never applied. `blueprint/files/` holds the starting points the hints name. A new required file is one `report_file` line plus a row in `blueprint/README.md`'s "Repository standard".
 - `environments.example.json` is deliberately not applied (needs real reviewer ids).
 - `integration_id` 15368 = GitHub Actions, 57789 = code scanning — global, not org-specific.
 - The `main` ruleset requires `verify`, `Dependency Review`, `CodeQL` and `Gitleaks` checks; the `Gitleaks` name must likewise match the job `name:` in `workflow-templates/gitleaks.yml`; the `Dependency Review` name must match the job `name:` in `workflow-templates/dependency-review.yml`. Renaming a job in a template silently breaks merges in every repo using the blueprint.

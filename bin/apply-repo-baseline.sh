@@ -11,13 +11,14 @@
 # Every item is compared with the live state first, so a second --apply run
 # changes nothing. Items a private repository on a free plan cannot have
 # (fork-PR approval, private vulnerability reporting, rulesets) print SKIP,
-# which is not drift. The design-system item only reports: adopting m3l-design
-# is a commit in the repository, which no API call can make. Needs gh
+# which is not drift. The design-system and repository-file items only report:
+# adopting m3l-design or adding a file is a commit in the repository, which no
+# API call can make. Needs gh
 # (authenticated, repository admin) and jq.
 set -euo pipefail
 
 usage() {
-  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-2}"
 }
 
@@ -197,6 +198,61 @@ if [[ -n "${problem:-}" ]]; then
   drift=$((drift + 1))
   printf 'DRIFT  design system: %s\n' "$problem"
   [[ "$mode" == "check" ]] || printf '         needs a commit in %s: see blueprint/README.md "Design system"\n' "$repo"
+fi
+
+# --- repository files (report only: adopting them is a commit in the repository) ---
+# GitHub never inherits these, so the script can only say which are missing. The
+# starting points live in blueprint/files/ and workflow-templates/.
+
+# file_content PATH: the file's text, or nothing and a failing status when absent.
+file_content() {
+  gh api "repos/$repo/contents/$1" --jq .content 2>/dev/null | base64 -d 2>/dev/null
+}
+
+# report_file LABEL HINT PATH...: OK when any PATH exists, DRIFT otherwise.
+report_file() {
+  local label="$1" hint="$2" path
+  shift 2
+  for path in "$@"; do
+    if [[ -n "$(file_content "$path")" ]]; then
+      printf 'OK     %s: %s\n' "$label" "$path"
+      ok=$((ok + 1))
+      return
+    fi
+  done
+  drift=$((drift + 1))
+  printf 'DRIFT  %s: none of %s\n' "$label" "$*"
+  [[ "$mode" == "check" ]] || printf '         needs a commit in %s: %s\n' "$repo" "$hint"
+}
+
+report_file "CODEOWNERS" "write one; the main ruleset requires a code-owner approval" \
+  .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS
+report_file "Gitleaks config" "copy blueprint/files/gitleaks.toml" .gitleaks.toml
+report_file "line endings" "copy blueprint/files/gitattributes" .gitattributes
+report_file "editor config" "copy blueprint/files/editorconfig" .editorconfig
+report_file "REUSE" "start from blueprint/files/REUSE.toml and add LICENSES/" REUSE.toml
+report_file "workflow lint" "copy workflow-templates/workflow-lint.yml" \
+  .github/workflows/workflow-lint.yml .github/workflows/workflow-lint.yaml
+report_file "REUSE check" "copy workflow-templates/reuse.yml" \
+  .github/workflows/reuse.yml .github/workflows/reuse.yaml
+# Scorecard publishes results for public repositories only.
+if [[ "$private" == "true" ]]; then
+  skip "Scorecard workflow" "private repository"
+else
+  report_file "Scorecard workflow" "copy workflow-templates/scorecard.yml" \
+    .github/workflows/scorecard.yml .github/workflows/scorecard.yaml
+fi
+
+# Dependabot must exist and keep the github-actions ecosystem, the one every
+# repository has regardless of language.
+dependabot="$(file_content .github/dependabot.yml || file_content .github/dependabot.yaml || true)"
+if grep -q 'package-ecosystem: *"\{0,1\}github-actions' <<<"$dependabot"; then
+  printf 'OK     Dependabot: github-actions ecosystem\n'
+  ok=$((ok + 1))
+else
+  drift=$((drift + 1))
+  printf 'DRIFT  Dependabot: .github/dependabot.yml is missing or has no github-actions ecosystem\n'
+  [[ "$mode" == "check" ]] || printf '         needs a commit in %s: start from blueprint/files/dependabot.yml\n' "$repo"
 fi
 
 printf '\n%s ok, %s drift, %s skipped (%s mode)\n' "$ok" "$drift" "$skipped" "$mode"

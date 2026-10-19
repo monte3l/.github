@@ -13,12 +13,13 @@ in `m3l-groundwork`.
 
 | File                     | What it holds                                                                                              |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `rulesets/main-branch.json` | The `main` ruleset, taken from `m3l-groundwork`: signed commits, no force-push or delete, PRs with resolved threads, and `verify`, `Dependency Review`, `CodeQL` and `Gitleaks` required |
+| `rulesets/main-branch.json` | The `main` ruleset, taken from `m3l-groundwork`: signed commits, no force-push or delete, PRs with one code-owner approval (and approval of the last push) and resolved threads, and `verify`, `Dependency Review`, `CodeQL` and `Gitleaks` required |
 | `rulesets/tags.json`     | Tags cannot be moved or deleted; creating one stays allowed so releases can tag                            |
 | `repo-settings.json`     | Merge settings: merge commit and squash allowed, rebase off, delete head branches after merge             |
 | `actions.json`           | Read-only workflow token, workflows cannot approve PRs, approve fork PR runs for all outside contributors, SHA pinning required |
 | `labels.json`            | Labels that Dependabot and the baseline's scheduled audit apply, coloured with m3l-design's status primitives. Labels are create-only, so existing repositories keep their old colours |
 | `design-system.json`     | The m3l-design release tag (`vX.Y.Z`) every repository should record in `design/README.md`. Checked by the script, never applied |
+| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml` and `dependabot.yml`. The script only checks that the repository has the matching file |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
 
 `integration_id` values in the `main` ruleset are GitHub's own apps (15368 is
@@ -79,6 +80,45 @@ To move to a newer version, run the script again and commit the result,
 including the marker. `m3l-groundwork/design/README.md` documents the vendored
 layout in full. Its `templates/**` stay brand-neutral on purpose, so anything a
 repository emits into other projects is not styled.
+
+## Repository standard
+
+GitHub cannot inherit these, so the script only reports a missing file
+(`DRIFT`, never applied). Each is a commit in the repository.
+
+| Item | Standard | Starting point |
+| ---- | -------- | -------------- |
+| `CODEOWNERS` | Required: the `main` ruleset asks for a code-owner approval | Write one, usually `* @enri3l @giulmonte` |
+| Gitleaks config | `.gitleaks.toml` extends the default rules; the workflow passes it as `GITLEAKS_CONFIG` | `files/gitleaks.toml` |
+| Line endings and editor | `.gitattributes` with `* text=auto eol=lf`, and `.editorconfig` (utf-8, lf, 2 spaces, final newline) | `files/gitattributes`, `files/editorconfig` |
+| REUSE | `REUSE.toml` plus `LICENSES/`, checked by `reuse lint` in CI. Required because every repository that vendors m3l-design ships its OFL-1.1 fonts next to MIT files | `files/REUSE.toml`, `workflow-templates/reuse.yml` |
+| Workflow lint | actionlint and zizmor on every change to a workflow | `workflow-templates/workflow-lint.yml` |
+| Scorecard | Public repositories only | `workflow-templates/scorecard.yml` |
+| Dependabot | `.github/dependabot.yml` with the `github-actions` ecosystem, a 7-day cooldown, and one `npm` entry per lockfile directory (1-day cooldown) | `files/dependabot.yml` |
+
+Rules the script cannot check, so a reviewer does:
+
+- **Workflows:** top-level `permissions: {}` or read-only, widened per job;
+  `persist-credentials: false` on every checkout; `timeout-minutes` and
+  `concurrency` on every job; never `pull_request_target`; every action pinned
+  to a SHA with a version comment.
+- **Tool pins:** a CI tool lives in its own folder with a lockfile and installs
+  with `npm ci --ignore-scripts`. If the tool needs its install scripts to run
+  (a tool that downloads its own binary does), say so in `SECURITY.md` as an
+  accepted risk. Node is pinned in `.node-version`.
+- **Secrets:** scope a secret to an environment where possible, give it an
+  expiry of one year at most (rotate yearly if it cannot expire), and list it
+  in the repository's `SECURITY.md`. The org `SECURITY.md` shows the table.
+- **Releases, for a repository that publishes artifacts:** OIDC trusted
+  publishing with no stored token, provenance, a build attestation, a
+  CycloneDX SBOM, and an environment with two required reviewers gating the
+  publish job. `m3l-groundwork`'s `release.yml` and `docs/github-blueprint.md`
+  are the reference implementation.
+
+> [!NOTE]
+> The `main` ruleset now asks for one code-owner approval and an approval of
+> the last push. With two owners, every pull request needs the other one.
+> Applying it changes the repository the moment `--apply` runs.
 
 ## Not covered
 

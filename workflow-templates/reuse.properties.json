@@ -1,0 +1,6 @@
+{
+  "name": "REUSE",
+  "description": "Check that every file declares its copyright and license.",
+  "iconName": "octicon law",
+  "categories": ["Code Scanning"]
+}

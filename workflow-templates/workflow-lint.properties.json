@@ -1,0 +1,6 @@
+{
+  "name": "Workflow lint",
+  "description": "Lint the repository's workflows with actionlint and zizmor.",
+  "iconName": "octicon shield-check",
+  "categories": ["Code Scanning"]
+}
