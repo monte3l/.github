@@ -1,0 +1,14 @@
+# REUSE (https://reuse.software) annotations. Files here carry no inline SPDX
+# header, so this file records their copyright and license; `reuse lint`
+# checks it in CI (.github/workflows/reuse.yml). The design/ directory is the
+# content tier of m3l-design: a README only, no fonts or CSS.
+version = 1
+SPDX-PackageName = "monte3l/.github"
+SPDX-PackageSupplier = "monte3l"
+SPDX-PackageDownloadLocation = "https://github.com/monte3l/.github"
+
+[[annotations]]
+path = ["**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Copyright (c) 2026 Enrico Lionello"
+SPDX-License-Identifier = "MIT"

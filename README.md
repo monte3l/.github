@@ -243,7 +243,7 @@ Rules for edits:
 
 | Repository | Visibility | Last baseline run | Result | Own `CODEOWNERS` |
 | --- | --- | --- | --- | --- |
-| `monte3l/.github` | Public | 2026-10-19 | 12 OK, 9 drift | No |
+| `monte3l/.github` | Public | 2026-10-19 | 12 OK, 9 drift (before this change) | Yes |
 | `monte3l/m3l-design` | Public | 2026-10-19 | 15 OK, 6 drift | Yes |
 | `monte3l/m3l-groundwork` | Public | 2026-10-19 | 19 OK, 2 drift | Yes |
 | `monte3l/m3l-prompt-optimizer` | Public | 2026-10-19 | 15 OK, 6 drift | Yes |
