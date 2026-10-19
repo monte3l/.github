@@ -19,7 +19,9 @@ in `m3l-groundwork`.
 | `actions.json`           | Read-only workflow token, workflows cannot approve PRs, approve fork PR runs for all outside contributors, SHA pinning required |
 | `labels.json`            | Labels that Dependabot and the baseline's scheduled audit apply, coloured with m3l-design's status primitives. Labels are create-only, so existing repositories keep their old colours |
 | `design-system.json`     | The m3l-design release tag (`vX.Y.Z`) every repository should record in `design/README.md`. Checked by the script, never applied |
-| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependabot.yml` and a `README.md` skeleton. The script only checks that the repository has the matching file, and does not check the README at all |
+| `projects.json`          | Every monte3l repository and its docs-site URL. The org site's project cards and `profile/README.md`'s table are checked against it |
+| `docs-site.md`           | The docs site standard, the Cloudflare one-time setup and the runbook. See [Docs site](#docs-site) |
+| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependabot.yml`, a `README.md` skeleton, and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
 
 `integration_id` values in the `main` ruleset are GitHub's own apps (15368 is
@@ -64,6 +66,7 @@ system is a commit in the repository.
 | -------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Content  | Markdown only: no CSS, fonts, rendered pages or terminal colour   | Follow the markdown rules below. Add `design/README.md` with a line ``- **Version adopted:** `vX.Y.Z` ``. See this repository's own `design/README.md`.                                                                                  |
 | Vendored | Any CSS, HTML, docs site or coloured terminal output              | Add `design/README.md` with ``- **Version copied:** `vX.Y.Z` ``, then run `bin/sync-design.sh vX.Y.Z <repo>` from a `m3l-design` checkout. Keep local divergence in `design/local/`. Never hand-edit `source/`. |
+| Source   | `m3l-design` itself, and only it                                  | The repository root is the release payload. `design/README.md` records ``- **Version adopted:** `vX.Y.Z` `` and ``- **Tier:** source``. |
 
 `sync-design.sh` downloads the release, verifies its attestation and
 checksums, then replaces `design/source/`, `design/tokens.css` and
@@ -71,7 +74,10 @@ checksums, then replaces `design/source/`, `design/tokens.css` and
 never touches `design/local/`. Prove a copy is unedited with
 `cd design && shasum -a 256 -c SHA256SUMS`.
 
-Markdown rules, for both tiers: **bold** instead of italics or underlines, a
+The vendored payload includes the **docs kit**, which builds and gates a docs
+site. See [Docs site](#docs-site).
+
+Markdown rules, for every tier: **bold** instead of italics or underlines, a
 GitHub alert matched to the severity of the point (never more than two in a
 row, and `[!CAUTION]` only for data loss or anything irreversible), plain
 direct sentences, and a table for tabular data.
@@ -80,6 +86,20 @@ To move to a newer version, run the script again and commit the result,
 including the marker. `m3l-groundwork/design/README.md` documents the vendored
 layout in full. Its `templates/**` stay brand-neutral on purpose, so anything a
 repository emits into other projects is not styled.
+
+## Docs site
+
+A repository with a visual or documentation surface gets a docs site at
+`<project>.monte3l.com`, built by the docs kit in the vendored m3l-design
+payload and deployed to Cloudflare Workers Static Assets. The repository keeps
+a `docs.config.mjs`, its own parity checks and its deploy wiring, and nothing
+else. [`docs-site.md`](docs-site.md) is the standard, the one-time Cloudflare
+setup and the steps to wire a new site, and `projects.json` lists every site.
+
+The script reports a repository that has a `docs.config.mjs` and lacks the
+vendored tier marker, the kit gate in a workflow, the deploy and smoke jobs, a
+scheduled live check, or a `homepage` set to its `monte3l.com` URL. Those are
+the `docs site` items below.
 
 ## README structure
 
@@ -109,20 +129,29 @@ the heading it reads.
 
 ## Repository standard
 
-GitHub cannot inherit these, so the script only reports a missing file
-(`DRIFT`, never applied). Each is a commit in the repository.
+GitHub cannot inherit these, so the script only reports a missing file or
+control (`DRIFT`, never applied). Each is a commit in the repository. The
+**Reported as** column is the label the script prints, and
+`bin/doc-parity.mjs` fails when this table and the script disagree.
 
-| Item | Standard | Starting point |
-| ---- | -------- | -------------- |
-| `CODEOWNERS` | Required: the `main` ruleset asks for a code-owner approval | Write one, usually `* @enri3l @giulmonte` |
-| `SECURITY.md` | Required in the repository itself, with an absolute advisory URL and an accepted-findings table: a repository that inherits the org default scores 4 on Scorecard's Security-Policy check | `m3l-groundwork/SECURITY.md`, `m3l-output-governor/SECURITY.md` |
-| Gitleaks config | `.gitleaks.toml` extends the default rules; the workflow passes it as `GITLEAKS_CONFIG` | `files/gitleaks.toml` |
-| Line endings and editor | `.gitattributes` with `* text=auto eol=lf`, and `.editorconfig` (utf-8, lf, 2 spaces, final newline). A repository that hashes raw bytes keeps `* -text` instead: see the note below | `files/gitattributes`, `files/editorconfig` |
-| REUSE | `REUSE.toml` plus `LICENSES/`, checked by `reuse lint` in CI, from any workflow. Required because every repository that vendors m3l-design ships its OFL-1.1 fonts next to MIT files | `files/REUSE.toml`, `workflow-templates/reuse.yml` |
-| Workflow lint | actionlint and zizmor on every change to a workflow, from any workflow | `workflow-templates/workflow-lint.yml` |
-| Scorecard | Public repositories only | `workflow-templates/scorecard.yml` |
-| DCO check | Every non-merge commit in a pull request carries a `Signed-off-by:` trailer that matches its author or committer email. Make `DCO sign-off` a required check once it has run | `workflow-templates/dco.yml` |
-| Dependabot | `.github/dependabot.yml` with the `github-actions` ecosystem, a 7-day cooldown, and one `npm` entry per lockfile directory (1-day cooldown) | `files/dependabot.yml` |
+| Item | Reported as | Standard | Starting point |
+| ---- | ----------- | -------- | -------------- |
+| `CODEOWNERS` | `CODEOWNERS` | Required: the `main` ruleset asks for a code-owner approval | Write one, usually `* @enri3l @giulmonte` |
+| `SECURITY.md` | `security policy` | Required in the repository itself, with an absolute advisory URL and an accepted-findings table: a repository that inherits the org default scores 4 on Scorecard's Security-Policy check | `m3l-groundwork/SECURITY.md`, `m3l-output-governor/SECURITY.md` |
+| Gitleaks config | `Gitleaks config` | `.gitleaks.toml` extends the default rules; the workflow passes it as `GITLEAKS_CONFIG` | `files/gitleaks.toml` |
+| Line endings and editor | `line endings`, `editor config` | `.gitattributes` with `* text=auto eol=lf`, and `.editorconfig` (utf-8, lf, 2 spaces, final newline). A repository that hashes raw bytes keeps `* -text` instead: see the note below | `files/gitattributes`, `files/editorconfig` |
+| REUSE | `REUSE`, `REUSE check` | `REUSE.toml` plus `LICENSES/`, checked by `reuse lint` in CI, from any workflow. Required because every repository that vendors m3l-design ships its OFL-1.1 fonts next to MIT files | `files/REUSE.toml`, `workflow-templates/reuse.yml` |
+| Workflow lint | `workflow lint` | actionlint and zizmor on every change to a workflow, from any workflow | `workflow-templates/workflow-lint.yml` |
+| Scorecard | `Scorecard workflow`, `Scorecard alerts` | Public repositories only. Open alerts are fixed or dismissed with a reason | `workflow-templates/scorecard.yml` |
+| DCO check | `DCO check` | Every non-merge commit in a pull request carries a `Signed-off-by:` trailer that matches its author or committer email. Make `DCO sign-off` a required check once it has run | `workflow-templates/dco.yml` |
+| Dependabot | `Dependabot` | `.github/dependabot.yml` with the `github-actions` ecosystem, a 7-day cooldown, and one `npm` entry per lockfile directory (1-day cooldown) | `files/dependabot.yml` |
+| Node pin | `Node pin` | No workflow writes a version number after `node-version:`: use `node-version-file: .node-version` | `.node-version` |
+| Design system | `design system` | `design/README.md` records the version `design-system.json` pins | See [Design system](#design-system) |
+| Docs site: tier | `docs site: tier` | Only for a repository with a `docs.config.mjs`: the vendored tier, or the source tier for m3l-design | [`docs-site.md`](docs-site.md) |
+| Docs site: gate | `docs site: gate` | `docs-kit/build.mjs --check` runs from a workflow, on every pull request | `files/docs.config.mjs` |
+| Docs site: deploy | `docs site: deploy` | The workflow builds, runs `wrangler deploy`, then smoke-tests the live site | `workflow-templates/docs.yml` |
+| Docs site: daily check | `docs site: daily check` | One workflow has both a schedule and `docs-kit/check-live.mjs` | `workflow-templates/docs-live.yml` |
+| Docs site: homepage | `docs site: homepage` | The GitHub repository `homepage` is its `https://*.monte3l.com` URL | `gh repo edit --homepage` |
 
 The workflow items (workflow lint, REUSE check, Scorecard) look for the
 control in the text of the repository's workflows, not for a file name: a

@@ -1,0 +1,6 @@
+{
+  "name": "Docs site deploy",
+  "description": "Build the m3l-design docs kit site, deploy it to Cloudflare Workers Static Assets, then compare the live site with the build.",
+  "iconName": "octicon book",
+  "categories": ["Deployment"]
+}

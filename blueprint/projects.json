@@ -1,0 +1,7 @@
+[
+  { "repo": "m3l-groundwork", "site": "https://groundwork.monte3l.com" },
+  { "repo": "m3l-prompt-optimizer", "site": "https://prompt-optimizer.monte3l.com" },
+  { "repo": "m3l-output-governor", "site": "https://output-governor.monte3l.com" },
+  { "repo": "m3l-design", "site": "https://design.monte3l.com" },
+  { "repo": ".github", "site": "https://monte3l.com" }
+]

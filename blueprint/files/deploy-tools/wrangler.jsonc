@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Workers Static Assets, the org standard for a docs site (blueprint/docs-site.md
+  // in the org .github repo). No "main" script is needed for an assets-only Worker.
+  "name": "PROJECT-docs",
+  "compatibility_date": "2026-09-27",
+  "assets": {
+    // Resolved relative to this file (.github/deploy-tools/), so it points at the
+    // _site/ directory the workflow's build job writes at the repository root.
+    "directory": "../../_site",
+    "html_handling": "auto-trailing-slash",
+    // The docs kit emits a real 404.html at the site root.
+    "not_found_handling": "404-page",
+  },
+  "routes": [
+    // A Custom Domain: the hostname must carry no existing CNAME record in the zone.
+    { "pattern": "PROJECT.monte3l.com", "custom_domain": true },
+  ],
+  // Both false: a workers.dev or version preview URL is public by default.
+  "workers_dev": false,
+  "preview_urls": false,
+}
