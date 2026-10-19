@@ -81,8 +81,12 @@ One row per tracked file. **Delivery** is one of:
 | Dependency Review card | `workflow-templates/dependency-review.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
 | Gitleaks workflow | `workflow-templates/gitleaks.yml` | **Template** | Copy it. Its job name `Gitleaks` is a required check. The organization secret `GITLEAKS_LICENSE` must be shared with the repository | Job name matched by hand. Secret visibility checked by hand |
 | Gitleaks card | `workflow-templates/gitleaks.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
-| Scorecard workflow | `workflow-templates/scorecard.yml` | **Template** | Copy it. Not a required check | Not verified |
+| Scorecard workflow | `workflow-templates/scorecard.yml` | **Template** | Copy it, public repositories only. Not a required check | Script: `Scorecard workflow`. **Skipped** for private repositories |
 | Scorecard card | `workflow-templates/scorecard.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
+| REUSE workflow | `workflow-templates/reuse.yml` | **Template** | Copy it, or run `reuse lint` from a workflow it already has | Script: `REUSE check` (looks for the control, not the file name) |
+| REUSE card | `workflow-templates/reuse.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
+| Workflow lint workflow | `workflow-templates/workflow-lint.yml` | **Template** | Copy it, or add actionlint and zizmor to a workflow it already has | Script: `workflow lint` (looks for the control, not the file name) |
+| Workflow lint card | `workflow-templates/workflow-lint.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
 | Repository settings | `blueprint/repo-settings.json` | **Applied** | Nothing after `--apply` | Script: `repository settings` |
 | Actions token and PR approval | `blueprint/actions.json` (`workflow`) | **Applied** | Nothing after `--apply` | Script: `Actions: workflow token and PR approval` |
 | Fork PR approval | `blueprint/actions.json` (`fork_pr_approval`) | **Applied**. **Skipped** for private repositories | Nothing | Script: `Actions: fork PR approval` |
@@ -93,6 +97,8 @@ One row per tracked file. **Delivery** is one of:
 | `tags` ruleset | `blueprint/rulesets/tags.json` | **Applied**. **Skipped** (same) | Nothing | Script: `ruleset: tags` |
 | Labels | `blueprint/labels.json` | **Applied**, create-only | Nothing. An existing label is never rewritten | Script: label lines (they report OK or DRIFT inline) |
 | Design version pin | `blueprint/design-system.json` | **Checked** | Record that tag in `design/README.md`, then run `sync-design.sh` if it has a visual surface | Script: `design system` |
+| Repository standard files | `blueprint/files/` (`gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependabot.yml`) | **Checked**. Starting points only | Commit its own copy of each | Script: `Gitleaks config`, `line endings`, `editor config`, `REUSE`, `Dependabot` |
+| `CODEOWNERS` | `.github/CODEOWNERS` | **Checked** | Keep its own (never inherited) | Script: `CODEOWNERS` |
 | Environment example | `blueprint/environments.example.json` | **Not delivered**. Needs real reviewer ids | Create its own environments | Not verified |
 | Blueprint guide | `blueprint/README.md` | **Not delivered** | Nothing | Not verified |
 | The script | `bin/apply-repo-baseline.sh` | **Not delivered**. It is the tool | Nothing | `bash -n` and `shellcheck` in `verify.yml` |
@@ -101,6 +107,9 @@ One row per tracked file. **Delivery** is one of:
 | This repository's verify workflow | `.github/workflows/verify.yml` | **Not delivered**. Produces the `verify` check here | Nothing | Runs on every pull request |
 | This repository's dependency review | `.github/workflows/dependency-review.yml` | **Not delivered** | Nothing | Runs on every pull request |
 | This repository's Gitleaks | `.github/workflows/gitleaks.yml` | **Not delivered** | Nothing | Runs on every pull request, weekly, and on demand |
+| This repository's REUSE, workflow lint and Scorecard | `.github/workflows/reuse.yml`, `workflow-lint.yml`, `scorecard.yml` | **Not delivered** | Nothing | Script, run against `monte3l/.github` |
+| This repository's repository-standard files | `.gitleaks.toml`, `.gitattributes`, `.editorconfig`, `REUSE.toml`, `LICENSES/MIT.txt` | **Not delivered** | Nothing | Script, run against `monte3l/.github` |
+| Agent tooling | `.claude/` (settings, hooks, `template-invariants-reviewer` agent, `org-drift` skill) | **Not delivered**. For this repository only | Nothing | Not verified. `/org-drift` runs the script across the organization |
 | Agent guidance | `CLAUDE.md` | **Not delivered** | Nothing | Not verified |
 | License | `LICENSE` | **Not delivered**. Never inherited | Nothing | Not verified |
 | This file | `README.md` | **Not delivered** | Nothing | Not verified |
@@ -131,7 +140,8 @@ One row per tracked file. **Delivery** is one of:
 
 - **Enforced:** nothing. A template is a starting point, and each needs its
   `.properties.json` card to appear.
-- **Offered:** `claude`, `dependency-review`, `gitleaks`, `scorecard`.
+- **Offered:** `claude`, `dependency-review`, `gitleaks`, `reuse`, `scorecard`,
+  `workflow-lint`.
 - **A repository adds:** the copy. The `main` ruleset requires checks named
   `verify`, `Dependency Review`, `CodeQL` and `Gitleaks`:
 
@@ -161,8 +171,11 @@ repository and, only with `--apply`, writes it.
   have. The script prints `SKIP`.
 - **Matched by name:** a ruleset is found by `name`. Renaming one in a file
   creates a second ruleset on the next `--apply`.
-- **Reported, never applied:** the repository files in `blueprint/README.md`'s
-  "Repository standard". Adding one is a commit in that repository.
+- **Reported, never applied:** the repository standard in `blueprint/README.md`.
+  Files: `CODEOWNERS`, Gitleaks config, `.gitattributes`, `.editorconfig`,
+  `REUSE.toml`, `dependabot.yml`. Workflow controls, found by their content
+  and not by file name: workflow lint, REUSE check, Scorecard (public
+  repositories only). Adding one is a commit in that repository.
 - **A repository adds:** everything the blueprint does not own, including
   `dependabot.yml`, `CODEOWNERS` and `LICENSE`.
 
@@ -197,6 +210,8 @@ bin/apply-repo-baseline.sh monte3l/<repo>
 
 It is read-only and exits 1 on drift. `--dry-run` also prints the `gh api` call
 for each drifted item. It needs `gh` with admin on the repository, and `jq`.
+For every repository in the organization at once, run `/org-drift` in Claude
+Code from this repository.
 
 **What the script cannot see.** Check these by hand:
 
@@ -205,9 +220,8 @@ for each drifted item. It needs `gh` with admin on the repository, and `jq`.
 | Required check names match the templates | Compare `blueprint/rulesets/main-branch.json` with each copied workflow's job `name:` | Merges block with a check that never reports |
 | `GITLEAKS_LICENSE` is shared with the repository | `gh api orgs/monte3l/actions/secrets/GITLEAKS_LICENSE/repositories` | The Gitleaks job fails |
 | CodeQL default setup is on | `gh api repos/monte3l/<repo>/code-scanning/default-setup` shows `"state": "configured"` | The `CodeQL` check never reports |
-| `CODEOWNERS` exists | The script's `CODEOWNERS` line, or `gh api repos/monte3l/<repo>/contents/.github/CODEOWNERS` | No review routing |
 | Every `uses:` is pinned to a SHA | The Actions setting is enforced by the script. Whether a given workflow complies is only found when it runs | The run fails |
-| Repository files exist (Gitleaks config, `.gitattributes`, `.editorconfig`, `REUSE.toml`, workflow lint and REUSE workflows, Scorecard, Dependabot) | The script reports each missing file. See `blueprint/README.md`, "Repository standard" | `DRIFT`, never applied |
+| Repository files and workflow controls are correct, not just present | The script only checks that the file exists or the control appears. `.gitattributes` in `m3l-design` must stay `* -text` | A copied default can break checksums |
 | Community files, issue forms and workflow copies match the defaults | **No check exists.** Compare by eye | Silent divergence |
 
 ## Changing a default
@@ -236,17 +250,21 @@ Rules for edits:
 
 > [!NOTE]
 > **A snapshot, not live data.** Taken on 2026-10-19 with
-> `bin/apply-repo-baseline.sh monte3l/<repo>` from the branch that adds the
-> repository standard, before any repository adopted it. The drift is the new
-> ruleset approvals and the missing repository files. Run the script for the
+> `bin/apply-repo-baseline.sh monte3l/<repo>` from `main` at `d7b1cea`. The
+> only drift is three repository files in `m3l-design`. Run the script for the
 > current result.
 
-| Repository | Visibility | Last baseline run | Result | Own `CODEOWNERS` |
-| --- | --- | --- | --- | --- |
-| `monte3l/.github` | Public | 2026-10-19 | 12 OK, 9 drift (before this change) | Yes |
-| `monte3l/m3l-design` | Public | 2026-10-19 | 15 OK, 6 drift | Yes |
-| `monte3l/m3l-groundwork` | Public | 2026-10-19 | 19 OK, 2 drift | Yes |
-| `monte3l/m3l-prompt-optimizer` | Public | 2026-10-19 | 15 OK, 6 drift | Yes |
+| Repository | Visibility | Last baseline run | Result | CodeQL default setup | `GITLEAKS_LICENSE` shared | Inherited community files |
+| --- | --- | --- | --- | --- | --- | --- |
+| `monte3l/.github` | Public | 2026-10-19 | 21 OK, 0 drift | Configured | Yes | None. It is the source |
+| `monte3l/m3l-design` | Public | 2026-10-19 | 18 OK, 3 drift: Gitleaks config, editor config, Scorecard workflow | Configured | Yes | All |
+| `monte3l/m3l-groundwork` | Public | 2026-10-19 | 21 OK, 0 drift | Configured | Yes | `SUPPORT.md` |
+| `monte3l/m3l-prompt-optimizer` | Public | 2026-10-19 | 21 OK, 0 drift | Configured | Yes | `CODE_OF_CONDUCT.md`, `SUPPORT.md` |
+| `monte3l/m3l-output-governor` | Public | 2026-10-19 | 21 OK, 0 drift | Configured | Yes | Everything except the pull request template |
+
+Every repository has its own `LICENSE` and `.github/CODEOWNERS`, and the
+script confirms both through its `CODEOWNERS` line. No repository has copied
+`claude.yml`, so `ANTHROPIC_API_KEY` is not set anywhere.
 
 ## License
 
