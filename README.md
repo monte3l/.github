@@ -1,5 +1,9 @@
 # monte3l/.github
 
+[![verify](https://github.com/monte3l/.github/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/monte3l/.github/actions/workflows/verify.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/monte3l/.github/badge)](https://securityscorecards.dev/viewer/?uri=github.com/monte3l/.github)
+[![REUSE status](https://api.reuse.software/badge/github.com/monte3l/.github)](https://api.reuse.software/info/github.com/monte3l/.github)
+
 The single reference for what is an organization default in `monte3l`, and how
 it reaches a repository.
 
@@ -8,15 +12,39 @@ it reaches a repository.
 > applied as one.** See [Non-inheritance](#non-inheritance-the-rule) before you
 > assume a repository gets something from here.
 
-## Contents
+## Who is this for
 
-1. [Non-inheritance: the rule](#non-inheritance-the-rule)
-2. [Scope and principle](#scope-and-principle)
-3. [Parity table](#parity-table)
-4. [Categories](#categories)
-5. [Parity check](#parity-check)
-6. [Changing a default](#changing-a-default)
-7. [Repository status](#repository-status)
+- An **owner starting a repository** who wants to know which settings and files
+  they must add themselves, and how to check they got them right.
+- Someone **changing a default** who needs to know which repositories the change
+  reaches, and when.
+- Anyone asking **why a repository did not get a file or setting**. The answer
+  is usually that GitHub does not inherit it.
+
+## Quickstart
+
+You need `gh`, authenticated with admin rights on the repository, and `jq`.
+Check any repository against the organization baseline with this command. It is
+read-only and exits `1` on drift:
+
+```sh
+bin/apply-repo-baseline.sh monte3l/<repo>
+```
+
+To start a new repository:
+
+1. Add `design/README.md` with the m3l-design tag from
+   `blueprint/design-system.json`. See [Design system](#design-system).
+2. Copy the README skeleton from `blueprint/files/README.md`. The order it
+   follows is in `blueprint/README.md`, under "README structure".
+3. Copy the workflow templates you need from `workflow-templates/`, and the
+   starting points in `blueprint/files/`.
+4. Run the check above and fix what it reports.
+5. Read [`blueprint/README.md`](blueprint/README.md), then run the script with
+   `--apply` to write the settings GitHub never inherits.
+
+For the whole organization at once, run `/org-drift` in Claude Code from this
+repository. [Parity check](#parity-check) lists what the script cannot see.
 
 ## Non-inheritance: the rule
 
@@ -50,69 +78,6 @@ This repository holds data that GitHub reads directly, plus one bash script. It
 has no build and no tests. The principle: **offer a default only where GitHub
 can deliver it, and describe everything else as data a script can check.**
 Where nothing can check a claim, this README says so.
-
-## Parity table
-
-One row per tracked file. **Delivery** is one of:
-
-| Delivery | Meaning |
-| --- | --- |
-| **Inherited** | GitHub applies it to every repository that lacks its own |
-| **Template** | Offered under Actions, New workflow. Copied once by a person |
-| **Applied** | `bin/apply-repo-baseline.sh --apply` writes it to the repository |
-| **Checked** | The script compares and reports. It never changes it |
-| **Not delivered** | Applies to this repository only, or is reference material |
-
-| Item | Source path | Delivery | What a repository does itself | How it is verified |
-| --- | --- | --- | --- | --- |
-| Code of conduct | `CODE_OF_CONDUCT.md` | **Inherited** | Nothing, or its own copy | Not verified. `gh api repos/monte3l/<repo>/community/profile` shows whether one is found |
-| Contributing guide | `CONTRIBUTING.md` | **Inherited** | Nothing, or its own copy. Wording is written for other repositories | Not verified |
-| Security policy | `SECURITY.md` | **Inherited** | Nothing, or its own copy. Private vulnerability reporting must be on | Script: `security: private vulnerability reporting` |
-| Support | `SUPPORT.md` | **Inherited** | Nothing, or its own copy | Not verified |
-| Bug report form | `.github/ISSUE_TEMPLATE/bug_report.yml` | **Inherited** (all or nothing, see above) | Nothing, or its own `ISSUE_TEMPLATE/` folder | Not verified |
-| Feature request form | `.github/ISSUE_TEMPLATE/feature_request.yml` | **Inherited** (same) | Same | Not verified |
-| Question form | `.github/ISSUE_TEMPLATE/question.yml` | **Inherited** (same) | Same | Not verified |
-| Issue chooser, blank issues off | `.github/ISSUE_TEMPLATE/config.yml` | **Inherited** (same) | Same | Not verified |
-| Pull request template | `.github/pull_request_template.md` | **Inherited** | Nothing, or its own copy | Not verified |
-| Organization profile | `profile/README.md` | **Inherited** (shown on the organization page only) | Nothing | Not verified |
-| Claude workflow | `workflow-templates/claude.yml` | **Template** | Copy it, add the `ANTHROPIC_API_KEY` secret | Not verified. Never relax its `author_association` gate |
-| Claude template card | `workflow-templates/claude.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
-| Dependency Review workflow | `workflow-templates/dependency-review.yml` | **Template** | Copy it. Its job name `Dependency Review` is a required check | Job name matched by hand (see Parity check) |
-| Dependency Review card | `workflow-templates/dependency-review.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
-| Gitleaks workflow | `workflow-templates/gitleaks.yml` | **Template** | Copy it. Its job name `Gitleaks` is a required check. The organization secret `GITLEAKS_LICENSE` must be shared with the repository | Job name matched by hand. Secret visibility checked by hand |
-| Gitleaks card | `workflow-templates/gitleaks.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
-| Scorecard workflow | `workflow-templates/scorecard.yml` | **Template** | Copy it, public repositories only. Not a required check | Script: `Scorecard workflow`. **Skipped** for private repositories |
-| Scorecard card | `workflow-templates/scorecard.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
-| REUSE workflow | `workflow-templates/reuse.yml` | **Template** | Copy it, or run `reuse lint` from a workflow it already has | Script: `REUSE check` (looks for the control, not the file name) |
-| REUSE card | `workflow-templates/reuse.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
-| Workflow lint workflow | `workflow-templates/workflow-lint.yml` | **Template** | Copy it, or add actionlint and zizmor to a workflow it already has | Script: `workflow lint` (looks for the control, not the file name) |
-| Workflow lint card | `workflow-templates/workflow-lint.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
-| Repository settings | `blueprint/repo-settings.json` | **Applied** | Nothing after `--apply` | Script: `repository settings` |
-| Actions token and PR approval | `blueprint/actions.json` (`workflow`) | **Applied** | Nothing after `--apply` | Script: `Actions: workflow token and PR approval` |
-| Fork PR approval | `blueprint/actions.json` (`fork_pr_approval`) | **Applied**. **Skipped** for private repositories | Nothing | Script: `Actions: fork PR approval` |
-| SHA pinning required | `blueprint/actions.json` (`sha_pinning`) | **Applied** | Pin every `uses:` to a full commit SHA | Script: `Actions: SHA pinning required` |
-| Dependabot alerts and security updates | Hard-coded in the script, no file | **Applied** | Nothing | Script: `security: Dependabot alerts`, `security: Dependabot security updates` |
-| Private vulnerability reporting | Hard-coded in the script, no file | **Applied**. **Skipped** for private repositories | Nothing | Script: `security: private vulnerability reporting` |
-| `main` ruleset | `blueprint/rulesets/main-branch.json` | **Applied**. **Skipped** on a free-plan private repository | Produce the four required checks | Script: `ruleset: main` |
-| `tags` ruleset | `blueprint/rulesets/tags.json` | **Applied**. **Skipped** (same) | Nothing | Script: `ruleset: tags` |
-| Labels | `blueprint/labels.json` | **Applied**, create-only | Nothing. An existing label is never rewritten | Script: label lines (they report OK or DRIFT inline) |
-| Design version pin | `blueprint/design-system.json` | **Checked** | Record that tag in `design/README.md`, then run `sync-design.sh` if it has a visual surface | Script: `design system` |
-| Repository standard files | `blueprint/files/` (`gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependabot.yml`) | **Checked**. Starting points only | Commit its own copy of each | Script: `Gitleaks config`, `line endings`, `editor config`, `REUSE`, `Dependabot` |
-| `CODEOWNERS` | `.github/CODEOWNERS` | **Checked** | Keep its own (never inherited) | Script: `CODEOWNERS` |
-| Environment example | `blueprint/environments.example.json` | **Not delivered**. Needs real reviewer ids | Create its own environments | Not verified |
-| Blueprint guide | `blueprint/README.md` | **Not delivered** | Nothing | Not verified |
-| The script | `bin/apply-repo-baseline.sh` | **Not delivered**. It is the tool | Nothing | `bash -n` and `shellcheck` in `verify.yml` |
-| This repository's design marker | `design/README.md` | **Not delivered**. Content tier for this repository only | Nothing | Script, run against `monte3l/.github` |
-| This repository's Dependabot | `.github/dependabot.yml` | **Not delivered** | Nothing | Not verified |
-| This repository's verify workflow | `.github/workflows/verify.yml` | **Not delivered**. Produces the `verify` check here | Nothing | Runs on every pull request |
-| This repository's dependency review | `.github/workflows/dependency-review.yml` | **Not delivered** | Nothing | Runs on every pull request |
-| This repository's Gitleaks | `.github/workflows/gitleaks.yml` | **Not delivered** | Nothing | Runs on every pull request, weekly, and on demand |
-| This repository's REUSE, workflow lint and Scorecard | `.github/workflows/reuse.yml`, `workflow-lint.yml`, `scorecard.yml` | **Not delivered** | Nothing | Script, run against `monte3l/.github` |
-| This repository's repository-standard files | `.gitleaks.toml`, `.gitattributes`, `.editorconfig`, `REUSE.toml`, `LICENSES/MIT.txt` | **Not delivered** | Nothing | Script, run against `monte3l/.github` |
-| Agent tooling | `.claude/` (settings, hooks, `template-invariants-reviewer` agent, `org-drift` skill) | **Not delivered**. For this repository only | Nothing | Not verified. `/org-drift` runs the script across the organization |
-| Agent guidance | `CLAUDE.md` | **Not delivered** | Nothing | Not verified |
-| License | `LICENSE` | **Not delivered**. Never inherited | Nothing | Not verified |
-| This file | `README.md` | **Not delivered** | Nothing | Not verified |
 
 ## Categories
 
@@ -246,6 +211,70 @@ Rules for edits:
   commit.
 - Commit with `git commit -s`, signed, as a Conventional Commit.
 
+## Parity table
+
+One row per tracked file. **Delivery** is one of:
+
+| Delivery | Meaning |
+| --- | --- |
+| **Inherited** | GitHub applies it to every repository that lacks its own |
+| **Template** | Offered under Actions, New workflow. Copied once by a person |
+| **Applied** | `bin/apply-repo-baseline.sh --apply` writes it to the repository |
+| **Checked** | The script compares and reports. It never changes it |
+| **Not delivered** | Applies to this repository only, or is reference material |
+
+| Item | Source path | Delivery | What a repository does itself | How it is verified |
+| --- | --- | --- | --- | --- |
+| Code of conduct | `CODE_OF_CONDUCT.md` | **Inherited** | Nothing, or its own copy | Not verified. `gh api repos/monte3l/<repo>/community/profile` shows whether one is found |
+| Contributing guide | `CONTRIBUTING.md` | **Inherited** | Nothing, or its own copy. Wording is written for other repositories | Not verified |
+| Security policy | `SECURITY.md` | **Inherited** | Nothing, or its own copy. Private vulnerability reporting must be on | Script: `security: private vulnerability reporting` |
+| Support | `SUPPORT.md` | **Inherited** | Nothing, or its own copy | Not verified |
+| Bug report form | `.github/ISSUE_TEMPLATE/bug_report.yml` | **Inherited** (all or nothing, see above) | Nothing, or its own `ISSUE_TEMPLATE/` folder | Not verified |
+| Feature request form | `.github/ISSUE_TEMPLATE/feature_request.yml` | **Inherited** (same) | Same | Not verified |
+| Question form | `.github/ISSUE_TEMPLATE/question.yml` | **Inherited** (same) | Same | Not verified |
+| Issue chooser, blank issues off | `.github/ISSUE_TEMPLATE/config.yml` | **Inherited** (same) | Same | Not verified |
+| Pull request template | `.github/pull_request_template.md` | **Inherited** | Nothing, or its own copy | Not verified |
+| Organization profile | `profile/README.md` | **Inherited** (shown on the organization page only) | Nothing | Not verified |
+| Claude workflow | `workflow-templates/claude.yml` | **Template** | Copy it, add the `ANTHROPIC_API_KEY` secret | Not verified. Never relax its `author_association` gate |
+| Claude template card | `workflow-templates/claude.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
+| Dependency Review workflow | `workflow-templates/dependency-review.yml` | **Template** | Copy it. Its job name `Dependency Review` is a required check | Job name matched by hand (see [Parity check](#parity-check)) |
+| Dependency Review card | `workflow-templates/dependency-review.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
+| Gitleaks workflow | `workflow-templates/gitleaks.yml` | **Template** | Copy it. Its job name `Gitleaks` is a required check. The organization secret `GITLEAKS_LICENSE` must be shared with the repository | Job name matched by hand. Secret visibility checked by hand |
+| Gitleaks card | `workflow-templates/gitleaks.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
+| Scorecard workflow | `workflow-templates/scorecard.yml` | **Template** | Copy it, public repositories only. Not a required check | Script: `Scorecard workflow`. **Skipped** for private repositories |
+| Scorecard card | `workflow-templates/scorecard.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
+| REUSE workflow | `workflow-templates/reuse.yml` | **Template** | Copy it, or run `reuse lint` from a workflow it already has | Script: `REUSE check` (looks for the control, not the file name) |
+| REUSE card | `workflow-templates/reuse.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
+| Workflow lint workflow | `workflow-templates/workflow-lint.yml` | **Template** | Copy it, or add actionlint and zizmor to a workflow it already has | Script: `workflow lint` (looks for the control, not the file name) |
+| Workflow lint card | `workflow-templates/workflow-lint.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
+| Repository settings | `blueprint/repo-settings.json` | **Applied** | Nothing after `--apply` | Script: `repository settings` |
+| Actions token and PR approval | `blueprint/actions.json` (`workflow`) | **Applied** | Nothing after `--apply` | Script: `Actions: workflow token and PR approval` |
+| Fork PR approval | `blueprint/actions.json` (`fork_pr_approval`) | **Applied**. **Skipped** for private repositories | Nothing | Script: `Actions: fork PR approval` |
+| SHA pinning required | `blueprint/actions.json` (`sha_pinning`) | **Applied** | Pin every `uses:` to a full commit SHA | Script: `Actions: SHA pinning required` |
+| Dependabot alerts and security updates | Hard-coded in the script, no file | **Applied** | Nothing | Script: `security: Dependabot alerts`, `security: Dependabot security updates` |
+| Private vulnerability reporting | Hard-coded in the script, no file | **Applied**. **Skipped** for private repositories | Nothing | Script: `security: private vulnerability reporting` |
+| `main` ruleset | `blueprint/rulesets/main-branch.json` | **Applied**. **Skipped** on a free-plan private repository | Produce the four required checks | Script: `ruleset: main` |
+| `tags` ruleset | `blueprint/rulesets/tags.json` | **Applied**. **Skipped** (same) | Nothing | Script: `ruleset: tags` |
+| Labels | `blueprint/labels.json` | **Applied**, create-only | Nothing. An existing label is never rewritten | Script: label lines (they report OK or DRIFT inline) |
+| Design version pin | `blueprint/design-system.json` | **Checked** | Record that tag in `design/README.md`, then run `sync-design.sh` if it has a visual surface | Script: `design system` |
+| Repository standard files | `blueprint/files/` (`gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependabot.yml`) | **Checked**. Starting points only | Commit its own copy of each | Script: `Gitleaks config`, `line endings`, `editor config`, `REUSE`, `Dependabot` |
+| `CODEOWNERS` | `.github/CODEOWNERS` | **Checked** | Keep its own (never inherited) | Script: `CODEOWNERS` |
+| README skeleton | `blueprint/files/README.md` | **Not delivered**. A starting point, copied by hand | Copy it and fill it in | Not verified |
+| Environment example | `blueprint/environments.example.json` | **Not delivered**. Needs real reviewer ids | Create its own environments | Not verified |
+| Blueprint guide | `blueprint/README.md` | **Not delivered** | Nothing | Not verified |
+| The script | `bin/apply-repo-baseline.sh` | **Not delivered**. It is the tool | Nothing | `bash -n` and `shellcheck` in `verify.yml` |
+| This repository's design marker | `design/README.md` | **Not delivered**. Content tier for this repository only | Nothing | Script, run against `monte3l/.github` |
+| This repository's Dependabot | `.github/dependabot.yml` | **Not delivered** | Nothing | Not verified |
+| This repository's verify workflow | `.github/workflows/verify.yml` | **Not delivered**. Produces the `verify` check here | Nothing | Runs on every pull request |
+| This repository's dependency review | `.github/workflows/dependency-review.yml` | **Not delivered** | Nothing | Runs on every pull request |
+| This repository's Gitleaks | `.github/workflows/gitleaks.yml` | **Not delivered** | Nothing | Runs on every pull request, weekly, and on demand |
+| This repository's REUSE, workflow lint and Scorecard | `.github/workflows/reuse.yml`, `workflow-lint.yml`, `scorecard.yml` | **Not delivered** | Nothing | Script, run against `monte3l/.github` |
+| This repository's repository-standard files | `.gitleaks.toml`, `.gitattributes`, `.editorconfig`, `REUSE.toml`, `LICENSES/MIT.txt` | **Not delivered** | Nothing | Script, run against `monte3l/.github` |
+| Agent tooling | `.claude/` (settings, hooks, `template-invariants-reviewer` agent, `org-drift` skill) | **Not delivered**. For this repository only | Nothing | Not verified. `/org-drift` runs the script across the organization |
+| Agent guidance | `CLAUDE.md` | **Not delivered** | Nothing | Not verified |
+| License | `LICENSE` | **Not delivered**. Never inherited | Nothing | Not verified |
+| This file | `README.md` | **Not delivered** | Nothing | Not verified |
+
 ## Repository status
 
 > [!NOTE]
@@ -265,6 +294,32 @@ Rules for edits:
 Every repository has its own `LICENSE` and `.github/CODEOWNERS`, and the
 script confirms both through its `CODEOWNERS` line. No repository has copied
 `claude.yml`, so `ANTHROPIC_API_KEY` is not set anywhere.
+
+## Working on this repo
+
+This repository has no build and no tests. CI (`verify.yml`) runs these:
+
+```sh
+bash -n bin/apply-repo-baseline.sh
+shellcheck bin/apply-repo-baseline.sh
+find blueprint workflow-templates -name '*.json' -print0 | xargs -0 -n1 jq empty
+docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color .github/workflows/*.yml workflow-templates/*.yml
+```
+
+The rules for edits are under [Changing a default](#changing-a-default).
+
+### Project docs
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md), [`SECURITY.md`](SECURITY.md),
+  [`SUPPORT.md`](SUPPORT.md) and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) --
+  the community files other repositories inherit. Their wording is written for
+  those repositories.
+- [`blueprint/README.md`](blueprint/README.md) -- the settings blueprint, the
+  repository standard and the README structure.
+- [`design/README.md`](design/README.md) -- this repository's m3l-design marker.
+- [`profile/README.md`](profile/README.md) -- the organization profile page.
+- [`CLAUDE.md`](CLAUDE.md) -- the script's internals and conventions, written
+  for Claude Code agents.
 
 ## License
 
