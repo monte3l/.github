@@ -47,4 +47,8 @@ jobs:
       # A push to `main` around this hour deploys while this job runs, and
       # `docs.yml` queues behind its own concurrency group, not this one; six
       # minutes of retries let that deploy land before a mismatch is reported.
+      # With `--metadata` (see the note at the top), also pass the token so the
+      # GitHub API call is authenticated and not rate limited on a shared runner:
+      #   env:
+      #     GITHUB_TOKEN: ${{ github.token }}
       - run: node design/source/docs-kit/check-live.mjs --site _site --attempts 12 --delay 30
