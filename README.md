@@ -161,6 +161,8 @@ repository and, only with `--apply`, writes it.
   have. The script prints `SKIP`.
 - **Matched by name:** a ruleset is found by `name`. Renaming one in a file
   creates a second ruleset on the next `--apply`.
+- **Reported, never applied:** the repository files in `blueprint/README.md`'s
+  "Repository standard". Adding one is a commit in that repository.
 - **A repository adds:** everything the blueprint does not own, including
   `dependabot.yml`, `CODEOWNERS` and `LICENSE`.
 
@@ -203,9 +205,10 @@ for each drifted item. It needs `gh` with admin on the repository, and `jq`.
 | Required check names match the templates | Compare `blueprint/rulesets/main-branch.json` with each copied workflow's job `name:` | Merges block with a check that never reports |
 | `GITLEAKS_LICENSE` is shared with the repository | `gh api orgs/monte3l/actions/secrets/GITLEAKS_LICENSE/repositories` | The Gitleaks job fails |
 | CodeQL default setup is on | `gh api repos/monte3l/<repo>/code-scanning/default-setup` shows `"state": "configured"` | The `CodeQL` check never reports |
-| `CODEOWNERS` exists | `gh api repos/monte3l/<repo>/contents/.github/CODEOWNERS` | No review routing. **No script checks this** |
+| `CODEOWNERS` exists | The script's `CODEOWNERS` line, or `gh api repos/monte3l/<repo>/contents/.github/CODEOWNERS` | No review routing |
 | Every `uses:` is pinned to a SHA | The Actions setting is enforced by the script. Whether a given workflow complies is only found when it runs | The run fails |
-| Community files, issue forms, workflow copies and `dependabot.yml` match the defaults | **No check exists.** Compare by eye | Silent divergence |
+| Repository files exist (Gitleaks config, `.gitattributes`, `.editorconfig`, `REUSE.toml`, workflow lint and REUSE workflows, Scorecard, Dependabot) | The script reports each missing file. See `blueprint/README.md`, "Repository standard" | `DRIFT`, never applied |
+| Community files, issue forms and workflow copies match the defaults | **No check exists.** Compare by eye | Silent divergence |
 
 ## Changing a default
 
@@ -232,16 +235,18 @@ Rules for edits:
 ## Repository status
 
 > [!NOTE]
-> **A snapshot, not live data.** Taken on 2026-10-11 with
-> `bin/apply-repo-baseline.sh monte3l/<repo>`, after every design re-sync had
-> merged. Run the script for the current result.
+> **A snapshot, not live data.** Taken on 2026-10-19 with
+> `bin/apply-repo-baseline.sh monte3l/<repo>` from the branch that adds the
+> repository standard, before any repository adopted it. The drift is the new
+> ruleset approvals and the missing repository files. Run the script for the
+> current result.
 
 | Repository | Visibility | Last baseline run | Result | Own `CODEOWNERS` |
 | --- | --- | --- | --- | --- |
-| `monte3l/.github` | Public | 2026-10-11 | 12 OK, 0 drift | No |
-| `monte3l/m3l-design` | Public | 2026-10-11 | 12 OK, 0 drift | Yes |
-| `monte3l/m3l-groundwork` | Public | 2026-10-11 | 12 OK, 0 drift | Yes |
-| `monte3l/m3l-prompt-optimizer` | Public | 2026-10-11 | 12 OK, 0 drift | Yes |
+| `monte3l/.github` | Public | 2026-10-19 | 12 OK, 9 drift | No |
+| `monte3l/m3l-design` | Public | 2026-10-19 | 15 OK, 6 drift | Yes |
+| `monte3l/m3l-groundwork` | Public | 2026-10-19 | 19 OK, 2 drift | Yes |
+| `monte3l/m3l-prompt-optimizer` | Public | 2026-10-19 | 15 OK, 6 drift | Yes |
 
 ## License
 
