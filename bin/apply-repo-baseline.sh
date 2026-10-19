@@ -13,7 +13,8 @@
 # (fork-PR approval, private vulnerability reporting, rulesets) print SKIP,
 # which is not drift. The design-system and repository-file items only report:
 # adopting m3l-design or adding a file is a commit in the repository, which no
-# API call can make. Needs gh
+# API call can make. Open Scorecard alerts are report-only for the same reason:
+# the fix is a commit, or a dismissal that cites SECURITY.md. Needs gh
 # (authenticated, repository admin) and jq.
 set -euo pipefail
 
@@ -227,6 +228,8 @@ report_file() {
 
 report_file "CODEOWNERS" "write one; the main ruleset requires a code-owner approval" \
   .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS
+report_file "security policy" "write one with an absolute advisory URL; the org default has no link, so a repository inheriting it scores 4 on Scorecard's Security-Policy" \
+  SECURITY.md .github/SECURITY.md docs/SECURITY.md
 report_file "Gitleaks config" "copy blueprint/files/gitleaks.toml" .gitleaks.toml
 report_file "line endings" "copy blueprint/files/gitattributes" .gitattributes
 report_file "editor config" "copy blueprint/files/editorconfig" .editorconfig
@@ -260,11 +263,49 @@ report_workflow "workflow lint" "copy workflow-templates/workflow-lint.yml, or a
   'actionlint' 'zizmor'
 report_workflow "REUSE check" "copy workflow-templates/reuse.yml, or run reuse lint from a workflow that already runs" \
   'reuse lint|fsfe/reuse-action'
+report_workflow "DCO check" "copy workflow-templates/dco.yml, or check Signed-off-by from a workflow that already runs" \
+  'Signed-off-by'
+
+# A literal version number after `node-version:` forks the pin from
+# `.node-version`, which is the single source. `node-version-file:` is the
+# allowed form, and so is a non-numeric value such as `current` (a lane that
+# tracks the newest release on purpose). Comments do not count.
+if grep -Eq -- '^[[:space:]-]*node-version:[[:space:]]*["'\'']?[0-9]' <<<"$workflows_text"; then
+  drift=$((drift + 1))
+  printf 'DRIFT  Node pin: a workflow hardcodes a node-version number\n'
+  [[ "$mode" == "check" ]] || printf '         use node-version-file: .node-version in %s\n' "$repo"
+else
+  printf 'OK     Node pin: no hardcoded node-version\n'
+  ok=$((ok + 1))
+fi
+
 # Scorecard publishes results for public repositories only.
 if [[ "$private" == "true" ]]; then
   skip "Scorecard workflow" "private repository"
 else
   report_workflow "Scorecard workflow" "copy workflow-templates/scorecard.yml" 'ossf/scorecard-action'
+fi
+
+# Open Scorecard alerts: fix each, or dismiss it as "won't fix" with a comment
+# that cites the accepted-findings section of the repository's SECURITY.md.
+# Report only. A repository without code scanning answers with an error, which
+# is a SKIP rather than drift.
+if [[ "$private" != "true" ]]; then
+  if alerts="$(gh api "repos/$repo/code-scanning/alerts?tool_name=Scorecard&state=open&per_page=100" \
+    --jq '.[] | "\(.number) \(.rule.id)"' 2>/dev/null)"; then
+    if [[ -z "$alerts" ]]; then
+      printf 'OK     Scorecard alerts: none open\n'
+      ok=$((ok + 1))
+    else
+      while read -r number rule; do
+        drift=$((drift + 1))
+        printf 'DRIFT  Scorecard alert #%s: %s\n' "$number" "$rule"
+        [[ "$mode" == "check" ]] || printf '         fix it, or dismiss it citing the accepted-findings section of SECURITY.md in %s\n' "$repo"
+      done <<<"$alerts"
+    fi
+  else
+    skip "Scorecard alerts" "code scanning unavailable"
+  fi
 fi
 
 # Dependabot must exist and keep the github-actions ecosystem, the one every

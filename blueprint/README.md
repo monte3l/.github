@@ -115,11 +115,13 @@ GitHub cannot inherit these, so the script only reports a missing file
 | Item | Standard | Starting point |
 | ---- | -------- | -------------- |
 | `CODEOWNERS` | Required: the `main` ruleset asks for a code-owner approval | Write one, usually `* @enri3l @giulmonte` |
+| `SECURITY.md` | Required in the repository itself, with an absolute advisory URL and an accepted-findings table: a repository that inherits the org default scores 4 on Scorecard's Security-Policy check | `m3l-groundwork/SECURITY.md`, `m3l-output-governor/SECURITY.md` |
 | Gitleaks config | `.gitleaks.toml` extends the default rules; the workflow passes it as `GITLEAKS_CONFIG` | `files/gitleaks.toml` |
 | Line endings and editor | `.gitattributes` with `* text=auto eol=lf`, and `.editorconfig` (utf-8, lf, 2 spaces, final newline). A repository that hashes raw bytes keeps `* -text` instead: see the note below | `files/gitattributes`, `files/editorconfig` |
 | REUSE | `REUSE.toml` plus `LICENSES/`, checked by `reuse lint` in CI, from any workflow. Required because every repository that vendors m3l-design ships its OFL-1.1 fonts next to MIT files | `files/REUSE.toml`, `workflow-templates/reuse.yml` |
 | Workflow lint | actionlint and zizmor on every change to a workflow, from any workflow | `workflow-templates/workflow-lint.yml` |
 | Scorecard | Public repositories only | `workflow-templates/scorecard.yml` |
+| DCO check | Every non-merge commit in a pull request carries a `Signed-off-by:` trailer that matches its author or committer email. Make `DCO sign-off` a required check once it has run | `workflow-templates/dco.yml` |
 | Dependabot | `.github/dependabot.yml` with the `github-actions` ecosystem, a 7-day cooldown, and one `npm` entry per lockfile directory (1-day cooldown) | `files/dependabot.yml` |
 
 The workflow items (workflow lint, REUSE check, Scorecard) look for the
@@ -142,7 +144,10 @@ Rules the script cannot check, so a reviewer does:
 - **Tool pins:** a CI tool lives in its own folder with a lockfile and installs
   with `npm ci --ignore-scripts`. If the tool needs its install scripts to run
   (a tool that downloads its own binary does), say so in `SECURITY.md` as an
-  accepted risk. Node is pinned in `.node-version`.
+  accepted risk. Node is pinned in `.node-version`, and no workflow writes a
+  version number after `node-version:`: use `node-version-file: .node-version`.
+  A lane that tracks the newest release on purpose may say `node-version: current`.
+  The script checks this one.
 - **Secrets:** scope a secret to an environment where possible, give it an
   expiry of one year at most (rotate yearly if it cannot expire), and list it
   in the repository's `SECURITY.md`. The org `SECURITY.md` shows the table.
@@ -157,6 +162,50 @@ Rules the script cannot check, so a reviewer does:
 > last push, and a branch up to date with `main` before merging. With two
 > owners, every pull request needs the other one.
 > Applying it changes the repository the moment `--apply` runs.
+
+## Scorecard findings
+
+`scorecard.yml` publishes its findings as Code Scanning alerts. The script
+lists every open one as `DRIFT`, so an alert is either fixed or dismissed with
+a reason, never left open.
+
+| Check | Resolution |
+| ----- | ---------- |
+| Security-Policy | Fix it: the repository's own `SECURITY.md` with an absolute advisory URL |
+| CII-Best-Practices | Fix it, for a code repository: register at bestpractices.dev, reach Passing at least, add the badge to the README title block, keep the answers in `.bestpractices.json` and list that file in `REUSE.toml`. A repository with no code (`.github`) dismisses it as not applicable. Reference: `m3l-groundwork` |
+| Code-Review | Dismiss it only while the score still climbs after the `main` ruleset's adoption. Every PR since needs an approval, so it self-corrects. Re-check at 10 |
+| Branch-Protection (8) | Dismiss it. The two-approval tier needs a standing bypass with two org members, and the empty bypass list is deliberate |
+| Maintained | Dismiss it. It is time-based and clears 90 days after the repository's creation |
+| Fuzzing | Dismiss it when the repository has no parser of untrusted input, and say what its inputs are instead |
+
+Dismiss as **won't fix**, with a comment that names the reason and the PR that
+documented it:
+
+```sh
+gh api -X PATCH repos/monte3l/REPO/code-scanning/alerts/N \
+  -f state=dismissed -f dismissed_reason="won't fix" \
+  -f dismissed_comment="Reason. See SECURITY.md (PR #N)."
+```
+
+The reason lives in an `## Accepted OpenSSF Scorecard findings` section of the
+repository's `SECURITY.md`: a table of Check, Score and Why it stays, as in
+`m3l-output-governor`. Do not turn a dismissed finding into a standing bypass.
+
+## Claude Code guards
+
+`m3l-groundwork` is the source of truth for the hooks that keep a Claude Code
+session inside the org's rules. Copy them, never link them, and keep each copy
+identical apart from its header, as `repair-core-bare.mjs` does.
+
+| Hook | Blocks | Needs |
+| ---- | ------ | ----- |
+| `guard-secret-writes.mjs` | A write (`Write`, `Edit`) that puts a real secret on disk | Node only |
+| `guard-git-push-signed.mjs` | A `git push` with an unsigned outgoing commit, where signing is on | `bin/lib/signed-range.mjs` copied beside it |
+| `require-signoff.sh` | A `git commit` without `-s` | `jq`; the copy in `.github/.claude/hooks/` |
+
+Every `main` ruleset requires signed commits and the org asks for a DCO
+sign-off, so the hooks catch a rejected push before it happens. The script does
+not check for them: whether a repository runs Claude Code is its own decision.
 
 ## Not covered
 

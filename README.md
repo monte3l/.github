@@ -137,10 +137,11 @@ repository and, only with `--apply`, writes it.
 - **Matched by name:** a ruleset is found by `name`. Renaming one in a file
   creates a second ruleset on the next `--apply`.
 - **Reported, never applied:** the repository standard in `blueprint/README.md`.
-  Files: `CODEOWNERS`, Gitleaks config, `.gitattributes`, `.editorconfig`,
-  `REUSE.toml`, `dependabot.yml`. Workflow controls, found by their content
-  and not by file name: workflow lint, REUSE check, Scorecard (public
-  repositories only). Adding one is a commit in that repository.
+  Files: `CODEOWNERS`, `SECURITY.md`, Gitleaks config, `.gitattributes`,
+  `.editorconfig`, `REUSE.toml`, `dependabot.yml`. Workflow controls, found by
+  their content and not by file name: workflow lint, REUSE check, DCO check,
+  the Node pin, Scorecard (public repositories only). Open Scorecard alerts
+  are listed too. Adding one is a commit in that repository.
 - **A repository adds:** everything the blueprint does not own, including
   `dependabot.yml`, `CODEOWNERS` and `LICENSE`.
 
@@ -227,7 +228,7 @@ One row per tracked file. **Delivery** is one of:
 | --- | --- | --- | --- | --- |
 | Code of conduct | `CODE_OF_CONDUCT.md` | **Inherited** | Nothing, or its own copy | Not verified. `gh api repos/monte3l/<repo>/community/profile` shows whether one is found |
 | Contributing guide | `CONTRIBUTING.md` | **Inherited** | Nothing, or its own copy. Wording is written for other repositories | Not verified |
-| Security policy | `SECURITY.md` | **Inherited** | Nothing, or its own copy. Private vulnerability reporting must be on | Script: `security: private vulnerability reporting` |
+| Security policy | `SECURITY.md` | **Inherited**, but every repository needs its own copy to score above 4 on Scorecard. Private vulnerability reporting must be on | Its own copy with an absolute advisory URL and an accepted-findings table | Script: `security policy`, `security: private vulnerability reporting` |
 | Support | `SUPPORT.md` | **Inherited** | Nothing, or its own copy | Not verified |
 | Bug report form | `.github/ISSUE_TEMPLATE/bug_report.yml` | **Inherited** (all or nothing, see above) | Nothing, or its own `ISSUE_TEMPLATE/` folder | Not verified |
 | Feature request form | `.github/ISSUE_TEMPLATE/feature_request.yml` | **Inherited** (same) | Same | Not verified |
@@ -241,10 +242,12 @@ One row per tracked file. **Delivery** is one of:
 | Dependency Review card | `workflow-templates/dependency-review.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
 | Gitleaks workflow | `workflow-templates/gitleaks.yml` | **Template** | Copy it. Its job name `Gitleaks` is a required check. The organization secret `GITLEAKS_LICENSE` must be shared with the repository | Job name matched by hand. Secret visibility checked by hand |
 | Gitleaks card | `workflow-templates/gitleaks.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
-| Scorecard workflow | `workflow-templates/scorecard.yml` | **Template** | Copy it, public repositories only. Not a required check | Script: `Scorecard workflow`. **Skipped** for private repositories |
+| Scorecard workflow | `workflow-templates/scorecard.yml` | **Template** | Copy it, public repositories only. Not a required check | Script: `Scorecard workflow`, and `Scorecard alerts` for every open alert. **Skipped** for private repositories |
 | Scorecard card | `workflow-templates/scorecard.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
 | REUSE workflow | `workflow-templates/reuse.yml` | **Template** | Copy it, or run `reuse lint` from a workflow it already has | Script: `REUSE check` (looks for the control, not the file name) |
 | REUSE card | `workflow-templates/reuse.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
+| DCO workflow | `workflow-templates/dco.yml` | **Template** | Copy it, or check `Signed-off-by` from a workflow it already has. Make `DCO sign-off` a required check once it has run | Script: `DCO check` (looks for the control, not the file name) |
+| DCO card | `workflow-templates/dco.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
 | Workflow lint workflow | `workflow-templates/workflow-lint.yml` | **Template** | Copy it, or add actionlint and zizmor to a workflow it already has | Script: `workflow lint` (looks for the control, not the file name) |
 | Workflow lint card | `workflow-templates/workflow-lint.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
 | Repository settings | `blueprint/repo-settings.json` | **Applied** | Nothing after `--apply` | Script: `repository settings` |
