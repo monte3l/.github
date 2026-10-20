@@ -267,6 +267,8 @@ report_workflow "REUSE check" "copy workflow-templates/reuse.yml, or run reuse l
   'reuse lint|fsfe/reuse-action'
 report_workflow "DCO check" "copy workflow-templates/dco.yml, or check Signed-off-by from a workflow that already runs" \
   'Signed-off-by'
+report_workflow "PR labeler" "copy workflow-templates/labeler.yml and start .github/labeler.yml from blueprint/files/labeler.yml" \
+  'actions/labeler'
 
 # A literal version number after `node-version:` forks the pin from
 # `.node-version`, which is the single source. `node-version-file:` is the
