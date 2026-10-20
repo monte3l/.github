@@ -260,6 +260,33 @@ The reason lives in an `## Accepted OpenSSF Scorecard findings` section of the
 repository's `SECURITY.md`: a table of Check, Score and Why it stays, as in
 `m3l-output-governor`. Do not turn a dismissed finding into a standing bypass.
 
+## Claude Code plugins
+
+Every plugin the organization publishes is listed in one marketplace,
+[`monte3l/m3l-plugins`](https://github.com/monte3l/m3l-plugins). Its name is
+`monte3l`, so a plugin installs as `<plugin>@monte3l`. A plugin repository does
+not run a marketplace of its own: Claude Code allows one marketplace per name,
+and a second one splits each plugin's install id.
+
+| Rule | Why |
+| ---- | --- |
+| The plugin repository ships no `marketplace.json` | One marketplace, one install id per plugin |
+| `version` lives only in `.claude-plugin/plugin.json`, and is bumped on every release | Claude Code treats a set `version` as the update signal, so an unbumped version means users never update. The catalog entry carries none, so the two cannot disagree |
+| A release is a signed tag `<name>--vX.Y.Z`, the form `claude plugin tag` uses | The `main` and tags rulesets stop the tag from moving, and the catalog pins it. `m3l-groundwork` is the exception: its plugin version mirrors the CLI, so its tag is `@monte3l/groundwork@X.Y.Z` |
+| `claude plugin validate --strict .` runs in the repository's `verify` | A manifest error should fail before a release, not after |
+| No `CLAUDE.md` at the plugin root; keep it in `.claude/` | `validate --strict` warns about a root `CLAUDE.md`, and Claude Code does not load it from a plugin |
+| Listing is a pull request to `m3l-plugins` that adds an entry pinned to the tag and its full commit SHA, with a `homepage` on `monte3l.com` and a `description` identical to `plugin.json` | `bin/check-catalog.mjs` fails the pull request otherwise |
+| An entry's `source` is `url` or `git-subdir` with a full `https://github.com/` URL | The `github` source type and `owner/repo` shorthand clone over SSH, which fails for anyone without a GitHub key |
+
+> [!IMPORTANT]
+> A release does not reach users when the tag is pushed. It reaches them when
+> the pin in `m3l-plugins` moves, which is a pull request there. Its daily
+> `pins` workflow opens an issue when a pin is stale, and
+> `node bin/bump-pins.mjs --apply` rewrites it.
+
+The managed settings below allow `monte3l/m3l-plugins` and register it as
+`monte3l`. A plugin listed anywhere else is blocked on a managed machine.
+
 ## Claude Code guards
 
 `m3l-groundwork` is the source of truth for the hooks that keep a Claude Code
