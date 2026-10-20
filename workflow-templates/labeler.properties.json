@@ -1,0 +1,6 @@
+{
+  "name": "Label PRs by area",
+  "description": "Label pull requests by the area of the repository they change.",
+  "iconName": "octicon tag",
+  "categories": ["Automation"]
+}

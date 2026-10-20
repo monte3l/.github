@@ -1,0 +1,24 @@
+# Starting point for .github/labeler.yml, read by workflow-templates/labeler.yml
+# (actions/labeler). The four labels below are shared by every org repository
+# and defined in blueprint/labels.json, so apply-repo-baseline.sh creates them
+# with their colour and description. Keep their globs as they are.
+#
+# Append one rule per area that is specific to this repository. Create each
+# such label once with `gh label create <name> --color 554d50 --description ...`:
+# the labeler would otherwise create it in GitHub's default grey.
+
+"area:ci":
+  - changed-files:
+      - any-glob-to-any-file: [".github/**", "lefthook.yml"]
+
+"area:docs":
+  - changed-files:
+      - any-glob-to-any-file: ["docs/**", "*.md", "docs.config.mjs"]
+
+"area:design":
+  - changed-files:
+      - any-glob-to-any-file: ["design/**"]
+
+"area:harness":
+  - changed-files:
+      - any-glob-to-any-file: [".claude/**"]
