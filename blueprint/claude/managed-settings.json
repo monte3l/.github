@@ -1,0 +1,143 @@
+{
+  "forceLoginMethod": "claudeai",
+  "forceLoginOrgUUID": "5ad368a6-ed17-4276-8823-ef54caa2b547",
+  "requiredMinimumVersion": "2.1.283",
+  "syncClaudeAiSkills": false,
+  "syncClaudeAiPlugins": false,
+  "disableClaudeAiConnectors": true,
+  "availableModels": ["opus", "sonnet", "haiku", "opusplan"],
+  "deniedModels": ["claude-haiku-4-5", "claude-opus-4-7"],
+  "attribution": {
+    "sessionUrl": false
+  },
+  "strictKnownMarketplaces": [
+    { "source": "github", "repo": "anthropics/claude-plugins-official" },
+    { "source": "github", "repo": "monte3l/m3l-plugins" },
+    { "source": "skills-dir" }
+  ],
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": { "source": "github", "repo": "anthropics/claude-plugins-official" }
+    },
+    "monte3l": {
+      "source": { "source": "github", "repo": "monte3l/m3l-plugins" }
+    }
+  },
+  "autoMode": {
+    "environment": [
+      "$defaults",
+      "Organization: monte3l. Primary use of Claude Code: software development and maintaining the organization's shared repositories and Claude Code plugins",
+      "Source control: github.com/monte3l and all repos under it",
+      "Repository visibility: monte3l repositories are public unless a repo says otherwise; never commit secrets, tokens or personal data to any of them",
+      "Trusted internal domains: *.monte3l.com",
+      "CI/CD deploy targets: npm publishing through GitHub Actions OIDC trusted publishing, and docs deploys to Cloudflare through the docs-cloudflare GitHub environment",
+      "Protected deployment namespaces / environments: the npm-publish and docs-cloudflare GitHub environments, the main branch and tags rulesets, and any host or namespace named prod or production"
+    ]
+  },
+  "permissions": {
+    "disableBypassPermissionsMode": "disable",
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/secrets/**)",
+      "Read(**/*.pem)",
+      "Read(~/.ssh/**)",
+      "Read(~/.oci/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.zsh/secrets*)",
+      "Bash(git push --force*)",
+      "Bash(git push * --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push * -f*)",
+      "Bash(git * --no-verify*)",
+      "Bash(gh pr merge * --admin*)",
+      "Bash(gh repo delete*)",
+      "Bash(find * -delete*)",
+      "Bash(find * -exec*)"
+    ],
+    "ask": [
+      "Bash(gh api -X *)",
+      "Bash(gh api --method *)",
+      "Bash(gh api * -X *)",
+      "Bash(gh api * --method *)",
+      "Bash(gh api * -f *)",
+      "Bash(gh api * -F *)",
+      "Bash(gh api * --input *)",
+      "Bash(gh secret *)",
+      "Bash(gh repo edit*)",
+      "Bash(gh pr merge*)",
+      "Bash(gh release create*)",
+      "Bash(gh release edit*)",
+      "Bash(gh workflow run*)",
+      "Bash(git push --force-with-lease*)",
+      "Bash(git push * --force-with-lease*)",
+      "Bash(git push origin main*)",
+      "Bash(git reset --hard*)",
+      "Bash(npm publish*)",
+      "Bash(pnpm publish*)",
+      "Bash(npm dist-tag *)",
+      "Bash(npm deprecate *)",
+      "Bash(sudo *)",
+      "Bash(npm install -g*)",
+      "Bash(npm i -g*)",
+      "Bash(chezmoi apply)"
+    ],
+    "allow": [
+      "Bash(grep *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(ls *)",
+      "Bash(pwd)",
+      "Bash(diff *)",
+      "Bash(jq *)",
+      "Bash(find *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git fetch*)",
+      "Bash(git rev-parse*)",
+      "Bash(git ls-files*)",
+      "Bash(git grep*)",
+      "Bash(git branch --show-current)",
+      "Bash(git worktree list*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr checks*)",
+      "Bash(gh pr list*)",
+      "Bash(gh pr diff*)",
+      "Bash(gh run list*)",
+      "Bash(gh run view*)",
+      "Bash(gh issue list*)",
+      "Bash(gh issue view*)",
+      "Bash(gh release list*)",
+      "Bash(gh release view*)",
+      "Bash(gh repo view*)",
+      "Bash(gh auth status*)",
+      "Bash(npm view *)",
+      "WebFetch(domain:code.claude.com)",
+      "WebFetch(domain:docs.claude.com)",
+      "WebFetch(domain:platform.claude.com)",
+      "WebFetch(domain:claude.com)",
+      "WebFetch(domain:anthropic.com)",
+      "WebFetch(domain:*.anthropic.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:docs.github.com)",
+      "WebFetch(domain:typescriptlang.org)",
+      "WebFetch(domain:www.typescriptlang.org)",
+      "WebFetch(domain:devblogs.microsoft.com)",
+      "WebFetch(domain:typescript-eslint.io)",
+      "WebFetch(domain:nodejs.org)",
+      "WebFetch(domain:docs.npmjs.com)",
+      "WebFetch(domain:vitest.dev)",
+      "WebFetch(domain:pnpm.io)",
+      "WebFetch(domain:developers.cloudflare.com)",
+      "WebFetch(domain:*.monte3l.com)"
+    ]
+  },
+  "companyAnnouncements": [
+    "monte3l: work from an isolated worktree, open a PR, sign and sign off every commit, never force-push or use --no-verify. Policy: github.com/monte3l/.github/blob/main/blueprint/README.md"
+  ]
+}
