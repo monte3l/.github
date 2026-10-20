@@ -59,6 +59,10 @@
           {
             "context": "Gitleaks",
             "integration_id": 15368
+          },
+          {
+            "context": "DCO sign-off",
+            "integration_id": 15368
           }
         ],
         "strict_required_status_checks_policy": true

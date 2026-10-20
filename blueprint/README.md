@@ -13,7 +13,7 @@ in `m3l-groundwork`.
 
 | File                     | What it holds                                                                                              |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `rulesets/main-branch.json` | The `main` ruleset, taken from `m3l-groundwork`: signed commits, no force-push or delete, PRs with one code-owner approval (and approval of the last push) and resolved threads, and branches up to date with `main`, and `verify`, `Dependency Review`, `CodeQL` and `Gitleaks` required |
+| `rulesets/main-branch.json` | The `main` ruleset, taken from `m3l-groundwork`: signed commits, no force-push or delete, PRs with one code-owner approval (and approval of the last push) and resolved threads, and branches up to date with `main`, and `verify`, `Dependency Review`, `CodeQL`, `Gitleaks` and `DCO sign-off` required |
 | `rulesets/tags.json`     | Tags cannot be moved or deleted; creating one stays allowed so releases can tag                            |
 | `repo-settings.json`     | Merge settings: merge commit and squash allowed, rebase off, delete head branches after merge             |
 | `actions.json`           | Read-only workflow token, workflows cannot approve PRs, approve fork PR runs for all outside contributors, SHA pinning required |
@@ -44,8 +44,8 @@ vulnerability reporting or rulesets: the script prints `SKIP` for those and
 does not count them as drift.
 
 > [!WARNING]
-> The blueprint requires the `verify`, `Dependency Review`, `CodeQL` and
-> `Gitleaks` checks and SHA-pinned actions. `Gitleaks` also needs the
+> The blueprint requires the `verify`, `Dependency Review`, `CodeQL`,
+> `Gitleaks` and `DCO sign-off` checks and SHA-pinned actions. `Gitleaks` also needs the
 > `GITLEAKS_LICENSE` organization secret to be shared with the repository.
 > Applying it to a repository that does not produce those checks, or that
 > uses unpinned actions, blocks merges and fails workflows until that is
@@ -143,7 +143,7 @@ control (`DRIFT`, never applied). Each is a commit in the repository. The
 | REUSE | `REUSE`, `REUSE check` | `REUSE.toml` plus `LICENSES/`, checked by `reuse lint` in CI, from any workflow. Required because every repository that vendors m3l-design ships its OFL-1.1 fonts next to MIT files | `files/REUSE.toml`, `workflow-templates/reuse.yml` |
 | Workflow lint | `workflow lint` | actionlint and zizmor on every change to a workflow, from any workflow | `workflow-templates/workflow-lint.yml` |
 | Scorecard | `Scorecard workflow`, `Scorecard alerts` | Public repositories only. Open alerts are fixed or dismissed with a reason | `workflow-templates/scorecard.yml` |
-| DCO check | `DCO check` | Every non-merge commit in a pull request carries a `Signed-off-by:` trailer that matches its author or committer email. Make `DCO sign-off` a required check once it has run | `workflow-templates/dco.yml` |
+| DCO check | `DCO check` | Every non-merge commit in a pull request carries a `Signed-off-by:` trailer that matches its author or committer email. `DCO sign-off` is a required check in the `main` ruleset, so its job `name:` must stay `DCO sign-off` and the workflow must not filter by path | `workflow-templates/dco.yml` |
 | Dependabot | `Dependabot` | `.github/dependabot.yml` with the `github-actions` ecosystem, a 7-day cooldown, and one `npm` entry per lockfile directory (1-day cooldown) | `files/dependabot.yml` |
 | Node pin | `Node pin` | No workflow writes a version number after `node-version:`: use `node-version-file: .node-version` | `.node-version` |
 | Design system | `design system` | `design/README.md` records the version `design-system.json` pins | See [Design system](#design-system) |

@@ -108,7 +108,7 @@ Where nothing can check a claim, this README says so.
 - **Offered:** `claude`, `dependency-review`, `gitleaks`, `reuse`, `scorecard`,
   `workflow-lint`.
 - **A repository adds:** the copy. The `main` ruleset requires checks named
-  `verify`, `Dependency Review`, `CodeQL` and `Gitleaks`:
+  `verify`, `Dependency Review`, `CodeQL`, `Gitleaks` and `DCO sign-off`:
 
 | Required check | Provided by |
 | --- | --- |
@@ -116,6 +116,7 @@ Where nothing can check a claim, this README says so.
 | `Dependency Review` | The `dependency-review` template. Its job `name:` must stay `Dependency Review` |
 | `Gitleaks` | The `gitleaks` template. Its job `name:` must stay `Gitleaks` |
 | `CodeQL` | Code scanning default setup, enabled by an owner |
+| `DCO sign-off` | The `dco` template. Its job `name:` must stay `DCO sign-off`, and it must not filter by path, or a pull request that skips it can never merge |
 
 > [!WARNING]
 > **Renaming a job in a template silently breaks merges** in every repository
@@ -246,7 +247,7 @@ One row per tracked file. **Delivery** is one of:
 | Scorecard card | `workflow-templates/scorecard.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
 | REUSE workflow | `workflow-templates/reuse.yml` | **Template** | Copy it, or run `reuse lint` from a workflow it already has | Script: `REUSE check` (looks for the control, not the file name) |
 | REUSE card | `workflow-templates/reuse.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
-| DCO workflow | `workflow-templates/dco.yml` | **Template** | Copy it, or check `Signed-off-by` from a workflow it already has. Make `DCO sign-off` a required check once it has run | Script: `DCO check` (looks for the control, not the file name) |
+| DCO workflow | `workflow-templates/dco.yml` | **Template** | Copy it, or check `Signed-off-by` from a workflow it already has under the job name `DCO sign-off`, which the `main` ruleset requires | Script: `DCO check` (looks for the control, not the file name) |
 | DCO card | `workflow-templates/dco.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
 | Workflow lint workflow | `workflow-templates/workflow-lint.yml` | **Template** | Copy it, or add actionlint and zizmor to a workflow it already has | Script: `workflow lint` (looks for the control, not the file name) |
 | Workflow lint card | `workflow-templates/workflow-lint.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
