@@ -24,6 +24,7 @@ in `m3l-groundwork`.
 | `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependabot.yml`, a `README.md` skeleton, and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
 | `claude/managed-settings.json` | The Claude Code policy for the whole Claude Team organization, pasted into the admin console by an Owner. Never applied by the script. See [Claude Code managed settings](#claude-code-managed-settings) |
+| `../workflow-templates/environments.yml` | The weekly `env-janitor` cleanup workflow. See [Environment cleanup](#environment-cleanup) |
 
 `integration_id` values in the `main` ruleset are GitHub's own apps (15368 is
 GitHub Actions, 57789 is code scanning), so they are the same in every
@@ -101,6 +102,38 @@ The script reports a repository that has a `docs.config.mjs` and lacks the
 vendored tier marker, the kit gate in a workflow, the deploy and smoke jobs, a
 scheduled live check, or a `homepage` set to its `monte3l.com` URL. Those are
 the `docs site` items below.
+
+## Environment cleanup
+
+GitHub creates an environment the first time a job references it and never
+removes it. A repository with at least one deployment environment (a
+`docs-cloudflare` docs site, an `npm-publish` release gate) therefore also
+carries the `env-janitor` environment and the weekly cleanup workflow.
+`m3l-groundwork` is the reference implementation, and its
+`docs/environment-janitor.md` explains the App permissions and the policy
+format.
+
+| Piece | Where |
+| --- | --- |
+| Workflow | Copy `workflow-templates/environments.yml` to `.github/workflows/environments.yml`. It checks out `m3l-groundwork`'s `bin/` at a pinned commit and runs the cleanup script, so there is one copy of the code |
+| Policy | `.github/environments.json` lists every environment the repository's workflows reference, each with a `retain` window and the settings to check for drift. Keep `env-janitor` in it with `retain: 0`. An environment not listed is deleted, unless it has required reviewers or secrets, in which case it is reported and left alone |
+| App | Install `monte3l-env-janitor` on the repository (organization settings, GitHub Apps, selected repositories). Never organization-wide |
+| Environment | `env-janitor`, restricted to `main`, holding the secrets `JANITOR_APP_CLIENT_ID` and `JANITOR_APP_PRIVATE_KEY` |
+
+```sh
+gh api -X PUT repos/monte3l/<repo>/environments/env-janitor \
+  -f 'deployment_branch_policy[protected_branches]=false' \
+  -f 'deployment_branch_policy[custom_branch_policies]=true'
+gh api -X POST repos/monte3l/<repo>/environments/env-janitor/deployment-branch-policies \
+  -f name=main
+gh secret set JANITOR_APP_CLIENT_ID --env env-janitor --repo monte3l/<repo>
+gh secret set JANITOR_APP_PRIVATE_KEY --env env-janitor --repo monte3l/<repo>
+```
+
+Run the workflow once with `dry_run` left on and read the job summary before
+the first scheduled run applies anything. Add every new `environment:` name to
+`.github/environments.json` in the same change that introduces it, and list
+the two secrets in the repository's `SECURITY.md`.
 
 ## README structure
 

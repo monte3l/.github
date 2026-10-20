@@ -1,0 +1,6 @@
+{
+  "name": "Environment cleanup",
+  "description": "Weekly cleanup of stale GitHub Deployments and Environments, driven by .github/environments.json.",
+  "iconName": "octicon trash",
+  "categories": ["Deployment"]
+}
