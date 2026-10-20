@@ -45,6 +45,31 @@ Needs `gh` (repo admin) and `jq`. Validate edits with `bash -n bin/apply-repo-ba
 - `integration_id` 15368 = GitHub Actions, 57789 = code scanning — global, not org-specific.
 - The `main` ruleset requires `verify`, `Dependency Review`, `CodeQL`, `Gitleaks` and `DCO sign-off` checks; the `Gitleaks` name must likewise match the job `name:` in `workflow-templates/gitleaks.yml`, and `DCO sign-off` the job `name:` in `workflow-templates/dco.yml` (which must not filter by path: a skipped required check never reports); the `Dependency Review` name must match the job `name:` in `workflow-templates/dependency-review.yml`. Likewise `verify` must stay the job `name:` of the aggregator in `workflow-templates/verify.yml`; its `needs` list is the only place lanes are enumerated. Renaming a job in a template silently breaks merges in every repo using the blueprint.
 
+## Claude Code harness
+
+What `.claude/` wires up here. Hooks block by exiting 2; a hook script that cannot start never blocks, except the ones marked `onFailure: block` in `.claude/settings.json`.
+
+| File | What it does |
+| --- | --- |
+| `.claude/hooks/require-signoff.sh` | Blocks `git commit` without `-s` (the DCO check and the signed-commits ruleset need both) |
+| `.claude/hooks/guard-git-push-signed.mjs` | Blocks `git push` when an outgoing commit is unsigned, if `commit.gpgsign` is on |
+| `.claude/hooks/guard-double-background.mjs` | Blocks a Bash call that backgrounds a command twice (`run_in_background` plus `&`/`nohup`) |
+| `.claude/hooks/guard-protected-paths.mjs` | Blocks edits to `design/source/**`, `design/tokens.css`, `design/SHA256SUMS` and `_site/`: re-sync the design copy with `sync-design.sh` instead |
+| `.claude/hooks/guard-secret-writes.mjs` | Blocks writing `.env*` files and literal tokens or keys; `${{ secrets.X }}` references are fine |
+| `.claude/hooks/verify-edit.sh` | After an edit, runs the matching `verify.yml` check (`jq`, `bash -n` + shellcheck, actionlint) when the tool is installed |
+| `.claude/hooks/statusline.mjs` | The status line, with `.claude/hooks/statusline-layout.mjs` and `.claude/hooks/subagent-statusline.mjs` for layout and subagent rows |
+| `.claude/agents/template-invariants-reviewer.md` | Read-only reviewer for the cross-file rules no linter checks; run it before a PR touching templates, blueprint, design or workflows |
+| `.claude/skills/org-drift/SKILL.md` | Reports drift between an org repo and the blueprint |
+| `.claude/skills/writing-commits/SKILL.md` | Conventional Commits with `git commit -s` and the `Co-Authored-By` trailer |
+| `.claude/skills/creating-prs/SKILL.md` | Runs the `verify.yml` commands locally, pushes and opens a PR from the template; never arms auto-merge |
+| `.claude/skills/finishing-work/SKILL.md` | After a merge: pull `main`, delete merged branches, prune refs |
+| `.claude/skills/triaging-ci/SKILL.md` | Maps a failing job to its workflow and a local reproduction |
+| `.claude/skills/watching-pr-checks/SKILL.md`, `.claude/skills/reviewing-dependabot-prs/SKILL.md`, `.claude/skills/triaging-scan-alerts/SKILL.md` | `gh`-based PR check watching, Dependabot batch review, code-scanning triage |
+| `.claude/skills/harness-guidance/SKILL.md` | Refreshes this harness against Anthropic's guidance; its tracker is `docs/research/harness-refresh.md` |
+| `.claude/skills/customize/SKILL.md` | The m3l-groundwork adoption skill; its output is `.groundwork/customization-report.md` |
+
+`.groundwork/` holds the adoption record. Only its two reports are tracked (see `.gitignore`), and `docs.config.mjs` excludes `.groundwork/**` and `docs/research/**` from the docs site.
+
 ## Conventions
 
 - Every `uses:` in workflow templates is pinned to a full commit SHA with a `# vX` comment (the blueprint enforces SHA pinning, so an unpinned action would fail in adopting repos). `actions/checkout` always gets `persist-credentials: false`. `.github/dependabot.yml` tracks those pins through a second `github-actions` entry with `directory: /workflow-templates` (Dependabot reads a non-root directory directly, one level, `*.yml`; this is source-level behavior, not documented by GitHub). Both entries use a 7-day `cooldown`. If a scheduled run never opens a PR for a stale template pin, the entry doesn't work: fall back to Renovate scoped to that folder. A bump only changes what newly adopting repos copy, but review `claude.yml` bumps closely, and note that `m3l-groundwork` keeps its own copies that these PRs do not touch.

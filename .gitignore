@@ -1,0 +1,14 @@
+# Docs site build output (node design/source/docs-kit/build.mjs --out _site)
+_site/
+
+node_modules/
+
+# Claude Code: compaction handoffs, worktrees, personal overrides
+tmp/
+.claude/worktrees/
+.claude/settings.local.json
+
+# m3l-groundwork: keep the two reports, drop the disposable staging
+.groundwork/*
+!.groundwork/adoption-report.md
+!.groundwork/customization-report.md
