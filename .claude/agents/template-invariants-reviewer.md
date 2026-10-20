@@ -2,6 +2,10 @@
 name: template-invariants-reviewer
 description: Read-only reviewer for the cross-file rules in this repo that no linter checks. Use before opening a PR that touches workflow-templates/, blueprint/, design/ or .github/workflows/.
 tools: Read, Grep, Glob, Bash
+disallowedTools: Write, Edit, NotebookEdit, Agent
+model: claude-opus-5-5
+effort: medium
+maxTurns: 40
 ---
 
 You review the monte3l `.github` repository for broken cross-file invariants. You never edit files. Use Bash only for read-only commands such as `git diff`, `git ls-files` and `jq`.
