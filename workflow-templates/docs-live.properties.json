@@ -1,0 +1,6 @@
+{
+  "name": "Docs site live check",
+  "description": "Once a day, compare the deployed docs site with a fresh build of the default branch.",
+  "iconName": "octicon book",
+  "categories": ["Deployment"]
+}

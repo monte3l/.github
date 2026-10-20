@@ -11,7 +11,7 @@
 # Every item is compared with the live state first, so a second --apply run
 # changes nothing. Items a private repository on a free plan cannot have
 # (fork-PR approval, private vulnerability reporting, rulesets) print SKIP,
-# which is not drift. The design-system and repository-file items only report:
+# which is not drift. The design-system, docs-site and repository-file items only report:
 # adopting m3l-design or adding a file is a commit in the repository, which no
 # API call can make. Open Scorecard alerts are report-only for the same reason:
 # the fix is a commit, or a dismissal that cites SECURITY.md. Needs gh
@@ -238,8 +238,10 @@ report_file "REUSE" "start from blueprint/files/REUSE.toml and add LICENSES/" RE
 # it from its own workflow (for example a `reuse lint` step inside `verify.yml`)
 # and a second copy of the template would only duplicate it.
 workflows_text=""
+workflow_names=""
 while IFS= read -r wf; do
   workflows_text+="$(file_content ".github/workflows/$wf")"$'\n'
+  workflow_names+="$wf"$'\n'
 done < <(gh api "repos/$repo/contents/.github/workflows" --jq '.[] | select(.type == "file") | .name' 2>/dev/null || true)
 
 # report_workflow LABEL HINT PATTERN...: OK when every PATTERN (an extended
@@ -318,6 +320,58 @@ else
   drift=$((drift + 1))
   printf 'DRIFT  Dependabot: .github/dependabot.yml is missing or has no github-actions ecosystem\n'
   [[ "$mode" == "check" ]] || printf '         needs a commit in %s: start from blueprint/files/dependabot.yml\n' "$repo"
+fi
+
+# --- docs site (report only; applies only to a repository that has one) ---
+# docs.config.mjs is the docs kit's config, so its presence is what makes a
+# repository a docs-site repository. Everything here is a commit, never an API
+# call, except the homepage, which `gh repo edit --homepage` can set.
+if [[ -z "$(file_content docs.config.mjs)" ]]; then
+  skip "docs site" "no docs.config.mjs"
+else
+  docs_marker="$(file_content "$marker_path")"
+  # shellcheck disable=SC2016 # the backticks are literal markdown in the grep regex
+  if grep -Eq '^- \*\*Version copied:\*\* `v[0-9]' <<<"$docs_marker" ||
+    { grep -Eq '^- \*\*Version adopted:\*\* `v[0-9]' <<<"$docs_marker" && grep -Eq '^- \*\*Tier:\*\* source' <<<"$docs_marker"; }; then
+    printf 'OK     docs site: tier\n'
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  docs site: tier: %s needs "Version copied" (vendored), or "Version adopted" plus "Tier: source" for m3l-design\n' "$marker_path"
+    [[ "$mode" == "check" ]] || printf '         needs a commit in %s: see blueprint/docs-site.md\n' "$repo"
+  fi
+  report_workflow "docs site: gate" "run node design/source/docs-kit/build.mjs --check from verify.yml, see blueprint/docs-site.md" \
+    'docs-kit/build\.mjs --check'
+  report_workflow "docs site: deploy" "copy workflow-templates/docs.yml" \
+    'docs-kit/build\.mjs --out' 'wrangler deploy' 'docs-kit/check-live\.mjs --site'
+  # The daily check must sit in the same workflow as its schedule, not merely
+  # somewhere among the repository's workflows.
+  daily=""
+  while IFS= read -r wf; do
+    [[ -n "$wf" ]] || continue
+    text="$(file_content ".github/workflows/$wf")"
+    if grep -Eq '^[[:space:]]*schedule:' <<<"$text" && grep -Eq 'docs-kit/check-live\.mjs' <<<"$text"; then
+      daily="$wf"
+      break
+    fi
+  done <<<"$workflow_names"
+  if [[ -n "$daily" ]]; then
+    printf 'OK     docs site: daily check (%s)\n' "$daily"
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  docs site: daily check: no workflow has both a schedule and docs-kit/check-live.mjs\n'
+    [[ "$mode" == "check" ]] || printf '         needs a commit in %s: copy workflow-templates/docs-live.yml\n' "$repo"
+  fi
+  homepage="$(jq -r '.homepage // ""' <<<"$live_repo")"
+  if [[ "$homepage" =~ ^https://([a-z0-9-]+\.)?monte3l\.com/?$ ]]; then
+    printf 'OK     docs site: homepage %s\n' "$homepage"
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  docs site: homepage is "%s", not an https://*.monte3l.com URL\n' "$homepage"
+    [[ "$mode" == "check" ]] || printf '         gh repo edit %s --homepage https://<project>.monte3l.com\n' "$repo"
+  fi
 fi
 
 printf '\n%s ok, %s drift, %s skipped (%s mode)\n' "$ok" "$drift" "$skipped" "$mode"

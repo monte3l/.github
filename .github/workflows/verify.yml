@@ -1,6 +1,7 @@
 name: Verify
 
-# Checks what this repository ships: the baseline script parses and passes
+# Checks what this repository ships: the docs site builds and its docs match
+# the baseline script and the blueprint, the baseline script parses and passes
 # shellcheck, every blueprint and workflow-template JSON file is valid, and
 # every workflow (live and template) passes actionlint. The job name `verify`
 # is what the org `main` ruleset requires.
@@ -26,6 +27,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+
+      # The Node version comes from .node-version, the single source of truth.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .node-version
+
+      - name: Docs site builds, links resolve and docs match the blueprint
+        run: node design/source/docs-kit/build.mjs --check
 
       - name: Script syntax and shellcheck
         run: |
