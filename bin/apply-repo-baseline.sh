@@ -14,12 +14,16 @@
 # which is not drift. The design-system, docs-site and repository-file items only report:
 # adopting m3l-design or adding a file is a commit in the repository, which no
 # API call can make. Open Scorecard alerts are report-only for the same reason:
-# the fix is a commit, or a dismissal that cites SECURITY.md. Needs gh
-# (authenticated, repository admin) and jq.
+# the fix is a commit, or a dismissal that cites SECURITY.md. For a repository
+# that runs the weekly cleanup, the env-janitor environment, its main-only
+# branch policy and the repository's access to the org-level janitor secrets
+# are applied. The App installation, the secrets themselves and the pinned
+# planner commit only report. Needs gh (authenticated, repository admin, plus
+# admin:org to read or share org secrets) and jq.
 set -euo pipefail
 
 usage() {
-  sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-2}"
 }
 
@@ -373,6 +377,178 @@ else
     drift=$((drift + 1))
     printf 'DRIFT  docs site: homepage is "%s", not an https://*.monte3l.com URL\n' "$homepage"
     [[ "$mode" == "check" ]] || printf '         gh repo edit %s --homepage https://<project>.monte3l.com\n' "$repo"
+  fi
+fi
+
+# --- env-janitor (applied: the environment, its branch policy, org-secret access) ---
+# Only a repository with .github/environments.json runs the weekly cleanup. The
+# App installation and the secrets themselves are never touched here: installing
+# an App is an org setting, and a secret needs key material this script does not
+# hold. The pinned planner commit and the last run only report.
+
+# The planner's import graph in m3l-groundwork. A commit touching any of these
+# changes what a consuming repository's pin runs. Keep it in step with the
+# imports of bin/cleanup-environments.mjs.
+janitor_files=(bin/cleanup-environments.mjs bin/lib/environment-cleanup.mjs bin/lib/report.mjs bin/lib/term.mjs)
+janitor_secrets=(JANITOR_APP_CLIENT_ID JANITOR_APP_PRIVATE_KEY)
+janitor_env="env-janitor"
+planner_repo="monte3l/m3l-groundwork"
+owner="${repo%%/*}"
+repo_id="$(jq -r .id <<<"$live_repo")"
+
+if [[ -z "$(file_content .github/environments.json)" ]]; then
+  skip "env-janitor" "no .github/environments.json"
+else
+  # The environment only scopes the job to main; it holds no reviewers or timer,
+  # so replacing its settings with PUT loses nothing.
+  desired='{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'
+  if live="$(gh api "repos/$repo/environments/$janitor_env" 2>/dev/null)"; then :; else live='{}'; fi
+  current="$(jq -c '{deployment_branch_policy: (.deployment_branch_policy // null)}' <<<"$live")"
+  settle "env-janitor: environment" "$current" "$desired" PUT "repos/$repo/environments/$janitor_env"
+
+  # Missing main is added. Extra policies are reported and never removed.
+  if policies="$(gh api "repos/$repo/environments/$janitor_env/deployment-branch-policies" --jq '[.branch_policies[].name]' 2>/dev/null)"; then :; else policies='[]'; fi
+  policies="$(jq -c . <<<"$policies")"
+  if [[ "$policies" == '["main"]' ]]; then
+    printf 'OK     env-janitor: branch policy: main only\n'
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  env-janitor: branch policy: %s, want ["main"]\n' "$policies"
+    if jq -e 'index("main") != null' <<<"$policies" >/dev/null; then
+      [[ "$mode" == "check" ]] || printf '         extra policies are never removed here: delete them by hand in %s\n' "$repo"
+    else
+      case "$mode" in
+        dry-run) printf '         would run: gh api -X POST repos/%s/environments/%s/deployment-branch-policies -f name=main\n' "$repo" "$janitor_env" ;;
+        apply)
+          gh api -X POST "repos/$repo/environments/$janitor_env/deployment-branch-policies" -f name=main >/dev/null
+          printf '         applied\n'
+          ;;
+      esac
+    fi
+  fi
+
+  # The two secrets are org-level, visibility "selected". This applies one org
+  # write: adding this repository to each secret's list. It never creates a
+  # secret or widens its visibility.
+  secret_problems="" secret_unshared=()
+  for secret in "${janitor_secrets[@]}"; do
+    if ! visibility="$(gh api "orgs/$owner/actions/secrets/$secret" --jq .visibility 2>/dev/null)"; then
+      secret_problems+="$secret cannot be read (missing, or the token lacks admin:org); "
+    elif [[ "$visibility" != "selected" ]]; then
+      secret_problems+="$secret has visibility '$visibility', want selected; "
+    elif ! shared_ids="$(gh api --paginate "orgs/$owner/actions/secrets/$secret/repositories" --jq '.repositories[].id' 2>/dev/null)"; then
+      secret_problems+="$secret's repository list cannot be read; "
+    elif ! grep -Fxq -- "$repo_id" <<<"$shared_ids"; then
+      secret_problems+="$secret is not shared with $repo; "
+      secret_unshared+=("$secret")
+    fi
+  done
+  if [[ -z "$secret_problems" ]]; then
+    printf 'OK     env-janitor: org secrets: shared with this repository\n'
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  env-janitor: org secrets: %s\n' "${secret_problems%; }"
+    # The + form keeps an empty array from tripping `set -u` on bash 3.2 (macOS).
+    for secret in ${secret_unshared[@]+"${secret_unshared[@]}"}; do
+      case "$mode" in
+        dry-run) printf '         would run: gh api -X PUT orgs/%s/actions/secrets/%s/repositories/%s\n' "$owner" "$secret" "$repo_id" ;;
+        apply)
+          gh api -X PUT "orgs/$owner/actions/secrets/$secret/repositories/$repo_id" >/dev/null
+          printf '         applied: %s\n' "$secret"
+          ;;
+      esac
+    done
+    [[ "$mode" == "check" ]] || printf '         a missing secret needs: gh secret set <name> --org %s --visibility selected --repos <repo,...>\n' "$owner"
+  fi
+
+  # An environment secret wins over an org one, so a leftover copy keeps the
+  # old key alive after a rotation. Never deleted here.
+  leftover=""
+  if env_secrets="$(gh api "repos/$repo/environments/$janitor_env/secrets" --jq '.secrets[].name' 2>/dev/null)"; then
+    leftover="$(grep -E '^JANITOR_APP_' <<<"$env_secrets" | tr '\n' ' ' || true)"
+  fi
+  if [[ -z "$leftover" ]]; then
+    printf 'OK     env-janitor: no environment secrets\n'
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  env-janitor: no environment secrets: %sstill set, and they override the org secrets\n' "$leftover"
+    if [[ "$mode" != "check" ]]; then
+      for secret in $leftover; do
+        printf '         gh secret delete %s --env %s --repo %s\n' "$secret" "$janitor_env" "$repo"
+      done
+    fi
+  fi
+
+  # Org secrets reach every workflow in the repository on any branch, so only
+  # environments.yml may name them.
+  stray=""
+  while IFS= read -r wf; do
+    [[ -n "$wf" && "$wf" != "environments.yml" ]] || continue
+    if grep -q 'JANITOR_APP_' <<<"$(file_content ".github/workflows/$wf")"; then
+      stray+="$wf "
+    fi
+  done <<<"$workflow_names"
+  if [[ -z "$stray" ]]; then
+    printf 'OK     env-janitor: secret references: only environments.yml\n'
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  env-janitor: secret references: %sname the janitor secrets\n' "$stray"
+    [[ "$mode" == "check" ]] || printf '         move the use into environments.yml, or the org secrets reach more than the cleanup job\n'
+  fi
+
+  # The pinned planner commit. m3l-groundwork itself runs its own bin/. Two
+  # tiers: the pin must be on main, and must contain the newest commit that
+  # touched the planner's files. Merely trailing main is fine.
+  env_wf="$(file_content .github/workflows/environments.yml)"
+  if [[ -z "$env_wf" ]]; then
+    drift=$((drift + 1))
+    printf 'DRIFT  env-janitor: planner pin: no .github/workflows/environments.yml\n'
+    [[ "$mode" == "check" ]] || printf '         needs a commit in %s: copy workflow-templates/environments.yml\n' "$repo"
+  elif ! grep -q "repository: $planner_repo" <<<"$env_wf"; then
+    skip "env-janitor: planner pin" "runs its own bin/"
+  else
+    pin="$(grep -A2 "repository: $planner_repo" <<<"$env_wf" | sed -nE 's/^[[:space:]]*ref:[[:space:]]*([0-9a-f]{40}).*/\1/p' | head -n 1 || true)"
+    janitor_sha="$(for f in "${janitor_files[@]}"; do
+      gh api "repos/$planner_repo/commits?sha=main&path=$f&per_page=1" \
+        --jq '.[0] | select(. != null) | "\(.commit.committer.date) \(.sha)"' 2>/dev/null || true
+    done | sort | tail -n 1 | cut -d' ' -f2)"
+    pin_problem=""
+    if [[ -z "$pin" ]]; then
+      pin_problem="no 40-character ref after repository: $planner_repo"
+    elif [[ -z "$janitor_sha" ]]; then
+      pin_problem="cannot read the planner's history in $planner_repo"
+    elif ! to_main="$(gh api "repos/$planner_repo/compare/$pin...main" --jq '"\(.status) \(.ahead_by)"' 2>/dev/null)"; then
+      pin_problem="${pin:0:7} is not a commit of $planner_repo"
+    elif [[ "${to_main%% *}" == "diverged" || "${to_main%% *}" == "behind" ]]; then
+      pin_problem="${pin:0:7} is not on main"
+    elif janitor_vs_pin="$(gh api "repos/$planner_repo/compare/$janitor_sha...$pin" --jq .status 2>/dev/null)" &&
+      [[ "$janitor_vs_pin" != "identical" && "$janitor_vs_pin" != "ahead" ]]; then
+      pin_problem="${pin:0:7} predates the planner change ${janitor_sha:0:7}"
+    fi
+    if [[ -z "$pin_problem" ]]; then
+      printf 'OK     env-janitor: planner pin %s (%s behind main, no planner change since)\n' "${pin:0:7}" "${to_main##* }"
+      ok=$((ok + 1))
+    else
+      drift=$((drift + 1))
+      printf 'DRIFT  env-janitor: planner pin: %s\n' "$pin_problem"
+      [[ "$mode" == "check" ]] || printf '         review https://github.com/%s/compare/%s...main, then move ref: in %s\n' "$planner_repo" "${pin:0:7}" "$repo"
+    fi
+  fi
+
+  # One green run shows the App is installed, the secrets resolve and the policy
+  # is clean. A red one can also be real policy drift: read the job summary.
+  conclusion="$(gh run list --repo "$repo" --workflow environments.yml --limit 1 --json conclusion --jq '.[0].conclusion // "none"' 2>/dev/null)" || conclusion="none"
+  if [[ "$conclusion" == "success" ]]; then
+    printf 'OK     env-janitor: last run: success\n'
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  env-janitor: last run: %s\n' "${conclusion:-in progress}"
+    [[ "$mode" == "check" ]] || printf '         dispatch environments.yml with dry_run on and read the job summary: the App installation, a secret or the policy may be the cause\n'
   fi
 fi
 

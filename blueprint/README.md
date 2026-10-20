@@ -118,22 +118,41 @@ format.
 | Workflow | Copy `workflow-templates/environments.yml` to `.github/workflows/environments.yml`. It checks out `m3l-groundwork`'s `bin/` at a pinned commit and runs the cleanup script, so there is one copy of the code |
 | Policy | `.github/environments.json` lists every environment the repository's workflows reference, each with a `retain` window and the settings to check for drift. Keep `env-janitor` in it with `retain: 0`. An environment not listed is deleted, unless it has required reviewers or secrets, in which case it is reported and left alone |
 | App | Install `monte3l-env-janitor` on the repository (organization settings, GitHub Apps, selected repositories). Never organization-wide |
-| Environment | `env-janitor`, restricted to `main`, holding the secrets `JANITOR_APP_CLIENT_ID` and `JANITOR_APP_PRIVATE_KEY` |
+| Environment | `env-janitor`, restricted to `main`, holding no secrets. It only scopes the job to `main` |
+| Secrets | `JANITOR_APP_CLIENT_ID` and `JANITOR_APP_PRIVATE_KEY` are **organization secrets** with visibility `selected`, shared with each repository that runs the cleanup. The values are set once, at the org |
+
+The script creates the environment, adds the `main` branch policy and shares
+the two org secrets with the repository:
 
 ```sh
-gh api -X PUT repos/monte3l/<repo>/environments/env-janitor \
-  -f 'deployment_branch_policy[protected_branches]=false' \
-  -f 'deployment_branch_policy[custom_branch_policies]=true'
-gh api -X POST repos/monte3l/<repo>/environments/env-janitor/deployment-branch-policies \
-  -f name=main
-gh secret set JANITOR_APP_CLIENT_ID --env env-janitor --repo monte3l/<repo>
-gh secret set JANITOR_APP_PRIVATE_KEY --env env-janitor --repo monte3l/<repo>
+bin/apply-repo-baseline.sh monte3l/<repo> --dry-run   # read what it would do
+bin/apply-repo-baseline.sh monte3l/<repo> --apply
 ```
+
+It never creates a secret, deletes one, or installs the App: those need the
+key material or an org setting. It also reports the pinned planner commit and
+whether the last run succeeded, as the `env-janitor:` items in
+[Repository standard](#repository-standard).
+
+> [!WARNING]
+> An org secret reaches every workflow in each repository it is shared with,
+> on any branch a collaborator pushes, where an environment secret reached
+> only the job running on `main`. Only `environments.yml` may reference the
+> two secrets, and the script reports any other workflow that does. Never set
+> them on the `env-janitor` environment as well: an environment secret
+> overrides the org one, so a leftover copy keeps an old key alive after a
+> rotation.
+
+To rotate the App's key, generate a new one in the App's settings, then run
+`gh secret set JANITOR_APP_PRIVATE_KEY --org monte3l` (the repository list is
+kept), dispatch one repository's workflow with `dry_run` on, and delete the
+old key. Rotate on any exposure, on a change of maintainer, and yearly, since
+the key does not expire.
 
 Run the workflow once with `dry_run` left on and read the job summary before
 the first scheduled run applies anything. Add every new `environment:` name to
 `.github/environments.json` in the same change that introduces it, and list
-the two secrets in the repository's `SECURITY.md`.
+the two secrets in the repository's `SECURITY.md` as organization secrets.
 
 ## README structure
 
@@ -164,7 +183,9 @@ the heading it reads.
 ## Repository standard
 
 GitHub cannot inherit these, so the script only reports a missing file or
-control (`DRIFT`, never applied). Each is a commit in the repository. The
+control (`DRIFT`, never applied). Each is a commit in the repository. The two
+exceptions are the `env-janitor` branch policy and org-secret access, which
+`--apply` sets because they are settings, not files. The
 **Reported as** column is the label the script prints, and
 `bin/doc-parity.mjs` fails when this table and the script disagree.
 
@@ -187,6 +208,12 @@ control (`DRIFT`, never applied). Each is a commit in the repository. The
 | Docs site: deploy | `docs site: deploy` | The workflow builds, runs `wrangler deploy`, then smoke-tests the live site | `workflow-templates/docs.yml` |
 | Docs site: daily check | `docs site: daily check` | One workflow has both a schedule and `docs-kit/check-live.mjs` | `workflow-templates/docs-live.yml` |
 | Docs site: homepage | `docs site: homepage` | The GitHub repository `homepage` is its `https://*.monte3l.com` URL | `gh repo edit --homepage` |
+| Janitor: branch policy | `env-janitor: branch policy` | Only for a repository with `.github/environments.json`: the `env-janitor` environment deploys from `main` only. `--apply` adds `main` and never removes another policy | [Environment cleanup](#environment-cleanup) |
+| Janitor: org secrets | `env-janitor: org secrets` | `JANITOR_APP_CLIENT_ID` and `JANITOR_APP_PRIVATE_KEY` are organization secrets with visibility `selected`, shared with the repository. `--apply` shares them and never creates one | [Environment cleanup](#environment-cleanup) |
+| Janitor: no environment secrets | `env-janitor: no environment secrets` | The `env-janitor` environment holds neither secret, because an environment secret overrides the org one. The script prints the `gh secret delete` commands and never runs them | [Environment cleanup](#environment-cleanup) |
+| Janitor: secret references | `env-janitor: secret references` | Only `environments.yml` names the two secrets, because an org secret reaches every workflow in the repository | `workflow-templates/environments.yml` |
+| Janitor: planner pin | `env-janitor: planner pin` | `environments.yml` pins an `m3l-groundwork` commit that is on `main` and contains the newest change to the planner's files. Trailing `main` is fine. `m3l-groundwork` itself is skipped | `workflow-templates/environments.yml` |
+| Janitor: last run | `env-janitor: last run` | The last `environments.yml` run succeeded. A red run can also be real policy drift: read its job summary | Dispatch with `dry_run` on |
 
 The workflow items (workflow lint, REUSE check, Scorecard) look for the
 control in the text of the repository's workflows, not for a file name: a

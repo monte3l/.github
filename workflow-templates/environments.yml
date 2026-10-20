@@ -5,7 +5,10 @@ name: Environments
 # "Environment cleanup", and the policy format in
 # m3l-groundwork/docs/environment-janitor.md). Keep an `env-janitor` entry
 # with `retain: 0`. Then install the `monte3l-env-janitor` GitHub App on this
-# repository and create the `env-janitor` environment with its two secrets.
+# repository, and run `bin/apply-repo-baseline.sh monte3l/<repo> --apply` from
+# monte3l/.github: it creates the `env-janitor` environment (restricted to
+# `main`) and shares the org secrets JANITOR_APP_CLIENT_ID and
+# JANITOR_APP_PRIVATE_KEY with this repository.
 #
 # What this does: cleans up stale GitHub Deployments and Environments this
 # repository's CI has left behind. GitHub creates an environment the first time
@@ -17,11 +20,15 @@ name: Environments
 # left alone), and trim each listed one to its retention window.
 #
 # The pin below is not bumped by Dependabot, which only reads `uses:`. Update
-# it by hand to the m3l-groundwork commit you reviewed when the planner changes.
+# it by hand to the m3l-groundwork commit you reviewed when the planner changes;
+# apply-repo-baseline.sh reports a pin that predates the latest planner change.
 #
 # Deleting an environment needs Administration: write, which the default
 # GITHUB_TOKEN cannot hold, so the job mints a token from the dedicated
-# monte3l-env-janitor App, installed on selected repositories only.
+# monte3l-env-janitor App, installed on selected repositories only. Its two
+# secrets are organization secrets shared with selected repositories. Do not
+# also set them on the `env-janitor` environment, which would override them,
+# and do not reference them from any other workflow.
 on:
   schedule:
     # Weekly. A stale environment sitting a few extra days costs nothing.

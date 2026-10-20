@@ -22,6 +22,12 @@ export const INLINE_ITEMS = [
   "Node pin",
   "Scorecard alerts",
   "Dependabot",
+  "env-janitor: branch policy",
+  "env-janitor: org secrets",
+  "env-janitor: no environment secrets",
+  "env-janitor: secret references",
+  "env-janitor: planner pin",
+  "env-janitor: last run",
 ];
 
 /**
