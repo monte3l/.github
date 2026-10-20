@@ -23,6 +23,7 @@ in `m3l-groundwork`.
 | `docs-site.md`           | The docs site standard, the Cloudflare one-time setup and the runbook. See [Docs site](#docs-site) |
 | `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependabot.yml`, a `README.md` skeleton, and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
+| `claude/managed-settings.json` | The Claude Code policy for the whole Claude Team organization, pasted into the admin console by an Owner. Never applied by the script. See [Claude Code managed settings](#claude-code-managed-settings) |
 | `../workflow-templates/environments.yml` | The weekly `env-janitor` cleanup workflow. See [Environment cleanup](#environment-cleanup) |
 
 `integration_id` values in the `main` ruleset are GitHub's own apps (15368 is
@@ -274,6 +275,85 @@ identical apart from its header, as `repair-core-bare.mjs` does.
 Every `main` ruleset requires signed commits and the org asks for a DCO
 sign-off, so the hooks catch a rejected push before it happens. The script does
 not check for them: whether a repository runs Claude Code is its own decision.
+
+## Claude Code managed settings
+
+`claude/managed-settings.json` is the organization policy for Claude Code. An
+Owner pastes it into **Organization settings > Claude Code > Managed settings**
+in the claude.ai admin console, and every member receives it. It is additive:
+it adds rules on top of each repository's own `.claude/settings.json` and
+hooks, and never replaces them. This file is the reviewed source, so change it
+here by pull request and paste the result, never edit the console alone.
+
+> [!WARNING]
+> Never set `allowManagedHooksOnly` or `allowManagedPermissionRulesOnly`. Each
+> one silently turns off the guard hooks and permission rules in every
+> repository, and nothing in a repository can detect it.
+
+| Setting | Value | Why |
+| ------- | ----- | --- |
+| `forceLoginMethod`, `forceLoginOrgUUID` | `claudeai`, the Monte3L organization | Only members of this organization can use Claude Code. A wrong UUID locks everyone out |
+| `requiredMinimumVersion` | `2.1.283` | The first version that understands `deniedModels`. Older clients would ignore it |
+| `syncClaudeAiSkills`, `syncClaudeAiPlugins` | `false` | Skills and plugins enabled on a personal claude.ai account no longer load. Existing synced items move to `.trash/` |
+| `disableClaudeAiConnectors` | `true` | claude.ai connectors are not fetched in the terminal, IDE extensions or Agent SDK. Cloud sessions and the desktop app are not covered |
+| `availableModels`, `deniedModels` | Family aliases, minus Haiku 4.5 and Opus 4.7 | A family alias covers the whole family, so legacy models need an explicit deny. `model` stays a per-user choice |
+| `attribution.sessionUrl` | `false` | No claude.ai session link in commits made from cloud or Remote Control sessions. The trailer and PR text are unchanged |
+| `strictKnownMarketplaces`, `extraKnownMarketplaces` | `anthropics/claude-plugins-official`, `monte3l/m3l-plugins`, `skills-dir` | One identity per marketplace. `skills-dir` keeps plugins under `~/.claude/skills/` loading |
+| `autoMode.environment` | `$defaults` plus the monte3l context | The classifier treats `github.com/monte3l`, `*.monte3l.com` and the publish environments as known. Without `$defaults` the built-in rules are lost |
+| `permissions.disableBypassPermissionsMode` | `disable` | No `--dangerously-skip-permissions`. Auto mode stays available |
+| `permissions.deny` | Secrets, force-push, `--no-verify`, `--admin`, `gh repo delete` | The secrets list is the union of the repository lists, in the recursive form. The git rules are standing rules in every repository |
+| `permissions.ask` | `gh api` writes, `gh secret`, `gh pr merge`, releases and publishing, `git push origin main`, `git reset --hard`, `sudo`, global installs, a bare `chezmoi apply` | The actions the auto mode classifier blocked most often, now a prompt instead of a block |
+| `permissions.allow` | Read-only `git`, `gh`, shell commands and the documentation domains | The read-only commands that dominate real usage, so they stop prompting |
+| `companyAnnouncements` | One line | The short version of the rules above |
+
+Each repository keeps what only it needs: hooks, `enabledPlugins`, and the
+`guard-*` scripts listed under [Claude Code guards](#claude-code-guards).
+Managed hooks are left out on purpose, because a hook needs a path that exists
+on every machine and a missing module blocks with `onFailure: block`.
+
+### Before the marketplace allowlist goes live
+
+The allowlist also applies to plugins that are already enabled. A plugin whose
+marketplace is not registered stops loading. Repositories that enable plugins
+as `name@anthropic-plugin-directory` are affected, because that name is not a
+registered marketplace on a machine. Change those entries to
+`name@claude-plugins-official` first, and confirm with `/plugin` that every
+plugin still loads.
+
+### Change the policy
+
+1. Edit `claude/managed-settings.json` in a branch and run `jq empty` on it.
+2. Open a pull request. Say which setting changed and what evidence supports it.
+3. After the merge, an Owner pastes the file into the console. Clients pick it up at the next launch and then hourly.
+4. Run `claude doctor` in a fresh session. It lists any entry the client rejected.
+
+An invalid entry is dropped with a warning, and some invalid keys fail closed:
+an unreadable `strictKnownMarketplaces` becomes an empty allowlist that blocks
+every marketplace. Check the file before pasting it.
+
+### Verify
+
+| Check | Expected |
+| ----- | -------- |
+| `/status` | `Enterprise managed settings` appears in the setting sources |
+| `/model` | Only the allowed models, and no Haiku 4.5 or Opus 4.7 |
+| `/mcp` | No claude.ai connectors |
+| `~/.claude/skills/synced/` | Moved to `~/.claude/skills/.trash/` |
+| `claude --dangerously-skip-permissions` | Refused |
+| `cat .env` | Denied |
+| `gh api -X PATCH ...` | Prompts |
+| `git status`, `WebFetch` of code.claude.com | Runs without a prompt |
+| A write to `.env` in a repository with `guard-secret-writes` | Still blocked, which shows the policy is additive |
+
+> [!NOTE]
+> Bash rules match the command text. They do not stop `bash -c '...'` or an
+> absolute path, and a `Read` deny does not cover `grep -r` run outside the
+> sandbox. The console policy is also a client-side control on a machine
+> without admin rights. The sandbox is the planned follow-up that closes both
+> gaps. The sources are the
+> [managed settings](https://code.claude.com/docs/en/managed-settings),
+> [permissions](https://code.claude.com/docs/en/permissions) and
+> [plugin policy](https://code.claude.com/docs/en/plugins/org) pages.
 
 ## Not covered
 
