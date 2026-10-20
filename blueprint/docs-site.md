@@ -70,6 +70,10 @@ Done by hand, before merging the pull request that adds `docs.yml`.
    gh secret set CLOUDFLARE_ACCOUNT_ID --env docs-cloudflare --repo monte3l/<repo>
    ```
 
+   The new environment also needs the weekly `env-janitor` cleanup, with
+   `docs-cloudflare` in its policy. See
+   [Environment cleanup](README.md#environment-cleanup).
+
 4. **Confirm no existing DNS record** collides with the hostname:
    `dig <project>.monte3l.com` should return nothing before the first deploy. A
    Custom Domain fails to attach if the hostname already carries a CNAME. For
