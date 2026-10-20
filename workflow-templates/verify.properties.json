@@ -1,0 +1,6 @@
+{
+  "name": "Verify (required check)",
+  "description": "Run the repository's checks as separate lanes and report one fail-closed `verify` status for the main ruleset.",
+  "iconName": "octicon checklist",
+  "categories": ["Continuous integration"]
+}

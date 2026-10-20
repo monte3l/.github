@@ -1,0 +1,68 @@
+name: Verify
+
+# Runs the repository's checks on every pull request and push, then reports
+# one aggregated `verify` status for the branch ruleset to gate on. The job
+# name `verify` (the last job below) is what the org `main` ruleset requires,
+# so keep it.
+#
+# Adopting: replace the placeholder step in `checks` with the repository's own
+# checks and split them into lanes by concern (format, lint, build, test). A
+# lane is a job of its own, never a matrix, so a failure names its concern.
+# Add every lane to the `needs` list of `verify`, the only place lanes are
+# enumerated.
+#
+# The DCO check is not a lane here: it comes from the `dco` template, whose
+# job name `DCO sign-off` the ruleset also requires. A repository that prefers
+# one workflow may paste that job in as a lane instead, with the same name and
+# no path filter.
+on:
+  push:
+    branches: [$default-branch]
+  pull_request:
+    branches: [$default-branch]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      # Pin the toolchain in a file the repository owns, not in this workflow,
+      # for example `node-version-file: .node-version`.
+      - name: Replace this step with the repository's checks
+        run: echo "no checks configured yet" && exit 1
+
+  # The single required check: one status to protect the branch with, whose
+  # `needs` list is the only place lanes are enumerated.
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    needs: [checks]
+    if: always()
+    timeout-minutes: 5
+    steps:
+      # Testing only for 'failure' is a hole: a lane that was cancelled or
+      # skipped is not a failure, so it would pass and this job would report
+      # green over a run that never finished. Require an explicit success
+      # from every lane instead, so anything else fails closed.
+      - name: Check lane results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "lane results: $RESULTS"
+          for result in $RESULTS; do
+            if [ "$result" != "success" ]; then
+              echo "A required lane did not succeed: $RESULTS" >&2
+              exit 1
+            fi
+          done

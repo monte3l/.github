@@ -170,6 +170,12 @@ Rules the script cannot check, so a reviewer does:
   `persist-credentials: false` on every checkout; `timeout-minutes` and
   `concurrency` on every job; never `pull_request_target`; every action pinned
   to a SHA with a version comment.
+- **Checks:** the required `verify` status comes from one fail-closed job
+  that `needs` every lane (format, lint, build, test, and so on). Lanes are
+  separate jobs, never a matrix, so a failure names its concern, and the job
+  requires an explicit `success` from each lane, so a cancelled or skipped one
+  fails it. Start from `workflow-templates/verify.yml`; `m3l-groundwork`'s
+  `ci.yml` is the worked example.
 - **Tool pins:** a CI tool lives in its own folder with a lockfile and installs
   with `npm ci --ignore-scripts`. If the tool needs its install scripts to run
   (a tool that downloads its own binary does), say so in `SECURITY.md` as an
