@@ -27,12 +27,18 @@ on:
 
 permissions: {}
 
+# Two pushes must not race over one release pull request. A pending run is
+# replaced by a newer one, which is safe: release-please reads the whole history.
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   prepare:
     name: Prepare
     permissions:
       contents: read
-    uses: monte3l/.github/.github/workflows/release-prepare.yml@4b7920da13bfc41744f20c32b0e36d3acff792be
+    uses: monte3l/.github/.github/workflows/release-prepare.yml@4b7920da13bfc41744f20c32b0e36d3acff792be # release-baseline
     secrets: inherit
 
   # A repository-specific job goes here. It runs only when a release was
@@ -47,7 +53,7 @@ jobs:
       contents: write
       id-token: write
       attestations: write
-    uses: monte3l/.github/.github/workflows/release-finalize.yml@4b7920da13bfc41744f20c32b0e36d3acff792be
+    uses: monte3l/.github/.github/workflows/release-finalize.yml@4b7920da13bfc41744f20c32b0e36d3acff792be # release-baseline
     with:
       tag: ${{ needs.prepare.outputs.tag_name }}
       notify: "[]"

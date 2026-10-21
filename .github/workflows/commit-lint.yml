@@ -8,7 +8,7 @@ name: Commit lint
 #
 # This is a template, not a reusable workflow, on purpose: a required check
 # from a reusable workflow is reported as `<caller job> / <called job>`, which
-# would not match the plain `Commit lint` name the `main` ruleset requires. Keep
+# would not match the plain `Commit lint` name the `main` ruleset will require. Keep
 # the job name `Commit lint` and do not filter by path (a skipped required check
 # never reports).
 on:
