@@ -271,6 +271,8 @@ report_workflow "REUSE check" "copy workflow-templates/reuse.yml, or run reuse l
   'reuse lint|fsfe/reuse-action'
 report_workflow "DCO check" "copy workflow-templates/dco.yml, or check Signed-off-by from a workflow that already runs" \
   'Signed-off-by'
+report_workflow "commit lint" "copy workflow-templates/commit-lint.yml, or check Conventional Commits from a workflow that already runs under the job name Commit lint" \
+  'name: Commit lint'
 report_workflow "PR labeler" "copy workflow-templates/labeler.yml and start .github/labeler.yml from blueprint/files/labeler.yml" \
   'actions/labeler'
 
@@ -377,6 +379,42 @@ else
     drift=$((drift + 1))
     printf 'DRIFT  docs site: homepage is "%s", not an https://*.monte3l.com URL\n' "$homepage"
     [[ "$mode" == "check" ]] || printf '         gh repo edit %s --homepage https://<project>.monte3l.com\n' "$repo"
+  fi
+fi
+
+# --- release (report only; applies to every repository not exempt in release.json) ---
+# The standard is the shared release workflows, so a repository either calls
+# them from its own release.yml or is listed as exempt with a reason. The
+# configuration is a commit, never an API call. The exempt list is data here
+# because "which repositories publish releases" is an org decision, not
+# something a file in the repository can declare for itself.
+release_exempt="$(jq -r --arg name "${repo##*/}" '.exempt[$name] // empty' "$here/release.json")"
+if [[ -n "$release_exempt" ]]; then
+  skip "release" "$release_exempt"
+else
+  release_prepare="$(jq -r .workflow "$here/release.json")"
+  release_finalize="${release_prepare/prepare/finalize}"
+  report_file "release: config" "start from blueprint/files/release-please/ and save it as release-please-config.json" \
+    release-please-config.json
+  report_file "release: manifest" "start from blueprint/files/release-please/manifest.json and save it as .release-please-manifest.json" \
+    .release-please-manifest.json
+  report_workflow "release: workflow" "copy workflow-templates/release.yml" \
+    "${release_prepare//./\\.}@[0-9a-f]{40}" \
+    "${release_finalize//./\\.}@[0-9a-f]{40}"
+  # Immutable releases lock a tag and its assets when the release is published.
+  # Report only: the org-wide setting is the intended way to turn them on, and
+  # a repository-level exception is the owner's call.
+  if immutable="$(gh api "repos/$repo/immutable-releases" --jq .enabled 2>/dev/null)"; then
+    if [[ "$immutable" == "true" ]]; then
+      printf 'OK     release: immutable releases\n'
+      ok=$((ok + 1))
+    else
+      drift=$((drift + 1))
+      printf 'DRIFT  release: immutable releases: off\n'
+      [[ "$mode" == "check" ]] || printf '         turn them on for all repositories in the organization settings, under Repository, General, Releases\n'
+    fi
+  else
+    skip "release: immutable releases" "setting unavailable"
   fi
 fi
 

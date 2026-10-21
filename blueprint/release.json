@@ -1,0 +1,7 @@
+{
+  "workflow": "monte3l/.github/.github/workflows/release-prepare.yml",
+  "exempt": {
+    ".github": "not a software project with releases",
+    "m3l-plugins": "a catalog: it pins other repositories' releases and publishes none"
+  }
+}
