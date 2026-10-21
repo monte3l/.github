@@ -19,6 +19,7 @@ export const INLINE_ITEMS = [
   "docs site: tier",
   "docs site: daily check",
   "docs site: homepage",
+  "release: workflow pin",
   "release: immutable releases",
   "Node pin",
   "Scorecard alerts",

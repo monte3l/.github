@@ -401,6 +401,35 @@ else
   report_workflow "release: workflow" "copy workflow-templates/release.yml" \
     "${release_prepare//./\\.}@[0-9a-f]{40}" \
     "${release_finalize//./\\.}@[0-9a-f]{40}"
+  # A pin must be a commit of the shared repository's default branch. One that
+  # only lived on a pull request branch (a squash merge drops it) still
+  # resolves for a while, then fails every release of every repository that
+  # copied it. `compare` says `ahead` or `identical` when the pin is an
+  # ancestor of main, and `diverged` or `behind` when it is not.
+  shared_repo="${release_prepare%%/.github/workflows/*}"
+  release_pins="$(grep -Eo "(${release_prepare//./\\.}|${release_finalize//./\\.})@[0-9a-f]{40}" <<<"$workflows_text" | sed 's/.*@//' | sort -u || true)"
+  if [[ -z "$release_pins" ]]; then
+    skip "release: workflow pin" "no release workflow call pinned by SHA"
+  else
+    pin_problem=""
+    pin_short=""
+    while IFS= read -r pin; do
+      pin_short+="${pin:0:7} "
+      if ! pin_status="$(gh api "repos/$shared_repo/compare/$pin...main" --jq .status 2>/dev/null)"; then
+        pin_problem="${pin:0:7} is not a commit of $shared_repo"
+      elif [[ "$pin_status" != "ahead" && "$pin_status" != "identical" ]]; then
+        pin_problem="${pin:0:7} is not on the main branch of $shared_repo ($pin_status)"
+      fi
+    done <<<"$release_pins"
+    if [[ -z "$pin_problem" ]]; then
+      printf 'OK     release: workflow pin %s\n' "${pin_short% }"
+      ok=$((ok + 1))
+    else
+      drift=$((drift + 1))
+      printf 'DRIFT  release: workflow pin: %s\n' "$pin_problem"
+      [[ "$mode" == "check" ]] || printf '         move the pin in %s to a commit of %s main\n' "$repo" "$shared_repo"
+    fi
+  fi
   # Immutable releases lock a tag and its assets when the release is published.
   # Report only: the org-wide setting is the intended way to turn them on, and
   # a repository-level exception is the owner's call.
