@@ -1,0 +1,91 @@
+name: Release prepare
+
+# Reusable workflow: opens or updates the release pull request, and when that
+# pull request is merged, tags the commit and creates a DRAFT release. Called
+# from each repository's `release.yml` (see workflow-templates/release.yml).
+#
+# release-please reads the Conventional Commits since the last release and
+# writes the version bump and changelog into the pull request. Nothing here
+# publishes: `release-finalize.yml` does that after the repository's own
+# build steps have attached their assets to the draft.
+#
+# Why an App token and not `GITHUB_TOKEN`: the pull request and the commits on
+# it must trigger the required checks, which `GITHUB_TOKEN` never does, and
+# GitHub signs commits made through the API as the App, so they satisfy the
+# `main` ruleset's signed-commits rule without a bypass actor.
+on:
+  workflow_call:
+    inputs:
+      config-file:
+        description: release-please config, relative to the repository root
+        type: string
+        default: release-please-config.json
+      manifest-file:
+        description: release-please manifest, relative to the repository root
+        type: string
+        default: .release-please-manifest.json
+      client-id:
+        description: Client ID of the release App. Defaults to the org variable RELEASE_APP_CLIENT_ID
+        type: string
+        default: ""
+    secrets:
+      RELEASE_APP_PRIVATE_KEY:
+        description: Private key of the release App
+        required: true
+    outputs:
+      releases_created:
+        description: "'true' when this run created at least one release"
+        value: ${{ jobs.release.outputs.releases_created }}
+      tag_name:
+        description: Tag of the root package's release (empty when the package is not at the root)
+        value: ${{ jobs.release.outputs.tag_name }}
+      version:
+        description: Version of the root package's release
+        value: ${{ jobs.release.outputs.version }}
+      paths_released:
+        description: JSON array of the package paths released
+        value: ${{ jobs.release.outputs.paths_released }}
+      outputs_json:
+        description: Every release-please output as JSON, for a package that is not at the root (read `<path>--tag_name` with fromJSON)
+        value: ${{ jobs.release.outputs.outputs_json }}
+
+permissions: {}
+
+jobs:
+  release:
+    name: Release PR and draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Two runs on the same repository must not race over one release PR.
+    concurrency:
+      group: release-prepare-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+      paths_released: ${{ steps.release.outputs.paths_released }}
+      outputs_json: ${{ toJSON(steps.release.outputs) }}
+    steps:
+      - name: Mint a token for this repository only
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ inputs.client-id || vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+
+      # No checkout: release-please reads and writes through the API.
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: ${{ inputs.config-file }}
+          manifest-file: ${{ inputs.manifest-file }}
