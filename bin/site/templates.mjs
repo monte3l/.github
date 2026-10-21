@@ -50,6 +50,6 @@ export default async function generate({ root }) {
 <tbody>
 ${rows}</tbody>
 </table>
-`.replace("<strong>Actions, New workflow</strong>", "<strong>Actions, New workflow</strong>");
+`;
   return [{ out: "templates.html", group: "Standard", label: "Workflow templates", html }];
 }
