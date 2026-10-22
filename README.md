@@ -258,8 +258,8 @@ One row per tracked file. **Delivery** is one of:
 | Release workflow | `workflow-templates/release.yml` | **Template** | Copy it, add any repository-specific job between `prepare` and `finalize`, and set `notify` | Script: `release: workflow` |
 | Release card | `workflow-templates/release.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
 | Shared release workflows | `.github/workflows/release-prepare.yml`, `release-finalize.yml` | **Not delivered**. Called by each repository's `release.yml`, pinned by commit SHA | Bump the pin when Dependabot opens the pull request | actionlint and zizmor in `workflow-lint.yml` |
-| Release configuration | `blueprint/files/release-please/` | **Checked**. Starting points only | Commit its own `release-please-config.json` and `.release-please-manifest.json` | Script: `release: config`, `release: manifest`, `release: workflow pin`, `release: immutable releases` |
-| Release exemptions | `blueprint/release.json` | **Checked** | Nothing | Script: `SKIP release` for a listed repository |
+| Release configuration | `blueprint/files/release-please/` | **Checked**. Starting points only | Commit its own `release-please-config.json` and `.release-please-manifest.json` | Script: `release: config`, `release: manifest`, `release: workflow pin`, `release: app installation`, `release: app secrets`, `release: immutable releases` |
+| Release exemptions | `blueprint/release.json` | **Checked** | Nothing | Script: `SKIP release` for a listed repository. `appUsers` also lists repositories that publish nothing but open pull requests as the release App |
 | Verify workflow | `workflow-templates/verify.yml` | **Template** | Copy it, replace the placeholder lane with the repository's own checks, and keep the job name `verify`, which the `main` ruleset requires | Job name matched by hand (see [Parity check](#parity-check)) |
 | Verify card | `workflow-templates/verify.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
 | Repository settings | `blueprint/repo-settings.json` | **Applied** | Nothing after `--apply` | Script: `repository settings` |

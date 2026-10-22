@@ -1,5 +1,13 @@
 {
   "workflow": "monte3l/.github/.github/workflows/release-prepare.yml",
+  "app": "monte3l-release",
+  "secrets": [
+    "RELEASE_APP_CLIENT_ID",
+    "RELEASE_APP_PRIVATE_KEY"
+  ],
+  "appUsers": [
+    "m3l-plugins"
+  ],
   "exempt": {
     ".github": "not a software project with releases",
     "m3l-plugins": "a catalog: it pins other repositories' releases and publishes none"
