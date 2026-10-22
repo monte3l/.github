@@ -14,7 +14,7 @@ name: Release
 # Adopting:
 #   1. Copy a starter from blueprint/files/release-please/ to
 #      `release-please-config.json` and `.release-please-manifest.json`.
-#   2. The organization variable RELEASE_APP_CLIENT_ID and secret
+#   2. The organization secrets RELEASE_APP_CLIENT_ID and
 #      RELEASE_APP_PRIVATE_KEY must be shared with this repository.
 #   3. Set `notify` to the repositories that consume this one's releases
 #      (for example `["m3l-plugins"]`), or leave it empty.
@@ -38,7 +38,7 @@ jobs:
     name: Prepare
     permissions:
       contents: read
-    uses: monte3l/.github/.github/workflows/release-prepare.yml@4b7920da13bfc41744f20c32b0e36d3acff792be # release-baseline
+    uses: monte3l/.github/.github/workflows/release-prepare.yml@ee47e005c774a2efae036a7b3201910e4eaf9e6f # release-baseline
     secrets: inherit
 
   # A repository-specific job goes here. It runs only when a release was
@@ -53,7 +53,7 @@ jobs:
       contents: write
       id-token: write
       attestations: write
-    uses: monte3l/.github/.github/workflows/release-finalize.yml@4b7920da13bfc41744f20c32b0e36d3acff792be # release-baseline
+    uses: monte3l/.github/.github/workflows/release-finalize.yml@ee47e005c774a2efae036a7b3201910e4eaf9e6f # release-baseline
     with:
       tag: ${{ needs.prepare.outputs.tag_name }}
       notify: "[]"
