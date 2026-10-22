@@ -1,58 +1,64 @@
 # Customization report
 
-Run by `/customize` on 2026-10-20, adopt mode, against m3l-groundwork 1.0.5 (inventory schema 6).
+Run by `/customize` on 2026-10-22, adopt mode, against m3l-groundwork 1.1.0 (inventory schema 6). This is the second run: the first was on 2026-10-20 against 1.0.5. The earlier report is in git history.
 
 ## Summary
 
 | Item | Result |
 | --- | --- |
-| Interview | cli, Node, verify stays a hard gate, standard CI, no baseline agents kept |
-| What the deep read found | Not a TypeScript project, so the staged TS/pnpm toolchain was not installed |
-| Round 1 | 4 guard hooks, 5 baseline skills (4 tailored, 1 retargeted), the `github` and `statusline` packs, a `.gitignore`, `docs.config.mjs` excludes, merged `.claude/settings.json`, new `CLAUDE.md` section |
-| Round 2 | `harness-guidance` sweep: 2 findings applied, 7 deferred. `typescript-guidance` skipped (not installed, no TS domain) |
-| Grade | `check-harness.mjs`: 53 wiring checks pass, rubric 100% over 30 checks, `claude plugin validate` clean |
-| Tracker | `docs/research/harness-refresh.md`: `last-verified=2026-10-20`, `claude-code-version=2.1.304` |
+| Interview | cli, Node, verify stays a hard gate, standard CI, no baseline agents kept. Every answer matches the first run |
+| What the deep read found | Still not a TypeScript project, so the staged toolchain stays out. The harness from 2026-10-20 is intact. Groundwork 1.1.0 only adds the `frontend` and `service` packs, an npm Dependabot block and plugin-map changes, none of which fit |
+| Round 1 | No installs: no additions, no conflict changes, no packs. No plugin enabled |
+| Round 2 | `harness-guidance` sweep: 1 finding applied, the earlier deferrals stand. `typescript-guidance` skipped (not installed, no TS domain) |
+| Grade | Staged `check-harness.mjs`: 53 wiring checks pass, rubric 100% over 30 checks, `claude plugin validate` clean |
+| Tracker | `docs/research/harness-refresh.md`: `last-verified=2026-10-22`, `claude-code-version=2.1.308` |
 
 ## Conflicts resolved
 
-| File | Resolution |
-| --- | --- |
-| `.claude/settings.json` | Merged: `$schema`, `permissions.deny`, `timeout` on both hooks, four guards, `statusLine`, `subagentStatusLine`, `claude-security` plugin |
-| `CLAUDE.md` | Kept; added a "Claude Code harness" section naming each `.claude/` file |
-| `README.md`, `.github/dependabot.yml`, `.github/workflows/dependency-review.yml` | Kept. Taking the baseline would drop the `/workflow-templates` and deploy-tools entries and the `@img/sharp-*` license exemptions |
+All 13 kept as they were, repeating the 2026-10-20 resolutions: `.claude/settings.json`, `CLAUDE.md`, `README.md`, `.github/dependabot.yml`, `.github/workflows/dependency-review.yml`, `.gitignore`, `.claude/hooks/guard-protected-paths.mjs`, the skills `creating-prs`, `finishing-work`, `harness-guidance`, `triaging-ci` and `writing-commits`, and the tracker. The CLI stages only absent files, so there was no newer upstream copy to merge for these.
 
 ## Packs
 
 | Pack | Result |
 | --- | --- |
-| `github` | Installed: `reviewing-dependabot-prs`, `triaging-scan-alerts`, `watching-pr-checks`. No hooks or gate. CodeQL is a required check, so scan alerts exist for `triaging-scan-alerts` |
-| `statusline` | Installed: three scripts and both settings keys. Neither key was set in the project, `settings.local.json` or the user settings |
-| `harness-extras`, `claude-github`, `supply-chain`, `quality`, `worktrees` | Declined or not offered (reasons in `adoption-decisions.json`) |
+| `github`, `statusline` | Already installed, unchanged |
+| `harness-extras`, `claude-github`, `supply-chain`, `quality`, `worktrees` | Declined again. `supply-chain`'s workflows already exist here |
+| `frontend`, `service` | New in 1.1.0. Not offered as a fit: this repo builds no UI and serves no API |
 | `licensing`, `publishing` | Fresh-only; not installed |
 
 ## Round 2 findings
 
 Applied:
 
-- `.claude/hooks/require-signoff.sh`: verified bypasses (`git -C . commit`, `git -c k=v commit`, `env X=1 git commit`, a `-s` from a later command) now block, and a missing `jq` no longer lets commits through. Tested with 22 cases, with and without `jq`.
-- `.claude/agents/template-invariants-reviewer.md`: `disallowedTools: Write, Edit, NotebookEdit, Agent` and `maxTurns: 40`.
+- `.claude/settings.json`: the five `enabledPlugins` entries on `@anthropic-plugin-directory` (context7, skill-creator, github, claude-md-management, security-guidance) now use `@claude-plugins-official`. On this machine the org's `strictKnownMarketplaces` blocks the built-in Anthropic Directory, so those five failed to load. That is very likely the "1 load error" the first report left uninvestigated. `claude-plugins-official` is the docs' own name, and each plugin exists there.
 
 Where the findings disagreed with what Rounds 0 and 1 shipped:
 
-- The baseline `writing-commits` commits with plain `git commit -m`, which this repo's own sign-off hook blocks. It was rewritten to `git commit -s`.
-- The baseline `creating-prs` arms auto-merge; this repo sets `allow_auto_merge: false`. Removed.
-- The baseline `triaging-ci` maps failures to `node bin/verify.mjs`, which does not exist here. Remapped to this repo's jobs.
-- `guard-protected-paths` protected `dist/` and `coverage/`; repointed at `design/source/**`, `design/tokens.css`, `design/SHA256SUMS` and `_site/`.
-- The docs say a hook that fails to start lets the action through unless `onFailure: "block"` is set. The two Write/Edit guards have it; the three Bash hooks do not (deferred).
+- The first tracker called `@anthropic-plugin-directory` built in and usable. On this machine it is built in but blocked by organization policy.
+- A `Read` deny already blocks Edit and Write on the same path (v2.1.228+), so the `Edit(./.env*)` deny rule deferred last time would only add NotebookEdit coverage.
+- The reviewer's "read-only commands only" limit on Bash is prose. `disallowedTools` cannot limit single commands, and forks skip tool filters, so the guarantee holds only when it is invoked by name.
 
-Deferred (recorded in the tracker's outstanding drift): `onFailure: "block"` on the Bash guards, `disable-model-invocation` on four side-effect skills, NotebookEdit coverage, an `if` pre-filter, `Edit(./.env*)` deny rules and the sandbox, a path-scoped rules file, and Sonnet 5.5 for the reviewer.
+Deferred (recorded in the tracker): `onFailure: "block"` on the three Bash guards, `disable-model-invocation` on four side-effect skills, NotebookEdit in the Write/Edit guards (its `tool_input` shape is unverified), the `if` pre-filter, the sandbox and `Edit` deny rules, a path-scoped rules file, a Bash hook for the reviewer, and Sonnet 5.5 for the reviewer.
+
+## README re-derived (requested during the run)
+
+`README.md` was compared with the org's "README structure" standard in `blueprint/README.md`, its skeleton `blueprint/files/README.md`, and the other five repositories' READMEs. Changes:
+
+- Added **How it works**, from the old "Scope and principle" and placed before the reference sections. It now also names the three delivery routes and the docs site.
+- Added **Requirements** (`gh`, `jq`, Node 24, shellcheck and Docker) and linked it from Quickstart.
+- Linked monte3l.com in the opening paragraph.
+- **Working on this repo** now lists the `docs-kit --check` step that CI runs, with a comment per command, and points to `CONTRIBUTING.md`.
+- **Project docs** now names `SECURITY.md` and `blueprint/docs-site.md`. License is one line, as in the skeleton.
+- Workflow templates "Offered" list and the Parity table now cover `commit-lint`, `dco`, `docs`, `docs-live`, `environments`, `labeler`, `release` and `verify`, plus a row for this repository's own docs site, labeler and environments files.
+- No Versioning policy section: `blueprint/release.json` exempts this repository from releases.
+
+`node design/source/docs-kit/build.mjs --check` passes. Not done: the **Repository status** table is a dated snapshot (2026-10-19, five repositories, no `m3l-plugins`). Refreshing it needs a read-only `bin/apply-repo-baseline.sh` run against each repository.
 
 ## Needs a human read
 
-- `.claude/skills/finishing-work/SKILL.md`: mechanically retargeted only; it mentions journals and spokes the repo does not have, which is harmless.
-- `.claude/skills/harness-guidance/SKILL.md`: copied verbatim. Its refresh table still says "the 5 agents" and "the 10 hooks"; this repo has 1 agent and 6 hook registrations. `references/official-sources.md` keeps its upstream text by design.
-- `.claude/skills/watching-pr-checks/SKILL.md`, `.claude/skills/reviewing-dependabot-prs/SKILL.md`, `.claude/skills/triaging-scan-alerts/SKILL.md`: installed as shipped by the `github` pack.
-- Retargeted gates were run once against the real files: `build.mjs --check`, `bash -n` + shellcheck, `jq empty`, actionlint, `reuse lint`, `node --check` on every new `.mjs`, and a block and an allow payload for each guard. Not exercised: the block path of `guard-git-push-signed.mjs` (it needs an unsigned outgoing commit), and the statusline scripts beyond an empty payload.
+- `.claude/skills/finishing-work/SKILL.md` and `.claude/skills/harness-guidance/SKILL.md`: unchanged from the first run (mechanically retargeted and verbatim). The latter still says "the 5 agents" and "the 10 hooks".
+- `.claude/skills/customize/`: replaced from the 1.1.0 copy in `.groundwork/customize/`. Four files changed (`SKILL.md`, `step-3-round-1.md`, `pack-map.ts`, `plugin-map.ts`); the other three were identical. Check it before committing.
+- The gate retargeted last time was not re-run this time because nothing was retargeted. Still not exercised: the block path of `guard-git-push-signed.mjs` and the statusline scripts beyond an empty payload.
 
 ## Assumed, not answered
 
@@ -60,28 +66,28 @@ None. Every interview question was answered.
 
 ## Skipped
 
-`guard-readonly-bash` was never in scope: `harness-extras` was declined, and no baseline agents were installed.
+`guard-readonly-bash` was never in scope: `harness-extras` was declined and no baseline agents are installed. `typescript-guidance` is not installed and this repo has no TypeScript domain, so its sweep did not run.
 
 ## Plugins
 
 | Plugin | State |
 | --- | --- |
-| `claude-security@claude-plugins-official` | Newly enabled in `.claude/settings.json` |
-| `context7`, `skill-creator`, `github`, `claude-md-management`, `security-guidance` (all `@anthropic-plugin-directory`) | Already enabled, left unchanged |
-| `claude-code-setup` | Was enabled; removed from `.claude/settings.json` by you after this run |
-| `typescript-lsp`, `agent-sdk-dev`, `mcp-server-dev` | Offered and declined |
+| `context7`, `skill-creator`, `github`, `claude-md-management`, `security-guidance` | Renamed from `@anthropic-plugin-directory` to `@claude-plugins-official` (Round 2) |
+| `claude-security@claude-plugins-official` | Already enabled, unchanged |
+| `typescript-lsp`, `agent-sdk-dev`, `mcp-server-dev`, `claude-code-setup` | Offered again and declined |
 
-Follow-ups you still have to run, once per machine:
+Follow-ups, once per machine (and for each collaborator):
 
 ```bash
-claude plugin install claude-security@claude-plugins-official --scope project
+for p in context7 skill-creator github claude-md-management security-guidance claude-security; do
+  claude plugin install "$p@claude-plugins-official" --scope project
+done
 ```
 
-`claude-security` needs Python 3.9+ on `PATH`. The six older entries use `@anthropic-plugin-directory`, which is built in here but is not in the docs' list of official marketplace names, so a collaborator may need to install them by hand too.
+`claude-security` needs Python 3.9+ on `PATH`. `claude plugin list` still shows stale `@anthropic-plugin-directory` installs from earlier sessions; they no longer match anything in `.claude/settings.json` and can be uninstalled.
 
 ## Before you commit
 
-- `git add -N` was used on `docs/research/harness-refresh.md` and `.groundwork/adoption-report.md` so the docs check could see them. Nothing is staged beyond that and nothing is committed.
-- `.gitignore` tracks only `.groundwork/adoption-report.md` and this file; `docs.config.mjs` excludes `.groundwork/**` and `docs/research/**` from the docs site, so commit the two together with those files.
-- Commits need `git commit -s` and a signature (`require-signoff.sh` enforces the first).
-- `/reload-plugins` reported 1 load error during this session. It was not investigated; run `/plugin` to see it.
+- Changed files: `.claude/settings.json`, `.claude/skills/customize/` (four files), `README.md`, `docs/research/harness-refresh.md`, `.groundwork/adoption-report.md` and this file. Nothing is staged or committed.
+- `.gitignore` already tracks only the two reports and ignores the rest of `.groundwork/`, so no change was needed there. A teammate's clone holds the two reports but no inventory.
+- Commits need `git commit -s` and a signature (`require-signoff.sh` enforces the first). Suggested split: `fix(claude)` for the plugin ids and the `/customize` copy, `docs` for the README.
