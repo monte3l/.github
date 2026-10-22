@@ -176,7 +176,7 @@ repo release.yml
 | Release PR | `release-prepare.yml` | release-please opens or updates one pull request with the version bump and changelog. Review and merge it like any other |
 | Draft | `release-prepare.yml` | On merge it tags the commit and creates a **draft** release |
 | Assets | The repository's own job | Attaches its files to the draft. A repository with no assets has no such job |
-| Publish | `release-finalize.yml` | Attests the assets, if there are any, then publishes. Publishing is last because an immutable release locks its tag and assets. GitHub attests an immutable release itself, so a release with no assets has an attestation only when immutable releases are on for the repository |
+| Publish | `release-finalize.yml` | Attests the assets, if there are any (`attest: false` skips it for a repository whose own job already attested them), then publishes. Publishing is last because an immutable release locks its tag and assets. GitHub attests an immutable release itself, so a release with no assets has an attestation only when immutable releases are on for the repository |
 | Notify | `release-finalize.yml` | Sends `release-published` to each repository in `notify`, so a consumer such as `m3l-plugins` can open its pin pull request |
 
 The pull request and its commits are made as the **release App**, not
