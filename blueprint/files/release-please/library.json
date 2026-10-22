@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "REPLACE-WITH-THE-COMMIT-OF-THE-LAST-RELEASE",
+  "plugins": ["node-workspace"],
+  "packages": {
+    "packages/REPLACE-WITH-PACKAGE-DIRECTORY": {
+      "release-type": "node",
+      "component": "REPLACE-WITH-PACKAGE-NAME",
+      "include-component-in-tag": true,
+      "tag-separator": "@",
+      "include-v-in-tag": false,
+      "draft": true,
+      "force-tag-creation": true
+    }
+  }
+}

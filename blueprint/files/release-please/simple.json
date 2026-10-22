@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "REPLACE-WITH-THE-COMMIT-OF-THE-LAST-RELEASE",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "include-component-in-tag": false,
+      "draft": true,
+      "force-tag-creation": true
+    }
+  }
+}

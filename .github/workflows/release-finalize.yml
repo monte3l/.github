@@ -1,0 +1,149 @@
+name: Release finalize
+
+# Reusable workflow: attests the assets on a DRAFT release, publishes it, then
+# tells the repositories that consume it. Runs after `release-prepare.yml` and
+# after any repository-specific job (npm publish, packaging) that attaches
+# assets to the draft.
+#
+# Publish is the last step on purpose: with immutable releases on, publishing
+# locks the tag and every asset for good, so everything must be on the draft
+# first. A release with no assets is published as is, and GitHub's own release
+# attestation still covers its tag and commit.
+#
+# The caller job must grant `contents: write`, `id-token: write` and
+# `attestations: write`.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Tag of the draft release to publish
+        type: string
+        required: true
+      checksums:
+        description: Name of an asset holding sha256sum lines (for example SHA256SUMS) to attest instead of every asset
+        type: string
+        default: ""
+      notify:
+        description: JSON array of repository names (same owner) that receive a `release-published` dispatch
+        type: string
+        default: "[]"
+      client-id:
+        description: Client ID of the release App. Defaults to the org variable RELEASE_APP_CLIENT_ID
+        type: string
+        default: ""
+    secrets:
+      RELEASE_APP_PRIVATE_KEY:
+        description: Private key of the release App. Needed only when `notify` is not empty
+        required: false
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Attest and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: release-finalize-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      # `gh release view <tag>` cannot see a draft, so find it by listing.
+      - name: Find the draft and check its tag
+        id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          id="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" |
+            jq -r --arg tag "$TAG" '.[] | select(.tag_name == $tag) | .id' | head -n 1)"
+          if [[ -z "$id" ]]; then
+            echo "No release for tag $TAG" >&2
+            exit 1
+          fi
+          # A tag that points anywhere but the commit being released means
+          # someone moved it or the release was cut from the wrong run.
+          ref="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG")"
+          if [[ "$(jq -r .object.type <<<"$ref")" == "commit" && "$(jq -r .object.sha <<<"$ref")" != "$GITHUB_SHA" ]]; then
+            echo "Tag $TAG does not point at $GITHUB_SHA" >&2
+            exit 1
+          fi
+          echo "id=$id" >>"$GITHUB_OUTPUT"
+
+      - name: Download the draft's assets
+        id: assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ steps.draft.outputs.id }}
+        run: |
+          mkdir assets
+          count=0
+          while IFS=$'\t' read -r asset_id name; do
+            [[ -n "$asset_id" ]] || continue
+            gh api -H "Accept: application/octet-stream" \
+              "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" >"assets/$(basename -- "$name")"
+            count=$((count + 1))
+          done < <(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '.assets[] | [.id, .name] | @tsv')
+          echo "count=$count" >>"$GITHUB_OUTPUT"
+
+      - name: Attest every asset
+        if: steps.assets.outputs.count != '0' && inputs.checksums == ''
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: assets/*
+
+      - name: Attest the assets listed in the checksums file
+        if: steps.assets.outputs.count != '0' && inputs.checksums != ''
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: assets/${{ inputs.checksums }}
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ steps.draft.outputs.id }}
+        run: gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -F draft=false >/dev/null
+
+  # A release published with `GITHUB_TOKEN` fires no `release` event, so the
+  # consumers are told with an explicit dispatch, sent as the App.
+  notify:
+    name: Notify ${{ matrix.repository }}
+    needs: [publish]
+    if: inputs.notify != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix:
+        repository: ${{ fromJSON(inputs.notify) }}
+    steps:
+      - name: Mint a token for the consumer only
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ inputs.client-id || vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ matrix.repository }}
+          permission-contents: write
+
+      - name: Dispatch release-published
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TARGET: ${{ matrix.repository }}
+          TAG: ${{ inputs.tag }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          if [[ ! "$TARGET" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "Not a repository name: $TARGET" >&2
+            exit 1
+          fi
+          gh api -X POST "repos/$OWNER/$TARGET/dispatches" \
+            -f event_type=release-published \
+            -f "client_payload[repository]=$GITHUB_REPOSITORY" \
+            -f "client_payload[tag]=$TAG" \
+            -f "client_payload[sha]=$GITHUB_SHA"

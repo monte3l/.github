@@ -141,7 +141,9 @@ repository and, only with `--apply`, writes it.
   Files: `CODEOWNERS`, `SECURITY.md`, Gitleaks config, `.gitattributes`,
   `.editorconfig`, `REUSE.toml`, `dependabot.yml`. Workflow controls, found by
   their content and not by file name: workflow lint, REUSE check, DCO check,
-  the Node pin, Scorecard (public repositories only). Open Scorecard alerts
+  commit lint, the Node pin, Scorecard (public repositories only). The
+  release configuration, workflow and immutable-releases setting are reported
+  for every repository that `blueprint/release.json` does not exempt. Open Scorecard alerts
   are listed too. Adding one is a commit in that repository.
 - **A repository adds:** everything the blueprint does not own, including
   `dependabot.yml`, `CODEOWNERS` and `LICENSE`.
@@ -251,6 +253,13 @@ One row per tracked file. **Delivery** is one of:
 | DCO card | `workflow-templates/dco.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
 | Workflow lint workflow | `workflow-templates/workflow-lint.yml` | **Template** | Copy it, or add actionlint and zizmor to a workflow it already has | Script: `workflow lint` (looks for the control, not the file name) |
 | Workflow lint card | `workflow-templates/workflow-lint.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
+| Commit lint workflow | `workflow-templates/commit-lint.yml` | **Template** | Copy it, or check Conventional Commits from a workflow it already has under the job name `Commit lint` | Script: `commit lint` (looks for the control, not the file name) |
+| Commit lint card | `workflow-templates/commit-lint.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
+| Release workflow | `workflow-templates/release.yml` | **Template** | Copy it, add any repository-specific job between `prepare` and `finalize`, and set `notify` | Script: `release: workflow` |
+| Release card | `workflow-templates/release.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
+| Shared release workflows | `.github/workflows/release-prepare.yml`, `release-finalize.yml` | **Not delivered**. Called by each repository's `release.yml`, pinned by commit SHA | Bump the pin when Dependabot opens the pull request | actionlint and zizmor in `workflow-lint.yml` |
+| Release configuration | `blueprint/files/release-please/` | **Checked**. Starting points only | Commit its own `release-please-config.json` and `.release-please-manifest.json` | Script: `release: config`, `release: manifest`, `release: workflow pin`, `release: immutable releases` |
+| Release exemptions | `blueprint/release.json` | **Checked** | Nothing | Script: `SKIP release` for a listed repository |
 | Verify workflow | `workflow-templates/verify.yml` | **Template** | Copy it, replace the placeholder lane with the repository's own checks, and keep the job name `verify`, which the `main` ruleset requires | Job name matched by hand (see [Parity check](#parity-check)) |
 | Verify card | `workflow-templates/verify.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
 | Repository settings | `blueprint/repo-settings.json` | **Applied** | Nothing after `--apply` | Script: `repository settings` |
@@ -274,6 +283,7 @@ One row per tracked file. **Delivery** is one of:
 | This repository's verify workflow | `.github/workflows/verify.yml` | **Not delivered**. Produces the `verify` check here | Nothing | Runs on every pull request |
 | This repository's dependency review | `.github/workflows/dependency-review.yml` | **Not delivered** | Nothing | Runs on every pull request |
 | This repository's Gitleaks | `.github/workflows/gitleaks.yml` | **Not delivered** | Nothing | Runs on every pull request, weekly, and on demand |
+| This repository's commit lint | `.github/workflows/commit-lint.yml` | **Not delivered** | Nothing | Script, run against `monte3l/.github` |
 | This repository's REUSE, workflow lint and Scorecard | `.github/workflows/reuse.yml`, `workflow-lint.yml`, `scorecard.yml` | **Not delivered** | Nothing | Script, run against `monte3l/.github` |
 | This repository's repository-standard files | `.gitleaks.toml`, `.gitattributes`, `.editorconfig`, `REUSE.toml`, `LICENSES/MIT.txt` | **Not delivered** | Nothing | Script, run against `monte3l/.github` |
 | Agent tooling | `.claude/` (settings, hooks, `template-invariants-reviewer` agent, `org-drift` skill) | **Not delivered**. For this repository only | Nothing | Not verified. `/org-drift` runs the script across the organization |

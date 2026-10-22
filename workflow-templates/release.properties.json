@@ -1,0 +1,6 @@
+{
+  "name": "Release",
+  "description": "Open a release pull request from Conventional Commits, then tag, attest and publish a release, using the organization's shared release workflows.",
+  "iconName": "octicon rocket",
+  "categories": ["Deployment"]
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Commit lint",
+  "description": "Fail a pull request whose title or commits are not Conventional Commits, so the release workflow can read them.",
+  "iconName": "octicon git-commit",
+  "categories": ["Code Scanning"]
+}

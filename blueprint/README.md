@@ -19,12 +19,14 @@ in `m3l-groundwork`.
 | `actions.json`           | Read-only workflow token, workflows cannot approve PRs, approve fork PR runs for all outside contributors, SHA pinning required |
 | `labels.json`            | Labels that Dependabot, the baseline's scheduled audit and the PR labeler apply, coloured with m3l-design's primitives: status colours for `dependencies` and `security`, the brand colour for the four shared `area:*` labels. Labels are create-only, so existing repositories keep their old colours |
 | `design-system.json`     | The m3l-design release tag (`vX.Y.Z`) every repository should record in `design/README.md`. Checked by the script, never applied |
+| `release.json`           | The shared release workflow the script looks for in each repository's workflows, and the repositories exempt from releasing, each with its reason. Checked by the script, never applied. See [Releases](#releases) |
 | `projects.json`          | Every monte3l repository and its docs-site URL. The org site's project cards and `profile/README.md`'s table are checked against it |
 | `docs-site.md`           | The docs site standard, the Cloudflare one-time setup and the runbook. See [Docs site](#docs-site) |
-| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependabot.yml`, `labeler.yml`, a `README.md` skeleton, and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
+| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependabot.yml`, `labeler.yml`, a `README.md` skeleton, `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
 | `claude/managed-settings.json` | The Claude Code policy for the whole Claude Team organization, pasted into the admin console by an Owner. Never applied by the script. See [Claude Code managed settings](#claude-code-managed-settings) |
 | `../workflow-templates/environments.yml` | The weekly `env-janitor` cleanup workflow. See [Environment cleanup](#environment-cleanup) |
+| `../workflow-templates/release.yml`, `commit-lint.yml` | The release caller and the Conventional Commits check. The shared workflows they call are `../.github/workflows/release-prepare.yml` and `release-finalize.yml`. See [Releases](#releases) |
 
 `integration_id` values in the `main` ruleset are GitHub's own apps (15368 is
 GitHub Actions, 57789 is code scanning), so they are the same in every
@@ -154,6 +156,78 @@ the first scheduled run applies anything. Add every new `environment:` name to
 `.github/environments.json` in the same change that introduces it, and list
 the two secrets in the repository's `SECURITY.md` as organization secrets.
 
+## Releases
+
+Every repository releases the same way: Conventional Commits in, one release
+pull request, a draft release, an attested and published release. The
+shared part lives here, and a repository adds only what is its own (an npm
+publish, a tarball).
+
+```text
+repo release.yml
+  prepare   calls release-prepare.yml   release PR, or on merge: tag + DRAFT release
+  <own job> runs only if a release was created; attaches assets to the draft
+  finalize  calls release-finalize.yml  attest assets, publish, dispatch to consumers
+```
+
+| Step | Who | What |
+| ---- | --- | ---- |
+| Commit | A person | A Conventional Commit. `commit lint` fails a pull request whose title or commits are not |
+| Release PR | `release-prepare.yml` | release-please opens or updates one pull request with the version bump and changelog. Review and merge it like any other |
+| Draft | `release-prepare.yml` | On merge it tags the commit and creates a **draft** release |
+| Assets | The repository's own job | Attaches its files to the draft. A repository with no assets has no such job |
+| Publish | `release-finalize.yml` | Attests the assets, then publishes. Publishing is last because an immutable release locks its tag and assets |
+| Notify | `release-finalize.yml` | Sends `release-published` to each repository in `notify`, so a consumer such as `m3l-plugins` can open its pin pull request |
+
+The pull request and its commits are made as the **release App**, not
+`GITHUB_TOKEN`. A `GITHUB_TOKEN` pull request triggers no required checks, and
+GitHub signs a commit the App makes through the API, so the `main` ruleset's
+signed-commits rule holds with no bypass actor.
+
+### One-time setup (an Owner)
+
+| What | Value |
+| ---- | ----- |
+| The `monte3l-release` GitHub App, owned by the organization and installed on every repository | Contents, Pull requests and Issues write. Metadata read. Nothing else |
+| Organization variable `RELEASE_APP_CLIENT_ID` | The App's client ID, visible to the repositories that release |
+| Organization secret `RELEASE_APP_PRIVATE_KEY` | The App's private key, shared with the repositories that release. Rotate it yearly like any other secret |
+| Immutable releases | Organization settings, Repository, General, Releases: all repositories. It affects future releases only |
+
+### Adopting in a repository
+
+1. Copy the starter that matches the repository from `files/release-please/` to
+   `release-please-config.json`, and `manifest.json` to
+   `.release-please-manifest.json`. Set `bootstrap-sha` to the commit of the
+   last release, so release-please does not release the history again, and the
+   manifest to the current version.
+2. Copy `workflow-templates/release.yml` and `commit-lint.yml`.
+3. Set `notify` in `release.yml` to the repositories that consume this one.
+4. Put any repository-specific job between `prepare` and `finalize`.
+
+| Starter | For | Tag |
+| ------- | --- | --- |
+| `plugin.json` | A Claude Code plugin: the version lives in `.claude-plugin/plugin.json` | `<name>--vX.Y.Z` |
+| `simple.json` | A repository with no package manifest, such as `m3l-design` | `vX.Y.Z` |
+| `library.json` | An npm package in `packages/` | `<package>@X.Y.Z` |
+
+Tag formats are not unified on purpose. Each is read by something else: the
+plugin form by Claude Code's dependency resolution, `vX.Y.Z` by
+`sync-design.sh`, and the package form by npm tooling.
+
+> [!IMPORTANT]
+> A package published to npm registers the **caller's** file name as its
+> trusted publisher, which is `release.yml` in the repository. npm does not look
+> at the shared workflow's name, and renaming the caller breaks publishing.
+
+> [!NOTE]
+> `commit lint` is reported by the script but is not in the `main` ruleset's
+> required checks yet. Add it there only after every repository runs it,
+> because a required check that a repository never reports blocks its merges.
+
+The shared workflows are pinned in each caller by full commit SHA like any
+action, and Dependabot's `github-actions` entry keeps the pin current. A change
+to them reaches a repository only through that pull request.
+
 ## README structure
 
 Every `monte3l` repository's `README.md` follows one order, so a reader who
@@ -200,6 +274,11 @@ exceptions are the `env-janitor` branch policy and org-secret access, which
 | Scorecard | `Scorecard workflow`, `Scorecard alerts` | Public repositories only. Open alerts are fixed or dismissed with a reason | `workflow-templates/scorecard.yml` |
 | DCO check | `DCO check` | Every non-merge commit in a pull request carries a `Signed-off-by:` trailer that matches its author or committer email. `DCO sign-off` is a required check in the `main` ruleset, so its job `name:` must stay `DCO sign-off` and the workflow must not filter by path | `workflow-templates/dco.yml` |
 | PR labeler | `PR labeler` | A workflow runs `actions/labeler`, and `.github/labeler.yml` maps paths to labels. The four shared `area:*` labels come from `labels.json`; a label that is specific to the repository is created once by hand with `--color 554d50` | `workflow-templates/labeler.yml`, `files/labeler.yml` |
+| Commit lint | `commit lint` | A pull request's title and every non-merge commit are Conventional Commits, because the release workflow reads them. The job `name:` is `Commit lint` and the workflow does not filter by path. It is not yet a required check in the `main` ruleset: see [Releases](#releases) | `workflow-templates/commit-lint.yml` |
+| Release config | `release: config`, `release: manifest` | `release-please-config.json` and `.release-please-manifest.json`, unless `release.json` exempts the repository | `files/release-please/` |
+| Release workflow | `release: workflow` | `release.yml` calls both shared workflows, each pinned to a full commit SHA | `workflow-templates/release.yml` |
+| Release workflow pin | `release: workflow pin` | Each pinned SHA is a commit on `.github`'s default branch. A commit that lived only on a pull request branch, which a squash merge drops, fails every release that copied it | `workflow-templates/release.yml` |
+| Immutable releases | `release: immutable releases` | Publishing a release locks its tag and assets. Turn it on for the whole organization | See [Releases](#releases) |
 | Dependabot | `Dependabot` | `.github/dependabot.yml` with the `github-actions` ecosystem, a 7-day cooldown, and one `npm` entry per lockfile directory (1-day cooldown) | `files/dependabot.yml` |
 | Node pin | `Node pin` | No workflow writes a version number after `node-version:`: use `node-version-file: .node-version` | `.node-version` |
 | Design system | `design system` | `design/README.md` records the version `design-system.json` pins | See [Design system](#design-system) |
@@ -248,11 +327,13 @@ Rules the script cannot check, so a reviewer does:
 - **Secrets:** scope a secret to an environment where possible, give it an
   expiry of one year at most (rotate yearly if it cannot expire), and list it
   in the repository's `SECURITY.md`. The org `SECURITY.md` shows the table.
-- **Releases, for a repository that publishes artifacts:** OIDC trusted
+- **Publishing, for a repository that ships to a registry:** OIDC trusted
   publishing with no stored token, provenance, a build attestation, a
   CycloneDX SBOM, and an environment with two required reviewers gating the
-  publish job. `m3l-groundwork`'s `release.yml` and `docs/github-blueprint.md`
-  are the reference implementation.
+  publish job. This is the repository's own job between the shared
+  `prepare` and `finalize` (see [Releases](#releases)).
+  `m3l-groundwork`'s `release.yml` and `docs/github-blueprint.md` are the
+  reference implementation.
 
 > [!NOTE]
 > The `main` ruleset now asks for one code-owner approval, an approval of the
@@ -300,7 +381,7 @@ and a second one splits each plugin's install id.
 | ---- | --- |
 | The plugin repository ships no `marketplace.json` | One marketplace, one install id per plugin |
 | `version` lives only in `.claude-plugin/plugin.json`, and is bumped on every release | Claude Code treats a set `version` as the update signal, so an unbumped version means users never update. The catalog entry carries none, so the two cannot disagree |
-| A release is a signed tag `<name>--vX.Y.Z`, the form `claude plugin tag` uses | The `main` and tags rulesets stop the tag from moving, and the catalog pins it. `m3l-groundwork` is the exception: its plugin version mirrors the CLI, so its tag is `@monte3l/groundwork@X.Y.Z` |
+| A release is a tag `<name>--vX.Y.Z`, the form `claude plugin tag` uses, created by the shared release workflow | The tags ruleset and immutable releases stop the tag from moving, and the catalog pins it. `m3l-groundwork` is the exception: its plugin version mirrors the CLI, so its tag is `@monte3l/groundwork@X.Y.Z` |
 | `claude plugin validate --strict .` runs in the repository's `verify` | A manifest error should fail before a release, not after |
 | No `CLAUDE.md` at the plugin root; keep it in `.claude/` | `validate --strict` warns about a root `CLAUDE.md`, and Claude Code does not load it from a plugin |
 | Listing is a pull request to `m3l-plugins` that adds an entry pinned to the tag and its full commit SHA, with a `homepage` on `monte3l.com` and a `description` identical to `plugin.json` | `bin/check-catalog.mjs` fails the pull request otherwise |
