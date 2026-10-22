@@ -7,8 +7,9 @@ name: Release finalize
 #
 # Publish is the last step on purpose: with immutable releases on, publishing
 # locks the tag and every asset for good, so everything must be on the draft
-# first. A release with no assets is published as is, and GitHub's own release
-# attestation still covers its tag and commit.
+# first. A release with no assets is published as is, and then has an
+# attestation only if immutable releases are on for the repository: GitHub
+# attests an immutable release itself, and this workflow attests assets only.
 #
 # The caller job must grant `contents: write`, `id-token: write` and
 # `attestations: write`.

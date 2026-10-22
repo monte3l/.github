@@ -176,7 +176,7 @@ repo release.yml
 | Release PR | `release-prepare.yml` | release-please opens or updates one pull request with the version bump and changelog. Review and merge it like any other |
 | Draft | `release-prepare.yml` | On merge it tags the commit and creates a **draft** release |
 | Assets | The repository's own job | Attaches its files to the draft. A repository with no assets has no such job |
-| Publish | `release-finalize.yml` | Attests the assets, then publishes. Publishing is last because an immutable release locks its tag and assets |
+| Publish | `release-finalize.yml` | Attests the assets, if there are any, then publishes. Publishing is last because an immutable release locks its tag and assets. GitHub attests an immutable release itself, so a release with no assets has an attestation only when immutable releases are on for the repository |
 | Notify | `release-finalize.yml` | Sends `release-published` to each repository in `notify`, so a consumer such as `m3l-plugins` can open its pin pull request |
 
 The pull request and its commits are made as the **release App**, not
@@ -192,7 +192,7 @@ signed-commits rule holds with no bypass actor.
 | Organization secret `RELEASE_APP_CLIENT_ID` | The App's client ID, shared with the repositories that release. A secret, like `JANITOR_APP_CLIENT_ID`, so both Apps are set up the same way |
 | Organization secret `RELEASE_APP_PRIVATE_KEY` | The App's private key, shared with the repositories that release. Rotate it yearly like any other secret |
 | Allowed actions | `googleapis/release-please-action@*` in the organization's allowed-actions list. Actions the shared workflows use that GitHub owns need nothing. Without the entry every `Release` run fails at startup with "is not allowed", and a run that failed that way cannot be re-run |
-| Immutable releases | Organization settings, Repository, General, Releases: all repositories. It affects future releases only |
+| Immutable releases | Organization settings, Repository, General, Releases. It affects future releases only. Choose the repositories that publish draft-first (the plugins and `m3l-design`), not all, until `m3l-groundwork` does: its `release.yml` uploads assets after publishing, which an immutable release does not allow |
 
 For every **new** repository, an Owner also adds it to the `monte3l-release`
 App's installation and shares the two secrets with it. Both are checked and
