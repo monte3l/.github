@@ -191,6 +191,7 @@ signed-commits rule holds with no bypass actor.
 | The `monte3l-release` GitHub App, owned by the organization and installed on every repository | Contents and Pull requests write. Metadata read. Nothing else |
 | Organization secret `RELEASE_APP_CLIENT_ID` | The App's client ID, shared with the repositories that release. A secret, like `JANITOR_APP_CLIENT_ID`, so both Apps are set up the same way |
 | Organization secret `RELEASE_APP_PRIVATE_KEY` | The App's private key, shared with the repositories that release. Rotate it yearly like any other secret |
+| Allowed actions | `googleapis/release-please-action@*` in the organization's allowed-actions list. Actions the shared workflows use that GitHub owns need nothing. Without the entry every `Release` run fails at startup with "is not allowed", and a run that failed that way cannot be re-run |
 | Immutable releases | Organization settings, Repository, General, Releases: all repositories. It affects future releases only |
 
 ### Adopting in a repository
