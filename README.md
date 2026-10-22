@@ -5,7 +5,7 @@
 [![REUSE status](https://api.reuse.software/badge/github.com/monte3l/.github)](https://api.reuse.software/info/github.com/monte3l/.github)
 
 The single reference for what is an organization default in `monte3l`, and how
-it reaches a repository.
+it reaches a repository. Read it rendered at [monte3l.com](https://monte3l.com).
 
 > [!IMPORTANT]
 > **Anything this README does not list as an organization default is not
@@ -23,9 +23,9 @@ it reaches a repository.
 
 ## Quickstart
 
-You need `gh`, authenticated with admin rights on the repository, and `jq`.
-Check any repository against the organization baseline with this command. It is
-read-only and exits `1` on drift:
+You need `gh` with admin rights on the repository, and `jq`; see
+[Requirements](#requirements). Check any repository against the organization
+baseline with this command. It is read-only and exits `1` on drift:
 
 ```sh
 bin/apply-repo-baseline.sh monte3l/<repo>
@@ -45,6 +45,20 @@ To start a new repository:
 
 For the whole organization at once, run `/org-drift` in Claude Code from this
 repository. [Parity check](#parity-check) lists what the script cannot see.
+
+## How it works
+
+This repository holds data that GitHub reads directly, plus one bash script,
+`bin/apply-repo-baseline.sh`. The principle: **offer a default only where GitHub
+can deliver it, and describe everything else as data a script can check.** Where
+nothing can check a claim, this README says so.
+
+A change here reaches other repositories in one of three ways. GitHub serves an
+**inherited** file to every repository that lacks its own copy. A person copies
+a **template** once. The script **applies** or **checks** a setting against the
+JSON in `blueprint/`. The same repository also builds the org site
+([monte3l.com](https://monte3l.com)), whose home page is `profile/README.md`.
+The [Parity table](#parity-table) gives the delivery of every file.
 
 ## Non-inheritance: the rule
 
@@ -72,13 +86,6 @@ Two further limits on files that are inherited:
   `.github/ISSUE_TEMPLATE/`, none of this repository's issue forms or
   `config.yml` are used there.
 
-## Scope and principle
-
-This repository holds data that GitHub reads directly, plus one bash script. It
-has no build and no tests. The principle: **offer a default only where GitHub
-can deliver it, and describe everything else as data a script can check.**
-Where nothing can check a claim, this README says so.
-
 ## Categories
 
 ### Community files
@@ -105,8 +112,9 @@ Where nothing can check a claim, this README says so.
 
 - **Enforced:** nothing. A template is a starting point, and each needs its
   `.properties.json` card to appear.
-- **Offered:** `claude`, `dependency-review`, `gitleaks`, `reuse`, `scorecard`,
-  `workflow-lint`.
+- **Offered:** `claude`, `commit-lint`, `dco`, `dependency-review`, `docs`,
+  `docs-live`, `environments`, `gitleaks`, `labeler`, `release`, `reuse`,
+  `scorecard`, `verify`, `workflow-lint`.
 - **A repository adds:** the copy. The `main` ruleset requires checks named
   `verify`, `Dependency Review`, `CodeQL`, `Gitleaks` and `DCO sign-off`:
 
@@ -262,6 +270,14 @@ One row per tracked file. **Delivery** is one of:
 | Release exemptions | `blueprint/release.json` | **Checked** | Nothing | Script: `SKIP release` for a listed repository. `appUsers` also lists repositories that publish nothing but open pull requests as the release App |
 | Verify workflow | `workflow-templates/verify.yml` | **Template** | Copy it, replace the placeholder lane with the repository's own checks, and keep the job name `verify`, which the `main` ruleset requires | Job name matched by hand (see [Parity check](#parity-check)) |
 | Verify card | `workflow-templates/verify.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
+| Labeler workflow | `workflow-templates/labeler.yml` | **Template** | Copy it and start `.github/labeler.yml` from `blueprint/files/labeler.yml`. Not a required check | Script: `PR labeler` (looks for the control, not the file name) |
+| Labeler card | `workflow-templates/labeler.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
+| Environments workflow | `workflow-templates/environments.yml` | **Template** | Copy it, add `.github/environments.json`, install the `monte3l-env-janitor` App | Script: the `env-janitor:` items, only for a repository with `.github/environments.json` |
+| Environments card | `workflow-templates/environments.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
+| Docs deploy workflow | `workflow-templates/docs.yml` | **Template** | Copy it for a repository with a `docs.config.mjs`, then follow `blueprint/docs-site.md` | Script: `docs site: deploy` |
+| Docs deploy card | `workflow-templates/docs.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
+| Docs live check workflow | `workflow-templates/docs-live.yml` | **Template** | Copy it beside `docs.yml` | Script: `docs site: daily check` |
+| Docs live check card | `workflow-templates/docs-live.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
 | Repository settings | `blueprint/repo-settings.json` | **Applied** | Nothing after `--apply` | Script: `repository settings` |
 | Actions token and PR approval | `blueprint/actions.json` (`workflow`) | **Applied** | Nothing after `--apply` | Script: `Actions: workflow token and PR approval` |
 | Fork PR approval | `blueprint/actions.json` (`fork_pr_approval`) | **Applied**. **Skipped** for private repositories | Nothing | Script: `Actions: fork PR approval` |
@@ -285,6 +301,7 @@ One row per tracked file. **Delivery** is one of:
 | This repository's Gitleaks | `.github/workflows/gitleaks.yml` | **Not delivered** | Nothing | Runs on every pull request, weekly, and on demand |
 | This repository's commit lint | `.github/workflows/commit-lint.yml` | **Not delivered** | Nothing | Script, run against `monte3l/.github` |
 | This repository's REUSE, workflow lint and Scorecard | `.github/workflows/reuse.yml`, `workflow-lint.yml`, `scorecard.yml` | **Not delivered** | Nothing | Script, run against `monte3l/.github` |
+| This repository's docs site, labeler and environments | `docs.config.mjs`, `.github/workflows/docs.yml`, `docs-live.yml`, `labeler.yml`, `environments.yml`, `.github/labeler.yml`, `.github/environments.json` | **Not delivered**. `docs.config.mjs` also builds the org site from `profile/README.md` | Nothing | `build.mjs --check` in `verify.yml`. The script, run against `monte3l/.github` |
 | This repository's repository-standard files | `.gitleaks.toml`, `.gitattributes`, `.editorconfig`, `REUSE.toml`, `LICENSES/MIT.txt` | **Not delivered** | Nothing | Script, run against `monte3l/.github` |
 | Agent tooling | `.claude/` (settings, hooks, `template-invariants-reviewer` agent, `org-drift` skill) | **Not delivered**. For this repository only | Nothing | Not verified. `/org-drift` runs the script across the organization |
 | Agent guidance | `CLAUDE.md` | **Not delivered** | Nothing | Not verified |
@@ -311,32 +328,52 @@ Every repository has its own `LICENSE` and `.github/CODEOWNERS`, and the
 script confirms both through its `CODEOWNERS` line. No repository has copied
 `claude.yml`, so `ANTHROPIC_API_KEY` is not set anywhere.
 
+## Requirements
+
+- **`gh`, authenticated with admin rights on the repository.** Needed to run the
+  baseline script.
+- **`jq`.** Needed to run the baseline script and to validate the JSON files.
+- **Node.js 24.** Pinned in `.node-version`. Runs the docs site build and its
+  parity checks.
+- **`shellcheck` and Docker.** Optional locally: CI runs shellcheck and
+  actionlint (`rhysd/actionlint:1.7.7`, pinned by hand in `verify.yml`).
+
 ## Working on this repo
 
-This repository has no build and no tests. CI (`verify.yml`) runs these:
+This repository has no tests. The checks are the `verify` job in `verify.yml`,
+and CI runs all four:
 
 ```sh
-bash -n bin/apply-repo-baseline.sh
-shellcheck bin/apply-repo-baseline.sh
+# the docs site: links, page coverage, design integrity and parity checks
+node design/source/docs-kit/build.mjs --check
+# the script parses and passes shellcheck
+bash -n bin/apply-repo-baseline.sh && shellcheck bin/apply-repo-baseline.sh
+# every blueprint and template JSON file is valid
 find blueprint workflow-templates -name '*.json' -print0 | xargs -0 -n1 jq empty
+# every workflow and template passes actionlint
 docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color .github/workflows/*.yml workflow-templates/*.yml
 ```
 
-The rules for edits are under [Changing a default](#changing-a-default).
+The rules for edits are under [Changing a default](#changing-a-default). See
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for the pull request workflow.
 
 ### Project docs
 
-- [`CONTRIBUTING.md`](CONTRIBUTING.md), [`SECURITY.md`](SECURITY.md),
-  [`SUPPORT.md`](SUPPORT.md) and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) --
-  the community files other repositories inherit. Their wording is written for
-  those repositories.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) -- how to contribute. Its wording is
+  written for other repositories.
+- [`SECURITY.md`](SECURITY.md) -- reporting a vulnerability.
+- [`SUPPORT.md`](SUPPORT.md) and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) --
+  the remaining community files that other repositories inherit.
 - [`blueprint/README.md`](blueprint/README.md) -- the settings blueprint, the
   repository standard and the README structure.
+- [`blueprint/docs-site.md`](blueprint/docs-site.md) -- the docs-site runbook,
+  including the Cloudflare setup.
 - [`design/README.md`](design/README.md) -- this repository's m3l-design marker.
-- [`profile/README.md`](profile/README.md) -- the organization profile page.
+- [`profile/README.md`](profile/README.md) -- the organization profile page,
+  which is also the home page of monte3l.com.
 - [`CLAUDE.md`](CLAUDE.md) -- the script's internals and conventions, written
   for Claude Code agents.
 
 ## License
 
-MIT, see [`LICENSE`](LICENSE).
+[MIT](LICENSE).
