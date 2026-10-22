@@ -188,8 +188,8 @@ signed-commits rule holds with no bypass actor.
 
 | What | Value |
 | ---- | ----- |
-| The `monte3l-release` GitHub App, owned by the organization and installed on every repository | Contents, Pull requests and Issues write. Metadata read. Nothing else |
-| Organization variable `RELEASE_APP_CLIENT_ID` | The App's client ID, visible to the repositories that release |
+| The `monte3l-release` GitHub App, owned by the organization and installed on every repository | Contents and Pull requests write. Metadata read. Nothing else |
+| Organization secret `RELEASE_APP_CLIENT_ID` | The App's client ID, shared with the repositories that release. A secret, like `JANITOR_APP_CLIENT_ID`, so both Apps are set up the same way |
 | Organization secret `RELEASE_APP_PRIVATE_KEY` | The App's private key, shared with the repositories that release. Rotate it yearly like any other secret |
 | Immutable releases | Organization settings, Repository, General, Releases: all repositories. It affects future releases only |
 

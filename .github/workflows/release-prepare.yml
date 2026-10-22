@@ -24,11 +24,10 @@ on:
         description: release-please manifest, relative to the repository root
         type: string
         default: .release-please-manifest.json
-      client-id:
-        description: Client ID of the release App. Defaults to the org variable RELEASE_APP_CLIENT_ID
-        type: string
-        default: ""
     secrets:
+      RELEASE_APP_CLIENT_ID:
+        description: Client ID of the release App
+        required: true
       RELEASE_APP_PRIVATE_KEY:
         description: Private key of the release App
         required: true
@@ -73,13 +72,12 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          client-id: ${{ inputs.client-id || vars.RELEASE_APP_CLIENT_ID }}
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
           permission-contents: write
           permission-pull-requests: write
-          permission-issues: write
 
       # No checkout: release-please reads and writes through the API.
       - name: Run release-please
