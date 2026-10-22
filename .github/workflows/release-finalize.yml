@@ -24,6 +24,10 @@ on:
         description: Name of an asset holding sha256sum lines (for example SHA256SUMS) to attest instead of every asset
         type: string
         default: ""
+      attest:
+        description: Attest the assets on the draft. Set false when the repository's own job already attested them, for example to attach the attestation's bundle to the draft before it is locked
+        type: boolean
+        default: true
       notify:
         description: JSON array of repository names (same owner) that receive a `release-published` dispatch
         type: string
@@ -75,6 +79,7 @@ jobs:
 
       - name: Download the draft's assets
         id: assets
+        if: inputs.attest
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ steps.draft.outputs.id }}
@@ -90,13 +95,13 @@ jobs:
           echo "count=$count" >>"$GITHUB_OUTPUT"
 
       - name: Attest every asset
-        if: steps.assets.outputs.count != '0' && inputs.checksums == ''
+        if: inputs.attest && steps.assets.outputs.count != '0' && inputs.checksums == ''
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: assets/*
 
       - name: Attest the assets listed in the checksums file
-        if: steps.assets.outputs.count != '0' && inputs.checksums != ''
+        if: inputs.attest && steps.assets.outputs.count != '0' && inputs.checksums != ''
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: assets/${{ inputs.checksums }}
