@@ -388,9 +388,69 @@ fi
 # configuration is a commit, never an API call. The exempt list is data here
 # because "which repositories publish releases" is an org decision, not
 # something a file in the repository can declare for itself.
+# report_release_app: the release App checks. Called for every repository that
+# releases and for each one release.json lists under "appUsers", a repository
+# that publishes no release but still opens pull requests as the App.
+report_release_app() {
+  # The release App makes the release pull request and the tag, so a repository
+  # needs to be in its installation and to be able to read its two secrets. A
+  # repository that is not fails its first release at "make a token", with an
+  # error that names neither. Report only, never applied: the private key can
+  # mint a token for every repository in the installation, so sharing it with a
+  # repository is an Owner's decision, unlike the env-janitor key.
+  release_app="$(jq -r .app "$here/release.json")"
+  release_owner="${repo%%/*}"
+  release_repo_id="$(jq -r .id <<<"$live_repo")"
+  if install_id="$(gh api "orgs/$release_owner/installations" --jq ".installations[] | select(.app_slug == \"$release_app\") | .id" 2>/dev/null)" &&
+    [[ -n "$install_id" ]] &&
+    install_repos="$(gh api --paginate "user/installations/$install_id/repositories" --jq '.repositories[].full_name' 2>/dev/null)"; then
+    if grep -Fxq -- "$repo" <<<"$install_repos"; then
+      printf 'OK     release: app installation: %s\n' "$release_app"
+      ok=$((ok + 1))
+    else
+      drift=$((drift + 1))
+      printf 'DRIFT  release: app installation: %s is not installed on %s\n' "$release_app" "$repo"
+      [[ "$mode" == "check" ]] || printf '         add it in the %s installation settings of the organization\n' "$release_app"
+    fi
+  else
+    skip "release: app installation" "cannot read the $release_app installation (needs admin:org and a token that may list it)"
+  fi
+  release_secret_problems=""
+  release_unshared=()
+  while IFS= read -r secret; do
+    if ! visibility="$(gh api "orgs/$release_owner/actions/secrets/$secret" --jq .visibility 2>/dev/null)"; then
+      release_secret_problems+="$secret cannot be read (missing, or the token lacks admin:org); "
+    elif [[ "$visibility" == "selected" ]]; then
+      if ! shared_ids="$(gh api --paginate "orgs/$release_owner/actions/secrets/$secret/repositories" --jq '.repositories[].id' 2>/dev/null)"; then
+        release_secret_problems+="$secret's repository list cannot be read; "
+      elif ! grep -Fxq -- "$release_repo_id" <<<"$shared_ids"; then
+        release_secret_problems+="$secret is not shared with $repo; "
+        release_unshared+=("$secret")
+      fi
+    elif [[ "$visibility" == "private" && "$private" != "true" ]]; then
+      release_secret_problems+="$secret is visible to private repositories only; "
+    fi
+  done < <(jq -r '.secrets[]' "$here/release.json")
+  if [[ -z "$release_secret_problems" ]]; then
+    printf 'OK     release: app secrets: readable by this repository\n'
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  release: app secrets: %s\n' "${release_secret_problems%; }"
+    if [[ "$mode" != "check" ]]; then
+      for secret in ${release_unshared[@]+"${release_unshared[@]}"}; do
+        printf '         an Owner shares it: gh api -X PUT orgs/%s/actions/secrets/%s/repositories/%s\n' "$release_owner" "$secret" "$release_repo_id"
+      done
+    fi
+  fi
+}
+
 release_exempt="$(jq -r --arg name "${repo##*/}" '.exempt[$name] // empty' "$here/release.json")"
 if [[ -n "$release_exempt" ]]; then
   skip "release" "$release_exempt"
+  if jq -e --arg name "${repo##*/}" '.appUsers | index($name) != null' "$here/release.json" >/dev/null; then
+    report_release_app
+  fi
 else
   release_prepare="$(jq -r .workflow "$here/release.json")"
   release_finalize="${release_prepare/prepare/finalize}"
@@ -430,6 +490,7 @@ else
       [[ "$mode" == "check" ]] || printf '         move the pin in %s to a commit of %s main\n' "$repo" "$shared_repo"
     fi
   fi
+  report_release_app
   # Immutable releases lock a tag and its assets when the release is published.
   # Report only: the org-wide setting is the intended way to turn them on, and
   # a repository-level exception is the owner's call.

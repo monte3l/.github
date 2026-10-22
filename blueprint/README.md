@@ -194,6 +194,14 @@ signed-commits rule holds with no bypass actor.
 | Allowed actions | `googleapis/release-please-action@*` in the organization's allowed-actions list. Actions the shared workflows use that GitHub owns need nothing. Without the entry every `Release` run fails at startup with "is not allowed", and a run that failed that way cannot be re-run |
 | Immutable releases | Organization settings, Repository, General, Releases. It affects future releases only. Choose the repositories that publish draft-first (the plugins and `m3l-design`), not all, until `m3l-groundwork` does: its `release.yml` uploads assets after publishing, which an immutable release does not allow |
 
+For every **new** repository, an Owner also adds it to the `monte3l-release`
+App's installation and shares the two secrets with it. Both are checked and
+neither is applied, because the App's private key can mint a token for every
+repository in the installation: a repository whose workflows can read it can
+act as the App across all of them, so sharing it is a decision, not a default.
+Without them the first release fails at the step that makes the token, with an
+error that names neither.
+
 ### Adopting in a repository
 
 1. Copy the starter that matches the repository from `files/release-please/` to
@@ -286,6 +294,7 @@ exceptions are the `env-janitor` branch policy and org-secret access, which
 | Release config | `release: config`, `release: manifest` | `release-please-config.json` and `.release-please-manifest.json`, unless `release.json` exempts the repository | `files/release-please/` |
 | Release workflow | `release: workflow` | `release.yml` calls both shared workflows, each pinned to a full commit SHA | `workflow-templates/release.yml` |
 | Release workflow pin | `release: workflow pin` | Each pinned SHA is a commit on `.github`'s default branch. A commit that lived only on a pull request branch, which a squash merge drops, fails every release that copied it | `workflow-templates/release.yml` |
+| Release App | `release: app installation`, `release: app secrets` | The repository is in the `monte3l-release` App's installation, and can read the org secrets `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_PRIVATE_KEY`. Checked for every repository that releases and for each one `release.json` lists under `appUsers` (`m3l-plugins`, which opens pin pull requests as the App). Never applied: see [Releases](#releases) | Installation settings of the App, and `gh api -X PUT orgs/OWNER/actions/secrets/NAME/repositories/ID` |
 | Immutable releases | `release: immutable releases` | Publishing a release locks its tag and assets. Turn it on for the whole organization | See [Releases](#releases) |
 | Dependabot | `Dependabot` | `.github/dependabot.yml` with the `github-actions` ecosystem, a 7-day cooldown, and one `npm` entry per lockfile directory (1-day cooldown) | `files/dependabot.yml` |
 | Node pin | `Node pin` | No workflow writes a version number after `node-version:`: use `node-version-file: .node-version` | `.node-version` |
