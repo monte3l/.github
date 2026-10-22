@@ -215,6 +215,13 @@ Tag formats are not unified on purpose. Each is read by something else: the
 plugin form by Claude Code's dependency resolution, `vX.Y.Z` by
 `sync-design.sh`, and the package form by npm tooling.
 
+The `DCO sign-off` check is required and the release pull request's commit is
+made by the App, so every release configuration carries a top-level `signoff`
+with the App's identity, `monte3l-release[bot]
+<333264726+monte3l-release[bot]@users.noreply.github.com>`. The email is the
+commit author's, which is what the check compares. Without it the release pull
+request cannot merge.
+
 > [!IMPORTANT]
 > A package published to npm registers the **caller's** file name as its
 > trusted publisher, which is `release.yml` in the repository. npm does not look
