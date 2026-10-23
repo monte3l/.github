@@ -212,6 +212,24 @@ The pull request and its commits are made as the **release App**, not
 GitHub signs a commit the App makes through the API, so the `main` ruleset's
 signed-commits rule holds with no bypass actor.
 
+### Verifying a release
+
+`gh release verify <tag>` checks the release attestation GitHub makes for an
+immutable release, and `gh release verify-asset <tag> <file>` checks one
+downloaded file against it. Neither needs any option.
+
+An asset can carry a second attestation, made by the workflow that attested it.
+`gh attestation verify <file> -R <owner/repo>` accepts it only when the signer
+workflow lives in that same repository, so it passes for a file the repository's
+own job attested (`m3l-groundwork`, `m3l-output-governor`) and **fails with a
+misleading `verifying with issuer "sigstore.dev"` for a file `release-finalize.yml`
+attested** (`m3l-design`), because that workflow is in `monte3l/.github`. Name the
+signer:
+
+```sh
+gh attestation verify <file> -R monte3l/<repo> --signer-repo monte3l/.github
+```
+
 ### One-time setup (an Owner)
 
 | What | Value |
@@ -220,7 +238,7 @@ signed-commits rule holds with no bypass actor.
 | Organization secret `RELEASE_APP_CLIENT_ID` | The App's client ID, shared with the repositories that release. A secret, like `JANITOR_APP_CLIENT_ID`, so both Apps are set up the same way |
 | Organization secret `RELEASE_APP_PRIVATE_KEY` | The App's private key, shared with the repositories that release. Rotate it yearly like any other secret |
 | Allowed actions | `googleapis/release-please-action@*` in the organization's allowed-actions list. Actions the shared workflows use that GitHub owns need nothing. Without the entry every `Release` run fails at startup with "is not allowed", and a run that failed that way cannot be re-run |
-| Immutable releases | Organization settings, Repository, General, Releases. It affects future releases only. Choose the repositories that publish draft-first (the plugins and `m3l-design`), not all, until `m3l-groundwork` does: its `release.yml` uploads assets after publishing, which an immutable release does not allow |
+| Immutable releases | Organization settings, Repository, General, Releases. It affects future releases only. Every repository that releases publishes draft-first, so it is safe to turn on for all of them. A repository whose `release.yml` uploads an asset after publishing must not have it on, because an immutable release does not allow that |
 
 For every **new** repository, an Owner also adds it to the `monte3l-release`
 App's installation and shares the two secrets with it. Both are checked and
