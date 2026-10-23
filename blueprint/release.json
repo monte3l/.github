@@ -6,6 +6,7 @@
     "RELEASE_APP_PRIVATE_KEY"
   ],
   "appUsers": [
+    ".github",
     "m3l-plugins"
   ],
   "exempt": {
