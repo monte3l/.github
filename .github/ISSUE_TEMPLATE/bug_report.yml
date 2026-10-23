@@ -1,11 +1,13 @@
 name: Bug report
-description: Something is broken or behaves differently from what the docs say
+description: Something is broken, or behaves differently from what the docs say
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Found a security vulnerability instead? Use private vulnerability reporting on the repository's Security tab, not this form.
+        Thank you for taking the time to report this. Exact steps are the fastest way to a fix.
+
+        If you think it is a security vulnerability, please do not open an issue. Use private vulnerability reporting on the repository's Security tab instead.
   - type: input
     id: version
     attributes:
@@ -23,11 +25,18 @@ body:
   - type: textarea
     id: expected
     attributes:
-      label: Expected vs. actual behavior
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: The error message or output, if there is one
     validations:
       required: true
   - type: textarea
     id: context
     attributes:
-      label: Anything else
-      description: OS, runtime versions, relevant logs
+      label: Your setup
+      description: Operating system, runtime versions and anything else that might matter
