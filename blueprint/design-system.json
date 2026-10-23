@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/monte3l/m3l-design",
-  "version": "v1.3.1",
+  "version": "v1.3.2",
   "marker": "design/README.md",
   "consumers": [
     ".github",
