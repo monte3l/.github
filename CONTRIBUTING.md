@@ -29,8 +29,10 @@ commit would only be rejected later, at merge time.
 
 1. Branch off the default branch as `feat/<slug>` or `fix/<slug>`.
 2. Run the repository's full check (usually `pnpm verify`) before pushing.
-3. Fill in the pull request template. Add tests for new behavior and a
-   regression test for a fix.
+3. Fill in the pull request template. A docs, design-sync or
+   dependency-or-release change has its own: add `?template=docs.md`,
+   `design-sync.md` or `dependencies-release.md` to the pull request URL.
+   Add tests for new behaviour and a regression test for a fix.
 4. Resolve every review thread. A pull request merges when its required
    checks pass and its threads are resolved.
 

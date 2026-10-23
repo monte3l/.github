@@ -2,6 +2,10 @@ name: Feature request
 description: Suggest a change or an addition
 labels: ["enhancement"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the idea. Starting from the problem, not the solution, helps us find the best fit.
   - type: textarea
     id: problem
     attributes:
@@ -13,6 +17,11 @@ body:
     id: proposal
     attributes:
       label: What you would like
-      description: The behavior you expect, and any alternatives you considered
+      description: The behaviour you expect
     validations:
       required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Other ways to get there, including what you do today

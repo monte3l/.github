@@ -31,6 +31,7 @@ export default {
     { glob: ".claude/**", reason: "Claude Code agents, skills and hooks for working in this repository" },
     { glob: "blueprint/files/README.md", reason: "README skeleton with placeholders, copied rather than read" },
     { glob: ".github/pull_request_template.md", reason: "GitHub pull request template" },
+    { glob: ".github/PULL_REQUEST_TEMPLATE/**", reason: "GitHub pull request template variants, chosen with ?template=" },
     { glob: ".groundwork/**", reason: "m3l-groundwork adoption and customization reports, a record for maintainers" },
     { glob: "docs/research/**", reason: "Claude Code harness refresh tracker, maintainer notes" },
   ],

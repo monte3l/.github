@@ -1,0 +1,27 @@
+name: Docs problem
+description: A page is wrong, unclear or missing
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for telling us. A link to the page and a line about what should change are all we need.
+  - type: input
+    id: page
+    attributes:
+      label: The page
+      description: A link or a file path, or the name of the page that is missing
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong or missing
+      description: What you read, and what you expected to find
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: What it should say
+      description: A sentence or two, if you know

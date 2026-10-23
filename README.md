@@ -102,8 +102,16 @@ Two further limits on files that are inherited:
 ### Issue forms and the pull request template
 
 - **Enforced:** nothing.
-- **Offered:** three forms, a chooser with blank issues off that points
-  vulnerability reports at `SECURITY.md`, and a pull request template.
+- **Offered:** four forms (bug report, feature request, question, docs
+  problem), a chooser with blank issues off that points vulnerability reports
+  at `SECURITY.md` and the support guide, and a pull request template with
+  three variants.
+- **Variants:** GitHub shows no picker for pull request templates. The default
+  is `.github/pull_request_template.md`; an author adds `?template=docs.md`,
+  `?template=design-sync.md` or `?template=dependencies-release.md` to the
+  pull request URL to get another. The wording is plain and warm, in the UK
+  spelling of the Oxford style, and follows `blueprint/README.md`'s rules for
+  markdown.
 - **A repository adds:** its own `ISSUE_TEMPLATE/` folder if it wants any
   different form. Doing so discards all of these, including the chooser and the
   blank-issues setting.
@@ -265,8 +273,10 @@ One row per tracked file. **Delivery** is one of:
 | Bug report form | `.github/ISSUE_TEMPLATE/bug_report.yml` | **Inherited** (all or nothing, see above) | Nothing, or its own `ISSUE_TEMPLATE/` folder | Not verified |
 | Feature request form | `.github/ISSUE_TEMPLATE/feature_request.yml` | **Inherited** (same) | Same | Not verified |
 | Question form | `.github/ISSUE_TEMPLATE/question.yml` | **Inherited** (same) | Same | Not verified |
+| Docs problem form | `.github/ISSUE_TEMPLATE/docs_problem.yml` | **Inherited** (same) | Same | Not verified |
 | Issue chooser, blank issues off | `.github/ISSUE_TEMPLATE/config.yml` | **Inherited** (same) | Same | Not verified |
 | Pull request template | `.github/pull_request_template.md` | **Inherited** | Nothing, or its own copy | Not verified |
+| Pull request template variants | `.github/PULL_REQUEST_TEMPLATE/` (`docs.md`, `design-sync.md`, `dependencies-release.md`) | **Inherited**. Chosen with `?template=` | Nothing, or its own folder | Not verified |
 | Organization profile | `profile/README.md` | **Inherited** (shown on the organization page only) | Nothing | Not verified |
 | Claude workflow | `workflow-templates/claude.yml` | **Template** | Copy it, add the `ANTHROPIC_API_KEY` secret | Not verified. Never relax its `author_association` gate |
 | Claude template card | `workflow-templates/claude.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
