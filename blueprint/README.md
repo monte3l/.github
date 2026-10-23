@@ -125,7 +125,7 @@ and the social card never drift apart.
 - Plain words, addressed to the reader where it fits: "the prompts you type", "where your output tokens go".
 - One clause. No colon or semicolon list.
 - No final dot and no ellipsis. A card or an About line just stops.
-- US spelling: organization, color, behavior. "Claude Code" is always capitalized.
+- UK spelling in the Oxford style: `-ize` as in organization and standardize, but colour, behaviour, catalogue and licence. Names such as `color-*` tokens, `/customize` and `LICENSE` are identifiers, so they are never respelled. "Claude Code" is always capitalized.
 - Name monte3l only where it is the point: the marketplace, the design system and this repository. Elsewhere the card and the page already say it.
 
 **Organization details** (`org.json`): the display name is `monte3l`, as in prose; only the logo is set in capitals. The description is the profile's tagline without its full stop. An Owner sets these in the organization settings, or with

@@ -13,7 +13,8 @@
  * - `blueprint/projects.json` and the project table in `profile/README.md`
  *   disagree about which repositories exist or where their sites are;
  * - a card line, description or topic breaks the wording standard (length,
- *   no final dot or ellipsis, no colon or semicolon list, US spelling,
+ *   no final dot or ellipsis, no colon or semicolon list, UK spelling in the
+ *   Oxford style (-ize, but colour, behaviour, catalogue),
  *   lowercase topics), or a profile row does not carry its repository's
  *   description, or the profile tagline is not `blueprint/org.json`'s
  *   description.
@@ -86,7 +87,9 @@ export function projectProblems(projects, rows) {
 
 /** The wording standard for the text the org publishes about each repository. */
 export const LIMITS = { card: 120, description: 200, topics: 8 };
-const UK_SPELLING = /\b(organis\w*|colour\w*|behaviour\w*|centre\w*|licence)\b/i;
+// US-only spellings, in the Oxford style the org writes: -ize stays, but colour, behaviour, centre and catalogue are UK. "license" is
+// not listed: it is the UK verb and the US noun, so a word match cannot tell them apart.
+const US_SPELLING = /\b(colors?|behaviors?|centers?|centered|catalogs?|gray)\b/i;
 
 /**
  * @param {string} where a label for the message
@@ -100,8 +103,8 @@ export function wordingProblems(where, text, limit) {
   if (text.length > limit) problems.push(`${where}: ${text.length} characters, the limit is ${limit}`);
   if (/[.\u2026\s]$/.test(text)) problems.push(`${where}: ends in a dot, an ellipsis or a space`);
   if (/[:;]/.test(text)) problems.push(`${where}: has a colon or a semicolon, which makes a list; use one clause`);
-  const uk = UK_SPELLING.exec(text);
-  if (uk) problems.push(`${where}: "${uk[0]}" is UK spelling, the org uses US`);
+  const us = US_SPELLING.exec(text);
+  if (us) problems.push(`${where}: "${us[0]}" is US spelling, the org writes UK in the Oxford style (colour, behaviour, catalogue)`);
   return problems;
 }
 

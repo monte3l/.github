@@ -175,7 +175,8 @@ tagline in `profile/README.md` is written from the descriptions.
   `gh repo edit` command. `bin/doc-parity.mjs` checks the wording rules and
   that the profile table carries the descriptions.
 - **The wording:** a noun phrase first, plain words addressed to the reader,
-  one clause, no final dot or ellipsis, US spelling. The full rules are in
+  one clause, no final dot or ellipsis, UK spelling in the Oxford style. The full
+  rules are in
   `blueprint/README.md`, under "Descriptions".
 - **Organization details:** `blueprint/org.json` holds the display name
   (`monte3l`), description and website. An Owner sets them in the organization
