@@ -124,7 +124,7 @@ Two further limits on files that are inherited:
   `docs-live`, `environments`, `gitleaks`, `labeler`, `release`, `reuse`,
   `scorecard`, `verify`, `workflow-lint`.
 - **A repository adds:** the copy. The `main` ruleset requires checks named
-  `verify`, `Dependency Review`, `CodeQL`, `Gitleaks` and `DCO sign-off`:
+  `verify`, `Dependency Review`, `CodeQL`, `Gitleaks`, `DCO sign-off` and `Commit lint`:
 
 | Required check | Provided by |
 | --- | --- |
@@ -133,6 +133,7 @@ Two further limits on files that are inherited:
 | `Gitleaks` | The `gitleaks` template. Its job `name:` must stay `Gitleaks` |
 | `CodeQL` | Code scanning default setup, enabled by an owner |
 | `DCO sign-off` | The `dco` template. Its job `name:` must stay `DCO sign-off`, and it must not filter by path, or a pull request that skips it can never merge |
+| `Commit lint` | The `commit-lint` template. Its job `name:` must stay `Commit lint`, and it must not filter by path. It is a plain template and not a reusable workflow, because a required check from a reusable workflow is reported as `<caller job> / <called job>` |
 
 > [!WARNING]
 > **Renaming a job in a template silently breaks merges** in every repository
@@ -318,7 +319,8 @@ One row per tracked file. **Delivery** is one of:
 | `main` ruleset | `blueprint/rulesets/main-branch.json` | **Applied**. **Skipped** on a free-plan private repository | Produce the four required checks | Script: `ruleset: main` |
 | `tags` ruleset | `blueprint/rulesets/tags.json` | **Applied**. **Skipped** (same) | Nothing | Script: `ruleset: tags` |
 | Labels | `blueprint/labels.json` | **Applied**, create-only | Nothing. An existing label is never rewritten | Script: label lines (they report OK or DRIFT inline) |
-| Design version pin | `blueprint/design-system.json` | **Checked** | Record that tag in `design/README.md`, then run `sync-design.sh` if it has a visual surface | Script: `design system` |
+| Design version pin | `blueprint/design-system.json` | **Checked** | Merge the re-sync pull request that `design-resync.yml` opens, or record the tag in `design/README.md` and run `sync-design.sh` by hand | Script: `design system` |
+| Design re-sync | `.github/workflows/design-resync.yml`, `bin/design-resync-pr.sh` | **Not delivered**. Runs here on `m3l-design`'s `release-published` dispatch and opens a pull request in each repository listed under `consumers` | Review and merge each pull request | shellcheck and actionlint in `verify.yml`, zizmor in `workflow-lint.yml` |
 | Descriptions and topics | `blueprint/projects.json` | **Checked** | Set them with `gh repo edit`; the script prints the command | Script: `repository description`, `repository topics` |
 | Organization details | `blueprint/org.json` | **Not delivered**. An Owner sets them in the organization settings | Nothing | Not verified. `gh api orgs/monte3l` shows the live values |
 | Repository standard files | `blueprint/files/` (`gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependabot.yml`) | **Checked**. Starting points only | Commit its own copy of each | Script: `Gitleaks config`, `line endings`, `editor config`, `REUSE`, `Dependabot` |

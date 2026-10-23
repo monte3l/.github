@@ -18,7 +18,7 @@ in `m3l-groundwork`.
 | `repo-settings.json`     | Merge settings: merge commit and squash allowed, rebase off, delete head branches after merge             |
 | `actions.json`           | Read-only workflow token, workflows cannot approve PRs, approve fork PR runs for all outside contributors, SHA pinning required |
 | `labels.json`            | Labels that Dependabot, the baseline's scheduled audit and the PR labeler apply, coloured with m3l-design's primitives: status colours for `dependencies` and `security`, the brand colour for the four shared `area:*` labels. Labels are create-only, so existing repositories keep their old colours |
-| `design-system.json`     | The m3l-design release tag (`vX.Y.Z`) every repository should record in `design/README.md`. Checked by the script, never applied |
+| `design-system.json`     | The m3l-design release tag (`vX.Y.Z`) every repository should record in `design/README.md`, and `consumers`, the repositories `design-resync.yml` opens re-sync pull requests in. The tag is checked by the script, never applied. See [Design system](#design-system) |
 | `release.json`           | The shared release workflow the script looks for in each repository's workflows, and the repositories exempt from releasing, each with its reason. Checked by the script, never applied. See [Releases](#releases) |
 | `projects.json`          | Every monte3l repository: its docs-site URL, card line, description and topics. The org site's project cards, `profile/README.md`'s table and each repository's GitHub description and topics are checked against it. See [Descriptions](#descriptions) |
 | `org.json`               | The organization's display name, description and website. Never applied or checked by the script, because it is an org setting. An Owner sets it, see [Descriptions](#descriptions) |
@@ -50,7 +50,7 @@ does not count them as drift.
 
 > [!WARNING]
 > The blueprint requires the `verify`, `Dependency Review`, `CodeQL`,
-> `Gitleaks` and `DCO sign-off` checks and SHA-pinned actions. `Gitleaks` also needs the
+> `Gitleaks`, `DCO sign-off` and `Commit lint` checks and SHA-pinned actions. `Gitleaks` also needs the
 > `GITLEAKS_LICENSE` organization secret to be shared with the repository.
 > Applying it to a repository that does not produce those checks, or that
 > uses unpinned actions, blocks merges and fails workflows until that is
@@ -79,6 +79,28 @@ checksums, then replaces `design/source/`, `design/tokens.css` and
 never touches `design/local/`. Prove a copy is unedited with
 `cd design && shasum -a 256 -c SHA256SUMS`.
 
+### Re-syncing from a release
+
+`m3l-design`'s release workflow sends `release-published` to this repository
+(`notify: [".github"]`). `.github/workflows/design-resync.yml` then opens one
+pull request per repository listed under `consumers` in `design-system.json`,
+and one here that also moves the pin. Each runs the real `sync-design.sh` of
+that tag, so the release is verified the same way as by hand, and
+`bin/design-resync-pr.sh` commits the result as the release App, so GitHub
+signs it and the required checks run on the pull request.
+
+| Rule | Why |
+| ---- | --- |
+| The tag must be a published, stable release of `monte3l/m3l-design`, named `vX.Y.Z` | The payload only names the release. The files come from that release, never from the dispatch |
+| A dispatch for a tag older than the pin does nothing | It would move every repository backwards |
+| A newer release closes the open re-sync pull request of an older one, if only the release App committed to it | Two open re-syncs of the same files would conflict. A person's commits are never discarded |
+| A file that is not a plain `100644` file stops the run | The API commit cannot set a file mode |
+| Nothing adapts a repository to the new version | A person reads the release notes and the checks before merging |
+
+Run it by hand for a missed tag or one repository:
+`gh workflow run design-resync.yml -f tag=v1.3.2 -f repositories="m3l-plugins"`.
+A new repository that vendors `m3l-design` goes in `consumers`.
+
 The vendored payload includes the **docs kit**, which builds and gates a docs
 site. See [Docs site](#docs-site).
 
@@ -88,7 +110,8 @@ row, and `[!CAUTION]` only for data loss or anything irreversible), plain
 direct sentences, and a table for tabular data.
 
 To move to a newer version, run the script again and commit the result,
-including the marker. `m3l-groundwork/design/README.md` documents the vendored
+including the marker. You rarely need to: when `m3l-design` publishes a
+release, `design-resync.yml` (below) does it. `m3l-groundwork/design/README.md` documents the vendored
 layout in full. Its `templates/**` stay brand-neutral on purpose, so anything a
 repository emits into other projects is not styled.
 
@@ -282,9 +305,9 @@ request cannot merge.
 > at the shared workflow's name, and renaming the caller breaks publishing.
 
 > [!NOTE]
-> `commit lint` is reported by the script but is not in the `main` ruleset's
-> required checks yet. Add it there only after every repository runs it,
-> because a required check that a repository never reports blocks its merges.
+> `Commit lint` is a required check in the `main` ruleset. A repository that
+> never reports it cannot merge, so a new repository copies the template before
+> the ruleset is applied to it.
 
 The shared workflows are pinned in each caller by full commit SHA like any
 action, and Dependabot's `github-actions` entry keeps the pin current. A change
@@ -336,7 +359,7 @@ exceptions are the `env-janitor` branch policy and org-secret access, which
 | Scorecard | `Scorecard workflow`, `Scorecard alerts` | Public repositories only. Open alerts are fixed or dismissed with a reason | `workflow-templates/scorecard.yml` |
 | DCO check | `DCO check` | Every non-merge commit in a pull request carries a `Signed-off-by:` trailer that matches its author or committer email. `DCO sign-off` is a required check in the `main` ruleset, so its job `name:` must stay `DCO sign-off` and the workflow must not filter by path | `workflow-templates/dco.yml` |
 | PR labeler | `PR labeler` | A workflow runs `actions/labeler`, and `.github/labeler.yml` maps paths to labels. The four shared `area:*` labels come from `labels.json`; a label that is specific to the repository is created once by hand with `--color 554d50` | `workflow-templates/labeler.yml`, `files/labeler.yml` |
-| Commit lint | `commit lint` | A pull request's title and every non-merge commit are Conventional Commits, because the release workflow reads them. The job `name:` is `Commit lint` and the workflow does not filter by path. It is not yet a required check in the `main` ruleset: see [Releases](#releases) | `workflow-templates/commit-lint.yml` |
+| Commit lint | `commit lint` | A pull request's title and every non-merge commit are Conventional Commits, because the release workflow reads them. The job `name:` is `Commit lint` and the workflow does not filter by path. It is a required check in the `main` ruleset: see [Releases](#releases) | `workflow-templates/commit-lint.yml` |
 | Release config | `release: config`, `release: manifest` | `release-please-config.json` and `.release-please-manifest.json`, unless `release.json` exempts the repository | `files/release-please/` |
 | Release workflow | `release: workflow` | `release.yml` calls both shared workflows, each pinned to a full commit SHA | `workflow-templates/release.yml` |
 | Release workflow pin | `release: workflow pin` | Each pinned SHA is a commit on `.github`'s default branch. A commit that lived only on a pull request branch, which a squash merge drops, fails every release that copied it | `workflow-templates/release.yml` |

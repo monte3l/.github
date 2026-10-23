@@ -1,5 +1,12 @@
 {
   "repository": "https://github.com/monte3l/m3l-design",
   "version": "v1.3.2",
-  "marker": "design/README.md"
+  "marker": "design/README.md",
+  "consumers": [
+    ".github",
+    "m3l-groundwork",
+    "m3l-output-governor",
+    "m3l-plugins",
+    "m3l-prompt-optimizer"
+  ]
 }

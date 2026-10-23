@@ -38,8 +38,8 @@ jobs:
 
       - name: Script syntax and shellcheck
         run: |
-          bash -n bin/apply-repo-baseline.sh
-          shellcheck bin/apply-repo-baseline.sh
+          bash -n bin/apply-repo-baseline.sh bin/design-resync-pr.sh
+          shellcheck bin/apply-repo-baseline.sh bin/design-resync-pr.sh
 
       - name: JSON files parse
         run: |
