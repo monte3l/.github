@@ -23,7 +23,7 @@ name: Design re-sync
 # in `blueprint/design-system.json`, which the baseline check compares.
 #
 # Run it by hand for a tag that was missed, or for one repository:
-#   gh workflow run design-resync.yml -f tag=v1.3.2 -f repositories="m3l-plugins"
+#   gh workflow run design-resync.yml -R monte3l/.github -f tag=v1.3.2 -f repositories="m3l-plugins"
 on:
   repository_dispatch:
     types: [release-published]

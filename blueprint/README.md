@@ -98,7 +98,7 @@ signs it and the required checks run on the pull request.
 | Nothing adapts a repository to the new version | A person reads the release notes and the checks before merging |
 
 Run it by hand for a missed tag or one repository:
-`gh workflow run design-resync.yml -f tag=v1.3.2 -f repositories="m3l-plugins"`.
+`gh workflow run design-resync.yml -R monte3l/.github -f tag=v1.3.2 -f repositories="m3l-plugins"`.
 A new repository that vendors `m3l-design` goes in `consumers`.
 
 The vendored payload includes the **docs kit**, which builds and gates a docs
