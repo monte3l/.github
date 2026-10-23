@@ -1,0 +1,203 @@
+name: Design re-sync
+
+# Opens a re-sync pull request in every repository that vendors m3l-design,
+# when m3l-design publishes a release. It replaces running `sync-design.sh`
+# by hand in each of them.
+#
+# m3l-design's `release.yml` sends `release-published` to this repository
+# (`notify: [".github"]` in its release workflow). The payload only names the
+# repository and the tag: the tag must be a published `vX.Y.Z` release of
+# monte3l/m3l-design, and the files come from that release, never from the
+# payload. The repositories to update are listed in `consumers` in
+# `blueprint/design-system.json`.
+#
+# For each one, the real `bin/sync-design.sh` of that tag runs, so the release
+# is verified (`gh release verify`, `verify-asset`, SHA256SUMS) exactly as when
+# a person runs it. `bin/design-resync-pr.sh` then commits the result through
+# the API as the release App and opens the pull request. GitHub signs that
+# commit and the required checks run on the pull request, which a
+# `GITHUB_TOKEN` pull request would not trigger. A person still reviews and
+# merges each one: nothing here adapts a repository to a new version.
+#
+# This repository is one of the consumers. Its pull request also moves the pin
+# in `blueprint/design-system.json`, which the baseline check compares.
+#
+# Run it by hand for a tag that was missed, or for one repository:
+#   gh workflow run design-resync.yml -f tag=v1.3.2 -f repositories="m3l-plugins"
+on:
+  repository_dispatch:
+    types: [release-published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The m3l-design release to sync to, for example v1.3.2
+        required: true
+        type: string
+      repositories:
+        description: Repository names to update, separated by spaces. Empty means every consumer
+        required: false
+        default: ""
+        type: string
+
+permissions: {}
+
+# One re-sync at a time, and none cancelled midway: a run that stops between
+# creating a branch and opening its pull request is cleaned up by the next one.
+concurrency:
+  group: design-resync
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      consumers: ${{ steps.plan.outputs.consumers }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Validate the release and list the consumers
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PAYLOAD_REPOSITORY: ${{ github.event.client_payload.repository }}
+          PAYLOAD_TAG: ${{ github.event.client_payload.tag }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_REPOSITORIES: ${{ inputs.repositories }}
+        run: |
+          if [[ "$EVENT" == repository_dispatch ]]; then
+            if [[ "$PAYLOAD_REPOSITORY" != monte3l/m3l-design ]]; then
+              echo "::error::The dispatch came from '$PAYLOAD_REPOSITORY', not monte3l/m3l-design"
+              exit 1
+            fi
+            tag="$PAYLOAD_TAG"
+          else
+            tag="$INPUT_TAG"
+          fi
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'${tag:0:40}' is not a release tag like v1.2.3"
+            exit 1
+          fi
+
+          # Only a published, stable release counts. A draft or a prerelease is not
+          # something a consumer should copy.
+          published="$(gh api "repos/monte3l/m3l-design/releases/tags/$tag" \
+            --jq 'select(.draft == false and .prerelease == false) | .tag_name' 2>/dev/null || true)"
+          if [[ "$published" != "$tag" ]]; then
+            echo "::error::$tag is not a published release of monte3l/m3l-design"
+            exit 1
+          fi
+
+          # A dispatch for a tag that is not newer than the pin would move every
+          # consumer backwards. A person running the workflow by hand may do it.
+          pinned="$(jq -r .version blueprint/design-system.json)"
+          if [[ "$EVENT" == repository_dispatch && "$tag" != "$pinned" &&
+            "$(printf '%s\n%s\n' "$pinned" "$tag" | sort -V | tail -n 1)" != "$tag" ]]; then
+            echo "::notice::$tag is older than the pin $pinned: nothing to do"
+            printf 'tag=%s\nconsumers=[]\n' "$tag" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          consumers="$(jq -c '.consumers' blueprint/design-system.json)"
+          if [[ -n "${INPUT_REPOSITORIES// /}" ]]; then
+            # shellcheck disable=SC2086 # splitting the space-separated names is the point
+            wanted="$(printf '%s\n' $INPUT_REPOSITORIES | jq -R . | jq -sc .)"
+            unknown="$(jq -nc --argjson all "$consumers" --argjson wanted "$wanted" '$wanted - $all')"
+            if [[ "$unknown" != '[]' ]]; then
+              echo "::error::Not listed as consumers in blueprint/design-system.json: $unknown"
+              exit 1
+            fi
+            consumers="$wanted"
+          fi
+          printf 'tag=%s\nconsumers=%s\n' "$tag" "$consumers" >>"$GITHUB_OUTPUT"
+          echo "Syncing $tag into: $consumers"
+
+  resync:
+    name: Re-sync ${{ matrix.repository }}
+    needs: [plan]
+    if: needs.plan.outputs.consumers != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        repository: ${{ fromJSON(needs.plan.outputs.consumers) }}
+    env:
+      TAG: ${{ needs.plan.outputs.tag }}
+    steps:
+      # Scoped to the one repository this leg changes. The App's key could mint a
+      # token for every installed repository, so no other step gets it.
+      - name: Mint a token for this repository only
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ matrix.repository }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Check out this repository (the pull request script)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: tools
+          persist-credentials: false
+
+      - name: Check out the m3l-design release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: monte3l/m3l-design
+          ref: refs/tags/${{ needs.plan.outputs.tag }}
+          path: m3l-design
+          persist-credentials: false
+
+      - name: Check out ${{ matrix.repository }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ github.repository_owner }}/${{ matrix.repository }}
+          token: ${{ steps.app-token.outputs.token }}
+          path: consumer
+          persist-credentials: false
+
+      # The brand licence text under LICENSES/ is a copy REUSE needs, and the
+      # release tarball does not carry it. Refresh it only where it exists.
+      - name: Refresh the brand licence text
+        run: |
+          if [[ -f consumer/LICENSES/LicenseRef-MONTE3L-Brand.txt ]]; then
+            cp m3l-design/LICENSES/LicenseRef-MONTE3L-Brand.txt consumer/LICENSES/LicenseRef-MONTE3L-Brand.txt
+          fi
+
+      # The read-only workflow token is enough: the script downloads and verifies
+      # a public release. It never sees the App token.
+      - name: Sync the design copy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash m3l-design/bin/sync-design.sh "$TAG" consumer
+
+      - name: Move the design pin
+        if: matrix.repository == '.github'
+        run: |
+          jq --arg version "$TAG" '.version = $version' consumer/blueprint/design-system.json >pin.json
+          mv pin.json consumer/blueprint/design-system.json
+
+      - name: Read the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release view "$TAG" -R monte3l/m3l-design --json body --jq .body >notes.md
+
+      - name: Open the pull request
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          NOTES_FILE: notes.md
+          REPOSITORY: ${{ github.repository_owner }}/${{ matrix.repository }}
+        run: bash tools/bin/design-resync-pr.sh "$REPOSITORY" "$TAG" consumer
