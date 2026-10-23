@@ -382,6 +382,41 @@ else
   fi
 fi
 
+# --- description and topics (report only; applies to a repository in projects.json) ---
+# The GitHub description and topics are the repository's public one-liner, so
+# they come from blueprint/projects.json, the same file the org site and the
+# social cards read. Setting them is a `gh repo edit`, which the script prints
+# and never runs, like the homepage above.
+project="$(jq -c --arg name "${repo#*/}" '.[] | select(.repo == $name)' "$here/projects.json")"
+if [[ -z "$project" ]]; then
+  skip "description and topics" "not listed in blueprint/projects.json"
+else
+  want_description="$(jq -r .description <<<"$project")"
+  have_description="$(jq -r '.description // ""' <<<"$live_repo")"
+  if [[ "$have_description" == "$want_description" ]]; then
+    printf 'OK     repository description\n'
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  repository description is "%s", the blueprint says "%s"\n' "$have_description" "$want_description"
+    [[ "$mode" == "check" ]] || printf '         gh repo edit %s --description "%s"\n' "$repo" "$want_description"
+  fi
+  want_topics="$(jq -c '.topics | sort' <<<"$project")"
+  have_topics="$(jq -c '(.topics // []) | sort' <<<"$live_repo")"
+  if [[ "$have_topics" == "$want_topics" ]]; then
+    printf 'OK     repository topics\n'
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  repository topics are %s, the blueprint says %s\n' "$have_topics" "$want_topics"
+    if [[ "$mode" != "check" ]]; then
+      printf '         gh repo edit %s' "$repo"
+      jq -r '.topics[] | " --add-topic " + .' <<<"$project" | tr -d '\n'
+      printf '\n'
+    fi
+  fi
+fi
+
 # --- release (report only; applies to every repository not exempt in release.json) ---
 # The standard is the shared release workflows, so a repository either calls
 # them from its own release.yml or is listed as exempt with a reason. The

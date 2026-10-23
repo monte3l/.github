@@ -19,6 +19,8 @@ export const INLINE_ITEMS = [
   "docs site: tier",
   "docs site: daily check",
   "docs site: homepage",
+  "repository description",
+  "repository topics",
   "release: workflow pin",
   "release: app installation",
   "release: app secrets",

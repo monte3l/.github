@@ -11,7 +11,12 @@
  * - `blueprint/design-system.json` pins a version other than the one
  *   `design/README.md` records;
  * - `blueprint/projects.json` and the project table in `profile/README.md`
- *   disagree about which repositories exist or where their sites are.
+ *   disagree about which repositories exist or where their sites are;
+ * - a card line, description or topic breaks the wording standard (length,
+ *   no final dot or ellipsis, no colon or semicolon list, US spelling,
+ *   lowercase topics), or a profile row does not carry its repository's
+ *   description, or the profile tagline is not `blueprint/org.json`'s
+ *   description.
  *
  * The status snapshot, if any, in `profile/README.md` is hand-kept and is not
  * checked.
@@ -79,6 +84,57 @@ export function projectProblems(projects, rows) {
   return problems;
 }
 
+/** The wording standard for the text the org publishes about each repository. */
+export const LIMITS = { card: 120, description: 200, topics: 8 };
+const UK_SPELLING = /\b(organis\w*|colour\w*|behaviour\w*|centre\w*|licence)\b/i;
+
+/**
+ * @param {string} where a label for the message
+ * @param {string} text a card line, description or org description
+ * @param {number} limit the longest it may be, in characters
+ * @returns {string[]}
+ */
+export function wordingProblems(where, text, limit) {
+  const problems = [];
+  if (typeof text !== "string" || text === "") return [`${where}: must be a non-empty string`];
+  if (text.length > limit) problems.push(`${where}: ${text.length} characters, the limit is ${limit}`);
+  if (/[.\u2026\s]$/.test(text)) problems.push(`${where}: ends in a dot, an ellipsis or a space`);
+  if (/[:;]/.test(text)) problems.push(`${where}: has a colon or a semicolon, which makes a list; use one clause`);
+  const uk = UK_SPELLING.exec(text);
+  if (uk) problems.push(`${where}: "${uk[0]}" is UK spelling, the org uses US`);
+  return problems;
+}
+
+/**
+ * @param {Array<{ repo: string, card: string, description: string, topics: string[] }>} projects
+ * @param {{ description: string }} org
+ * @param {string} profile profile/README.md
+ * @returns {string[]}
+ */
+export function descriptionProblems(projects, org, profile) {
+  const problems = [];
+  for (const { repo, card, description, topics } of projects) {
+    problems.push(...wordingProblems(`${repo} card`, card, LIMITS.card));
+    problems.push(...wordingProblems(`${repo} description`, description, LIMITS.description));
+    if (!Array.isArray(topics) || topics.length === 0 || topics.length > LIMITS.topics) {
+      problems.push(`${repo} topics: needs 1 to ${LIMITS.topics} entries`);
+    } else {
+      for (const topic of topics) {
+        if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(topic)) problems.push(`${repo} topics: "${topic}" must be lowercase words joined by hyphens`);
+      }
+    }
+    const row = profile.split("\n").find((line) => line.startsWith(`| [${repo}](`));
+    if (row && !row.includes(`| ${description}. Docs at `)) {
+      problems.push(`profile/README.md: the ${repo} row does not carry its description from blueprint/projects.json`);
+    }
+  }
+  problems.push(...wordingProblems("blueprint/org.json description", org.description, LIMITS.card));
+  if (!profile.includes(`\n${org.description}.\n`)) {
+    problems.push("profile/README.md: the tagline under the title is not blueprint/org.json's description plus a full stop");
+  }
+  return problems;
+}
+
 export default async function parity({ root }) {
   const read = (rel) => readFile(path.join(root, rel), "utf8");
   const problems = [];
@@ -90,6 +146,8 @@ export default async function parity({ root }) {
   problems.push(...assertSame("design version: blueprint/design-system.json vs design/README.md", recorded, pinned));
 
   const projects = JSON.parse(await read("blueprint/projects.json"));
-  problems.push(...projectProblems(projects, profileRows(await read("profile/README.md"))));
+  const profile = await read("profile/README.md");
+  problems.push(...projectProblems(projects, profileRows(profile)));
+  problems.push(...descriptionProblems(projects, JSON.parse(await read("blueprint/org.json")), profile));
   return problems;
 }
