@@ -8,6 +8,7 @@ export default {
   repo: "https://github.com/monte3l/.github",
   siteUrl: "https://monte3l.com",
   designDir: "design",
+  brand: true,
   navGroups: ["Start", "Standard", "Community"],
   nav: [
     { href: "index.html", label: "Projects" },

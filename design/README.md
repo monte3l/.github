@@ -4,8 +4,8 @@ This repository follows **m3l-design**, the shared design system for
 everything published under the `monte3l` GitHub org.
 
 - **Source:** [github.com/monte3l/m3l-design](https://github.com/monte3l/m3l-design)
-- **Version copied:** `v1.2.0`
-- **Last re-synced:** 2026-10-22
+- **Version copied:** `v1.3.0`
+- **Last re-synced:** 2026-10-23
 - **Tier:** vendored
 
 ## What "vendored tier" means here
