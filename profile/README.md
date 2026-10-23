@@ -2,14 +2,14 @@
 
 Open-source tooling for TypeScript projects and Claude Code.
 
-| Project                                                     | What it is                                                                                                                                      |
-| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| [m3l-groundwork](https://github.com/monte3l/m3l-groundwork) | A CLI that bootstraps a TypeScript project with a strict toolchain and Claude Code setup, or read-only surveys an existing one. Its `/customize` plugin then tailors the result to current guidance. Docs at [groundwork.monte3l.com](https://groundwork.monte3l.com). |
-| [m3l-prompt-optimizer](https://github.com/monte3l/m3l-prompt-optimizer) | A Claude Code plugin that refines the prompts you type using Anthropic's prompt-engineering guidance. Clear prompts pass through unchanged. Docs at [prompt-optimizer.monte3l.com](https://prompt-optimizer.monte3l.com). |
-| [m3l-output-governor](https://github.com/monte3l/m3l-output-governor) | Measures where Claude Code's output tokens go and records which levers cut them: effort and the built-in Concise output style. Docs at [output-governor.monte3l.com](https://output-governor.monte3l.com). |
-| [m3l-plugins](https://github.com/monte3l/m3l-plugins) | The Claude Code plugin marketplace: one catalog for every plugin the organization publishes, each pinned to a release. Docs at [plugins.monte3l.com](https://plugins.monte3l.com). |
-| [m3l-design](https://github.com/monte3l/m3l-design)         | The design system: tokens, components and contrast tables, copied into every monte3l repository. Docs at [design.monte3l.com](https://design.monte3l.com). |
-| [.github](https://github.com/monte3l/.github)               | Organization defaults: community health files, issue and pull request templates, workflow templates, and a repository settings blueprint. Docs at [monte3l.com](https://monte3l.com). |
+| Project | What it is |
+| --- | --- |
+| [m3l-groundwork](https://github.com/monte3l/m3l-groundwork) | A CLI that sets up a TypeScript project with a strict toolchain and Claude Code, or surveys an existing one read-only, plus a /customize skill that tailors it to current guidance. Docs at [groundwork.monte3l.com](https://groundwork.monte3l.com). |
+| [m3l-prompt-optimizer](https://github.com/monte3l/m3l-prompt-optimizer) | A Claude Code plugin that refines the prompts you type using Anthropic's prompt-engineering guidance, and passes clear prompts through unchanged. Docs at [prompt-optimizer.monte3l.com](https://prompt-optimizer.monte3l.com). |
+| [m3l-output-governor](https://github.com/monte3l/m3l-output-governor) | A Claude Code plugin that measures where your output tokens go and records which levers cut them, such as effort and the built-in Concise output style. Docs at [output-governor.monte3l.com](https://output-governor.monte3l.com). |
+| [m3l-plugins](https://github.com/monte3l/m3l-plugins) | A Claude Code plugin marketplace with one catalogue for every plugin the organization publishes, each pinned to a release. Docs at [plugins.monte3l.com](https://plugins.monte3l.com). |
+| [m3l-design](https://github.com/monte3l/m3l-design) | The monte3l design system, with tokens, components and contrast tables, copied into every monte3l repository. Docs at [design.monte3l.com](https://design.monte3l.com). |
+| [.github](https://github.com/monte3l/.github) | The organization defaults for monte3l, with community health files, issue and pull request templates, workflow templates and a repository settings blueprint. Docs at [monte3l.com](https://monte3l.com). |
 
 ## Quickstart
 

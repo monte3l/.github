@@ -151,8 +151,9 @@ repository and, only with `--apply`, writes it.
   their content and not by file name: workflow lint, REUSE check, DCO check,
   commit lint, the Node pin, Scorecard (public repositories only). The
   release configuration, workflow and immutable-releases setting are reported
-  for every repository that `blueprint/release.json` does not exempt. Open Scorecard alerts
-  are listed too. Adding one is a commit in that repository.
+  for every repository that `blueprint/release.json` does not exempt. The
+  description and topics of a repository listed in `blueprint/projects.json`.
+  Open Scorecard alerts are listed too. Adding one is a commit in that repository.
 - **A repository adds:** everything the blueprint does not own, including
   `dependabot.yml`, `CODEOWNERS` and `LICENSE`.
 
@@ -160,6 +161,26 @@ repository and, only with `--apply`, writes it.
 > `--apply` changes repository settings. Run the read-only check first, and
 > read `blueprint/README.md` before applying to a repository that does not
 > produce the four required checks.
+
+### Repository descriptions
+
+What the organization says about each repository is one set of words in three
+lengths, kept in `blueprint/projects.json`: a **card line** (up to 120
+characters) for the social card, a **description** (up to 200) for the GitHub
+About text and the manifest, and the **topics**. The profile table below the
+tagline in `profile/README.md` is written from the descriptions.
+
+- **Enforced:** nowhere. The script reports a different GitHub description or
+  topic list as `repository description` or `repository topics` and prints the
+  `gh repo edit` command. `bin/doc-parity.mjs` checks the wording rules and
+  that the profile table carries the descriptions.
+- **The wording:** a noun phrase first, plain words addressed to the reader,
+  one clause, no final dot or ellipsis, UK spelling in the Oxford style. The full
+  rules are in
+  `blueprint/README.md`, under "Descriptions".
+- **Organization details:** `blueprint/org.json` holds the display name
+  (`monte3l`), description and website. An Owner sets them in the organization
+  settings. The script does not read them.
 
 ### Design system
 
@@ -288,6 +309,8 @@ One row per tracked file. **Delivery** is one of:
 | `tags` ruleset | `blueprint/rulesets/tags.json` | **Applied**. **Skipped** (same) | Nothing | Script: `ruleset: tags` |
 | Labels | `blueprint/labels.json` | **Applied**, create-only | Nothing. An existing label is never rewritten | Script: label lines (they report OK or DRIFT inline) |
 | Design version pin | `blueprint/design-system.json` | **Checked** | Record that tag in `design/README.md`, then run `sync-design.sh` if it has a visual surface | Script: `design system` |
+| Descriptions and topics | `blueprint/projects.json` | **Checked** | Set them with `gh repo edit`; the script prints the command | Script: `repository description`, `repository topics` |
+| Organization details | `blueprint/org.json` | **Not delivered**. An Owner sets them in the organization settings | Nothing | Not verified. `gh api orgs/monte3l` shows the live values |
 | Repository standard files | `blueprint/files/` (`gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependabot.yml`) | **Checked**. Starting points only | Commit its own copy of each | Script: `Gitleaks config`, `line endings`, `editor config`, `REUSE`, `Dependabot` |
 | `CODEOWNERS` | `.github/CODEOWNERS` | **Checked** | Keep its own (never inherited) | Script: `CODEOWNERS` |
 | README skeleton | `blueprint/files/README.md` | **Not delivered**. A starting point, copied by hand | Copy it and fill it in | Not verified |

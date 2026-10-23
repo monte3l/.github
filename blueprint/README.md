@@ -20,7 +20,8 @@ in `m3l-groundwork`.
 | `labels.json`            | Labels that Dependabot, the baseline's scheduled audit and the PR labeler apply, coloured with m3l-design's primitives: status colours for `dependencies` and `security`, the brand colour for the four shared `area:*` labels. Labels are create-only, so existing repositories keep their old colours |
 | `design-system.json`     | The m3l-design release tag (`vX.Y.Z`) every repository should record in `design/README.md`. Checked by the script, never applied |
 | `release.json`           | The shared release workflow the script looks for in each repository's workflows, and the repositories exempt from releasing, each with its reason. Checked by the script, never applied. See [Releases](#releases) |
-| `projects.json`          | Every monte3l repository and its docs-site URL. The org site's project cards and `profile/README.md`'s table are checked against it |
+| `projects.json`          | Every monte3l repository: its docs-site URL, card line, description and topics. The org site's project cards, `profile/README.md`'s table and each repository's GitHub description and topics are checked against it. See [Descriptions](#descriptions) |
+| `org.json`               | The organization's display name, description and website. Never applied or checked by the script, because it is an org setting. An Owner sets it, see [Descriptions](#descriptions) |
 | `docs-site.md`           | The docs site standard, the Cloudflare one-time setup and the runbook. See [Docs site](#docs-site) |
 | `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependabot.yml`, `labeler.yml`, a `README.md` skeleton, `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
@@ -104,6 +105,33 @@ The script reports a repository that has a `docs.config.mjs` and lacks the
 vendored tier marker, the kit gate in a workflow, the deploy and smoke jobs, a
 scheduled live check, or a `homepage` set to its `monte3l.com` URL. Those are
 the `docs site` items below.
+
+## Descriptions
+
+What monte3l says about each repository is one set of words in three lengths,
+all kept in `projects.json`, so the GitHub page, the manifest, the org profile
+and the social card never drift apart.
+
+| Text | Where it lives | Rule |
+| --- | --- | --- |
+| **Card line** | `projects.json` `card` only. `m3l-design`'s `bin/build-brand.mjs --social` prints it on the repository's social card | Up to 120 characters, so it fits two card lines without an ellipsis |
+| **Description** | `projects.json` `description`, the GitHub About text, and the manifest's `description` (`package.json` or `plugin.json`) | Up to 200 characters. The card line, expanded. The docs kit's `--metadata` check keeps the manifest and GitHub in step |
+| **Profile row** | `profile/README.md`'s table: the description, a full stop, then the link to the docs site | Written from the description, never edited on its own |
+| **Topics** | `projects.json` `topics`, set on GitHub | One to eight, lowercase words joined by hyphens. `claude-code` for a Claude Code project, plus what it is |
+
+**Wording**, for the card line and the description alike:
+
+- Open with a noun phrase for what it is: "A CLI that…", "A Claude Code plugin that…", "The design system…".
+- Plain words, addressed to the reader where it fits: "the prompts you type", "where your output tokens go".
+- One clause. No colon or semicolon list.
+- No final dot and no ellipsis. A card or an About line just stops.
+- UK spelling in the Oxford style: `-ize` as in organization and standardize, but colour, behaviour, catalogue and licence. Names such as `color-*` tokens, `/customize` and `LICENSE` are identifiers, so they are never respelled. "Claude Code" is always capitalized.
+- Name monte3l only where it is the point: the marketplace, the design system and this repository. Elsewhere the card and the page already say it.
+
+**Organization details** (`org.json`): the display name is `monte3l`, as in prose; only the logo is set in capitals. The description is the profile's tagline without its full stop. An Owner sets these in the organization settings, or with
+`gh api -X PATCH orgs/monte3l -f name=... -f description=... -f blog=...`.
+
+`bin/doc-parity.mjs` fails on a card line or description that breaks these rules, a profile row that does not carry its description, and a profile tagline that is not `org.json`'s description. To change a text, edit `projects.json`, rewrite the profile row, change the manifest in the repository and run `gh repo edit` (the script prints the command). Then render the social card again with `node bin/build-brand.mjs --social <dir>` in `m3l-design` and upload it in the repository's settings.
 
 ## Environment cleanup
 
@@ -304,6 +332,8 @@ exceptions are the `env-janitor` branch policy and org-secret access, which
 | Docs site: deploy | `docs site: deploy` | The workflow builds, runs `wrangler deploy`, then smoke-tests the live site | `workflow-templates/docs.yml` |
 | Docs site: daily check | `docs site: daily check` | One workflow has both a schedule and `docs-kit/check-live.mjs` | `workflow-templates/docs-live.yml` |
 | Docs site: homepage | `docs site: homepage` | The GitHub repository `homepage` is its `https://*.monte3l.com` URL | `gh repo edit --homepage` |
+| Repository description | `repository description` | Only for a repository in `projects.json`: the GitHub description is that file's `description`, word for word | `gh repo edit --description` |
+| Repository topics | `repository topics` | Only for a repository in `projects.json`: the GitHub topics are that file's `topics`, in any order | `gh repo edit --add-topic` |
 | Janitor: branch policy | `env-janitor: branch policy` | Only for a repository with `.github/environments.json`: the `env-janitor` environment deploys from `main` only. `--apply` adds `main` and never removes another policy | [Environment cleanup](#environment-cleanup) |
 | Janitor: org secrets | `env-janitor: org secrets` | `JANITOR_APP_CLIENT_ID` and `JANITOR_APP_PRIVATE_KEY` are organization secrets with visibility `selected`, shared with the repository. `--apply` shares them and never creates one | [Environment cleanup](#environment-cleanup) |
 | Janitor: no environment secrets | `env-janitor: no environment secrets` | The `env-janitor` environment holds neither secret, because an environment secret overrides the org one. The script prints the `gh secret delete` commands and never runs them | [Environment cleanup](#environment-cleanup) |
