@@ -12,7 +12,7 @@ description: >-
 Takes a branch with committed work to an open, mergeable PR. `main` is
 protected by a ruleset: every change goes through a PR, needs a code-owner
 approval of the last push, resolved threads, signed commits and the required
-checks (`verify`, `Dependency Review`, `CodeQL`, `Gitleaks`, `DCO sign-off`).
+checks (`verify`, `Dependency Review`, `CodeQL`, `Gitleaks`, `DCO sign-off`, `Commit lint`).
 Auto-merge is off for this repo (`allow_auto_merge: false` in
 `blueprint/repo-settings.json`), so a human merges.
 

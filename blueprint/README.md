@@ -50,7 +50,7 @@ does not count them as drift.
 
 > [!WARNING]
 > The blueprint requires the `verify`, `Dependency Review`, `CodeQL`,
-> `Gitleaks` and `DCO sign-off` checks and SHA-pinned actions. `Gitleaks` also needs the
+> `Gitleaks`, `DCO sign-off` and `Commit lint` checks and SHA-pinned actions. `Gitleaks` also needs the
 > `GITLEAKS_LICENSE` organization secret to be shared with the repository.
 > Applying it to a repository that does not produce those checks, or that
 > uses unpinned actions, blocks merges and fails workflows until that is
@@ -282,9 +282,9 @@ request cannot merge.
 > at the shared workflow's name, and renaming the caller breaks publishing.
 
 > [!NOTE]
-> `commit lint` is reported by the script but is not in the `main` ruleset's
-> required checks yet. Add it there only after every repository runs it,
-> because a required check that a repository never reports blocks its merges.
+> `Commit lint` is a required check in the `main` ruleset. A repository that
+> never reports it cannot merge, so a new repository copies the template before
+> the ruleset is applied to it.
 
 The shared workflows are pinned in each caller by full commit SHA like any
 action, and Dependabot's `github-actions` entry keeps the pin current. A change
@@ -336,7 +336,7 @@ exceptions are the `env-janitor` branch policy and org-secret access, which
 | Scorecard | `Scorecard workflow`, `Scorecard alerts` | Public repositories only. Open alerts are fixed or dismissed with a reason | `workflow-templates/scorecard.yml` |
 | DCO check | `DCO check` | Every non-merge commit in a pull request carries a `Signed-off-by:` trailer that matches its author or committer email. `DCO sign-off` is a required check in the `main` ruleset, so its job `name:` must stay `DCO sign-off` and the workflow must not filter by path | `workflow-templates/dco.yml` |
 | PR labeler | `PR labeler` | A workflow runs `actions/labeler`, and `.github/labeler.yml` maps paths to labels. The four shared `area:*` labels come from `labels.json`; a label that is specific to the repository is created once by hand with `--color 554d50` | `workflow-templates/labeler.yml`, `files/labeler.yml` |
-| Commit lint | `commit lint` | A pull request's title and every non-merge commit are Conventional Commits, because the release workflow reads them. The job `name:` is `Commit lint` and the workflow does not filter by path. It is not yet a required check in the `main` ruleset: see [Releases](#releases) | `workflow-templates/commit-lint.yml` |
+| Commit lint | `commit lint` | A pull request's title and every non-merge commit are Conventional Commits, because the release workflow reads them. The job `name:` is `Commit lint` and the workflow does not filter by path. It is a required check in the `main` ruleset: see [Releases](#releases) | `workflow-templates/commit-lint.yml` |
 | Release config | `release: config`, `release: manifest` | `release-please-config.json` and `.release-please-manifest.json`, unless `release.json` exempts the repository | `files/release-please/` |
 | Release workflow | `release: workflow` | `release.yml` calls both shared workflows, each pinned to a full commit SHA | `workflow-templates/release.yml` |
 | Release workflow pin | `release: workflow pin` | Each pinned SHA is a commit on `.github`'s default branch. A commit that lived only on a pull request branch, which a squash merge drops, fails every release that copied it | `workflow-templates/release.yml` |
