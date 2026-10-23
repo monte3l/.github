@@ -124,7 +124,7 @@ Two further limits on files that are inherited:
   `docs-live`, `environments`, `gitleaks`, `labeler`, `release`, `reuse`,
   `scorecard`, `verify`, `workflow-lint`.
 - **A repository adds:** the copy. The `main` ruleset requires checks named
-  `verify`, `Dependency Review`, `CodeQL`, `Gitleaks` and `DCO sign-off`:
+  `verify`, `Dependency Review`, `CodeQL`, `Gitleaks`, `DCO sign-off` and `Commit lint`:
 
 | Required check | Provided by |
 | --- | --- |
@@ -133,6 +133,7 @@ Two further limits on files that are inherited:
 | `Gitleaks` | The `gitleaks` template. Its job `name:` must stay `Gitleaks` |
 | `CodeQL` | Code scanning default setup, enabled by an owner |
 | `DCO sign-off` | The `dco` template. Its job `name:` must stay `DCO sign-off`, and it must not filter by path, or a pull request that skips it can never merge |
+| `Commit lint` | The `commit-lint` template. Its job `name:` must stay `Commit lint`, and it must not filter by path. It is a plain template and not a reusable workflow, because a required check from a reusable workflow is reported as `<caller job> / <called job>` |
 
 > [!WARNING]
 > **Renaming a job in a template silently breaks merges** in every repository
