@@ -20,7 +20,15 @@ npx @monte3l/groundwork my-app
 ```
 
 Add the organization's plugin marketplace to Claude Code, then refine the
-prompts you type and measure where its output tokens go:
+prompts you type and measure where its output tokens go. From your shell:
+
+```bash
+claude plugin marketplace add monte3l/m3l-plugins
+claude plugin install m3l-prompt-optimizer@monte3l
+claude plugin install m3l-output-governor@monte3l
+```
+
+Or inside a Claude Code session:
 
 ```text
 /plugin marketplace add monte3l/m3l-plugins
