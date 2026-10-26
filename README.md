@@ -2,7 +2,7 @@
 
 [![verify](https://github.com/monte3l/.github/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/monte3l/.github/actions/workflows/verify.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/monte3l/.github/badge)](https://securityscorecards.dev/viewer/?uri=github.com/monte3l/.github)
-[![REUSE status](https://api.reuse.software/badge/github.com/monte3l/.github)](https://api.reuse.software/info/github.com/monte3l/.github)
+[![REUSE](https://github.com/monte3l/.github/actions/workflows/reuse.yml/badge.svg?branch=main)](https://github.com/monte3l/.github/actions/workflows/reuse.yml)
 
 The single reference for what is an organization default in `monte3l`, and how
 it reaches a repository. Read it rendered at [monte3l.com](https://monte3l.com).

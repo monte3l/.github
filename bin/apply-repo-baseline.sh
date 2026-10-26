@@ -269,6 +269,8 @@ report_workflow "workflow lint" "copy workflow-templates/workflow-lint.yml, or a
   'actionlint' 'zizmor'
 report_workflow "REUSE check" "copy workflow-templates/reuse.yml, or run reuse lint from a workflow that already runs" \
   'reuse lint|fsfe/reuse-action'
+report_workflow "ScanCode check" "copy workflow-templates/scancode.yml with blueprint/files/policies.yml and scancode-config.yml" \
+  'aboutcode-org/scancode-action'
 report_workflow "DCO check" "copy workflow-templates/dco.yml, or check Signed-off-by from a workflow that already runs" \
   'Signed-off-by'
 report_workflow "commit lint" "copy workflow-templates/commit-lint.yml, or check Conventional Commits from a workflow that already runs under the job name Commit lint" \

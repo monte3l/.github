@@ -2,7 +2,7 @@
 
 [![verify](https://github.com/monte3l/{repo}/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/monte3l/{repo}/actions/workflows/verify.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/monte3l/{repo}/badge)](https://securityscorecards.dev/viewer/?uri=github.com/monte3l/{repo})
-[![REUSE status](https://api.reuse.software/badge/github.com/monte3l/{repo})](https://api.reuse.software/info/github.com/monte3l/{repo})
+[![REUSE](https://github.com/monte3l/{repo}/actions/workflows/reuse.yml/badge.svg?branch=main)](https://github.com/monte3l/{repo}/actions/workflows/reuse.yml)
 
 {One short paragraph: what {repo} is and what it does for the reader, in plain
 words. Link the docs site here if there is one.}

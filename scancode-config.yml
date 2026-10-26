@@ -1,0 +1,5 @@
+# ScanCode project settings. Paths here are matched with shell-style
+# wildcards. Ignore only files that name a license without being licensed
+# under it, for example the license texts themselves.
+ignored_patterns:
+  - 'LICENSES/*'

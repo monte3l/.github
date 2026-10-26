@@ -1,0 +1,6 @@
+{
+  "name": "ScanCode",
+  "description": "Check file contents for licenses the repository does not declare.",
+  "iconName": "octicon law",
+  "categories": ["Code Scanning"]
+}
