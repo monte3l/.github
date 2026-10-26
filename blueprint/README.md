@@ -23,7 +23,7 @@ in `m3l-groundwork`.
 | `projects.json`          | Every monte3l repository: its docs-site URL, card line, description and topics. The org site's project cards, `profile/README.md`'s table and each repository's GitHub description and topics are checked against it. See [Descriptions](#descriptions) |
 | `org.json`               | The organization's display name, description and website. Never applied or checked by the script, because it is an org setting. An Owner sets it, see [Descriptions](#descriptions) |
 | `docs-site.md`           | The docs site standard, the Cloudflare one-time setup and the runbook. See [Docs site](#docs-site) |
-| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependabot.yml`, `labeler.yml`, a `README.md` skeleton, `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
+| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `policies.yml` and `scancode-config.yml` (the ScanCode license policy and ignored paths), `dependabot.yml`, `labeler.yml`, a `README.md` skeleton, `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
 | `claude/managed-settings.json` | The Claude Code policy for the whole Claude Team organization, pasted into the admin console by an Owner. Never applied by the script. See [Claude Code managed settings](#claude-code-managed-settings) |
 | `../workflow-templates/environments.yml` | The weekly `env-janitor` cleanup workflow. See [Environment cleanup](#environment-cleanup) |
@@ -355,6 +355,7 @@ exceptions are the `env-janitor` branch policy and org-secret access, which
 | Gitleaks config | `Gitleaks config` | `.gitleaks.toml` extends the default rules; the workflow passes it as `GITLEAKS_CONFIG` | `files/gitleaks.toml` |
 | Line endings and editor | `line endings`, `editor config` | `.gitattributes` with `* text=auto eol=lf`, and `.editorconfig` (utf-8, lf, 2 spaces, final newline). A repository that hashes raw bytes keeps `* -text` instead: see the note below | `files/gitattributes`, `files/editorconfig` |
 | REUSE | `REUSE`, `REUSE check` | `REUSE.toml` plus `LICENSES/`, checked by `reuse lint` in CI, from any workflow. Required because every repository that vendors m3l-design ships its OFL-1.1 fonts next to MIT files | `files/REUSE.toml`, `workflow-templates/reuse.yml` |
+| ScanCode | `ScanCode check` | A workflow running `aboutcode-org/scancode-action` with `check-compliance`, and a `policies.yml` listing every license the repository may contain. REUSE trusts what a file declares, so a copied third-party file with only a license notice passes `reuse lint` under the catch-all MIT entry. ScanCode reads the text and fails on any license the policy does not list. Not a required check in the `main` ruleset, because the action is still beta. See [Why ScanCode and not the other scanners](#why-scancode-and-not-the-other-scanners) | `files/policies.yml`, `files/scancode-config.yml`, `workflow-templates/scancode.yml` |
 | Workflow lint | `workflow lint` | actionlint and zizmor on every change to a workflow, from any workflow | `workflow-templates/workflow-lint.yml` |
 | Scorecard | `Scorecard workflow`, `Scorecard alerts` | Public repositories only. Open alerts are fixed or dismissed with a reason | `workflow-templates/scorecard.yml` |
 | DCO check | `DCO check` | Every non-merge commit in a pull request carries a `Signed-off-by:` trailer that matches its author or committer email. `DCO sign-off` is a required check in the `main` ruleset, so its job `name:` must stay `DCO sign-off` and the workflow must not filter by path | `workflow-templates/dco.yml` |
@@ -382,7 +383,7 @@ exceptions are the `env-janitor` branch policy and org-secret access, which
 | Janitor: planner pin | `env-janitor: planner pin` | `environments.yml` pins an `m3l-groundwork` commit that is on `main` and contains the newest change to the planner's files. Trailing `main` is fine. `m3l-groundwork` itself is skipped | `workflow-templates/environments.yml` |
 | Janitor: last run | `env-janitor: last run` | The last `environments.yml` run succeeded. A red run can also be real policy drift: read its job summary | Dispatch with `dry_run` on |
 
-The workflow items (workflow lint, REUSE check, Scorecard) look for the
+The workflow items (workflow lint, REUSE check, ScanCode check, Scorecard) look for the
 control in the text of the repository's workflows, not for a file name: a
 `reuse lint` step inside `verify.yml` counts, and a second workflow would only
 duplicate it. The file items look for the file.
@@ -428,6 +429,28 @@ Rules the script cannot check, so a reviewer does:
 > last push, and a branch up to date with `main` before merging. With two
 > owners, every pull request needs the other one.
 > Applying it changes the repository the moment `--apply` runs.
+
+## Why ScanCode and not the other scanners
+
+REUSE records what a file declares. It cannot tell that a file says something
+else. ScanCode reads the license text inside each file, so it fills that gap.
+The other tools in the same space overlap checks the repositories already run.
+
+| Tool | Overlaps with | Decision |
+| ---- | ------------- | -------- |
+| license-eye `header` | `reuse lint`. It cannot annotate files without comment syntax (the `.woff2` fonts) and its docs do not cover `REUSE.toml` | Not used |
+| license-eye `dependency` | `dependency-review.yml`, which already enforces an `allow-licenses` list on every pull request. Every repository has no runtime dependencies | Not used |
+| ORT | `dependency-review.yml` for licenses, Dependabot and OSV for advisories. It needs about 5 GiB of heap, and its action pulls rules from `ort-config` on `main` | Not used |
+| ScanCode | Nothing: no other check reads license text inside files | `workflow-templates/scancode.yml` |
+
+The action is in beta (`v0.1`), so `ScanCode` is not in the `main` ruleset's
+required checks. It pins its ScanCode.io image by digest. Add `ScanCode` to the
+ruleset only after a release marks it stable and a few weeks of runs show no
+false positives.
+
+The policy is an allowlist: `compliance-fail-level: MISSING` fails on a license
+the repository's `policies.yml` does not list. Add a license there only after
+checking that the project can accept its terms, as for `dependency-review.yml`.
 
 ## Scorecard findings
 
