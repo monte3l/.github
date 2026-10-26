@@ -5,7 +5,7 @@
 license_policies:
   - license_key: mit
     label: Approved License
-    compliance_alert: ''
+    compliance_alert: ""
   - license_key: ofl-1.1
     label: Approved License
-    compliance_alert: ''
+    compliance_alert: ""
