@@ -4,6 +4,7 @@
   "marker": "design/README.md",
   "consumers": [
     ".github",
+    "m3l-claude-mentor",
     "m3l-groundwork",
     "m3l-output-governor",
     "m3l-plugins",
