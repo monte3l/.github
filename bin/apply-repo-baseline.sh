@@ -332,6 +332,19 @@ else
   [[ "$mode" == "check" ]] || printf '         needs a commit in %s: start from blueprint/files/dependabot.yml\n' "$repo"
 fi
 
+# Dependabot cannot open a pull request for an npm directory under the
+# repository-root .github/: the update job ends at create_pull_request with a
+# 400 "invalid or unauthorized changes" (dependabot-core #15237 and #15721).
+# A tool folder lives in tools/<name>/ instead (blueprint/README.md, "Tool pins").
+if grep -Eq 'directory: *["'\'']?/\.github(/|["'\'']|$)' <<<"$dependabot"; then
+  drift=$((drift + 1))
+  printf 'DRIFT  Dependabot: an entry points under the root .github/, where Dependabot cannot open pull requests\n'
+  [[ "$mode" == "check" ]] || printf '         move the folder to tools/<name>/ in %s and update dependabot.yml\n' "$repo"
+else
+  printf 'OK     Dependabot: no entry under the root .github/\n'
+  ok=$((ok + 1))
+fi
+
 # --- docs site (report only; applies only to a repository that has one) ---
 # docs.config.mjs is the docs kit's config, so its presence is what makes a
 # repository a docs-site repository. Everything here is a commit, never an API

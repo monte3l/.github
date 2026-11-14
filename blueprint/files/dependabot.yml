@@ -18,7 +18,7 @@ updates:
 
   # Example for a pinned CI tool folder (see "Tool pins" in blueprint/README.md).
   # - package-ecosystem: npm
-  #   directory: /.github/ci-tools
+  #   directory: /tools/ci
   #   schedule:
   #     interval: weekly
   #   commit-message:

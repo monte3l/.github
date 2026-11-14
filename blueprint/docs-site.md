@@ -21,7 +21,7 @@ deploy wiring.
 | Kit | Run from `design/source/docs-kit/`. Never copy or fork it into the repository: fix it in m3l-design and re-sync |
 | Config | `docs.config.mjs` at the repository root. Skeleton: `files/docs.config.mjs` |
 | Hostname | `<project>.monte3l.com`. One Worker and one Custom Domain per project, never path-based routing on a shared host |
-| Deploy tools | `.github/deploy-tools/` holds `package.json`, a committed `package-lock.json` and `wrangler.jsonc`. Skeleton: `files/deploy-tools/` |
+| Deploy tools | `tools/deploy/` holds `package.json`, a committed `package-lock.json` and `wrangler.jsonc`. Skeleton: `files/deploy-tools/`. Never under the root `.github/`: Dependabot cannot open pull requests there (see "Tool pins" in `README.md`) |
 | Workflows | `docs.yml` (build, deploy, smoke) and `docs-live.yml` (daily). Templates: `workflow-templates/docs.yml`, `workflow-templates/docs-live.yml` |
 | Gate | The repository's `verify` workflow runs `node design/source/docs-kit/build.mjs --check` on every pull request |
 | Homepage | The GitHub repository `homepage`, and the manifest `homepage` if there is one, equal the site URL |
@@ -131,14 +131,14 @@ Done by hand, before merging the pull request that adds `docs.yml`.
 2. Copy `files/docs.config.mjs` to the repository root and fill it in. List
    every tracked `*.md` file under `pages` or `exclude`, with a reason for each
    exclusion: the kit fails on any it does not know about.
-3. Copy `files/deploy-tools/` to `.github/deploy-tools/`, rename the Worker and
+3. Copy `files/deploy-tools/` to `tools/deploy/`, rename the Worker and
    the hostname, and run `npm install --package-lock-only
-   --ignore-scripts --prefix .github/deploy-tools` once to commit the lockfile.
+   --ignore-scripts --prefix tools/deploy` once to commit the lockfile.
 4. Copy `workflow-templates/docs.yml` and `workflow-templates/docs-live.yml`
    into `.github/workflows/`, and set the environment URL.
 5. Add `node design/source/docs-kit/build.mjs --check` to the `verify`
    workflow, with `actions/setup-node` reading `.node-version`.
-6. Add an `npm` entry for `/.github/deploy-tools` to `dependabot.yml`, with a
+6. Add an `npm` entry for `/tools/deploy` to `dependabot.yml`, with a
    one-day cooldown, and the `sharp` libvips allowance to
    `dependency-review.yml` (copy it from m3l-design's workflow).
 7. Add the parity module the repository needs, listed in `parity`.
@@ -157,7 +157,7 @@ navigation. It is accepted, not a bug.
 
 ## The `overrides` floor
 
-`.github/deploy-tools/package.json` carries two `overrides`. `undici: ^7.29.1`,
+`tools/deploy/package.json` carries two `overrides`. `undici: ^7.29.1`,
 because wrangler's miniflare resolves an `undici` with open advisories. `sharp:
 ^0.35.5`, because miniflare pins `sharp` 0.35.4 exactly, which carries
 GHSA-wq5f-xc86-pv6w. Drop each once miniflare itself requires the fixed

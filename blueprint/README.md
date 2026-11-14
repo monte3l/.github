@@ -366,7 +366,7 @@ exceptions are the `env-janitor` branch policy and org-secret access, which
 | Release workflow pin | `release: workflow pin` | Each pinned SHA is a commit on `.github`'s default branch. A commit that lived only on a pull request branch, which a squash merge drops, fails every release that copied it | `workflow-templates/release.yml` |
 | Release App | `release: app installation`, `release: app secrets` | The repository is in the `monte3l-release` App's installation, and can read the org secrets `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_PRIVATE_KEY`. Checked for every repository that releases and for each one `release.json` lists under `appUsers` (`m3l-plugins`, which opens pin pull requests as the App). Never applied: see [Releases](#releases) | Installation settings of the App, and `gh api -X PUT orgs/OWNER/actions/secrets/NAME/repositories/ID` |
 | Immutable releases | `release: immutable releases` | Publishing a release locks its tag and assets. Turn it on for the whole organization | See [Releases](#releases) |
-| Dependabot | `Dependabot` | `.github/dependabot.yml` with the `github-actions` ecosystem, a 7-day cooldown, and one `npm` entry per lockfile directory (1-day cooldown) | `files/dependabot.yml` |
+| Dependabot | `Dependabot` | `.github/dependabot.yml` with the `github-actions` ecosystem, a 7-day cooldown, and one `npm` entry per lockfile directory, none under the root `.github/` (1-day cooldown) | `files/dependabot.yml` |
 | Node pin | `Node pin` | No workflow writes a version number after `node-version:`: use `node-version-file: .node-version` | `.node-version` |
 | Design system | `design system` | `design/README.md` records the version `design-system.json` pins | See [Design system](#design-system) |
 | Docs site: tier | `docs site: tier` | Only for a repository with a `docs.config.mjs`: the vendored tier, or the source tier for m3l-design | [`docs-site.md`](docs-site.md) |
@@ -406,8 +406,17 @@ Rules the script cannot check, so a reviewer does:
   requires an explicit `success` from each lane, so a cancelled or skipped one
   fails it. Start from `workflow-templates/verify.yml`; `m3l-groundwork`'s
   `ci.yml` is the worked example.
-- **Tool pins:** a CI tool lives in its own folder with a lockfile and installs
-  with `npm ci --ignore-scripts`. If the tool needs its install scripts to run
+- **Tool pins:** a CI tool lives in its own folder, `tools/<name>/` (`tools/ci`,
+  `tools/deploy`, `tools/dev`), with a lockfile, and installs with
+  `npm ci --ignore-scripts`. Never put it under the repository-root `.github/`:
+  Dependabot's update job ends at `create_pull_request` with a 400 "invalid or
+  unauthorized changes" there, so no bump PR is ever opened. A nested `.github`
+  path works, but only the root one is affected. The cause is not confirmed by
+  GitHub: see dependabot-core
+  [#15237](https://github.com/dependabot/dependabot-core/issues/15237) and
+  [#15721](https://github.com/dependabot/dependabot-core/issues/15721), both
+  open. `bin/apply-repo-baseline.sh` reports an entry under `/.github` as
+  `Dependabot` drift. If the tool needs its install scripts to run
   (a tool that downloads its own binary does), say so in `SECURITY.md` as an
   accepted risk. Node is pinned in `.node-version`, and no workflow writes a
   version number after `node-version:`: use `node-version-file: .node-version`.
