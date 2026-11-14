@@ -1,7 +1,7 @@
 name: Docs
 
 # Adopting: replace PROJECT with the project's subdomain, rename the Worker in
-# .github/deploy-tools/wrangler.jsonc, and follow blueprint/docs-site.md for the
+# tools/deploy/wrangler.jsonc, and follow blueprint/docs-site.md for the
 # Cloudflare token, the `docs-cloudflare` environment and the zone settings.
 # The kit runs from the vendored m3l-design copy, so the repository must be on
 # the vendored tier and have a docs.config.mjs.
@@ -9,7 +9,7 @@ name: Docs
 # What this does: builds this repo's own docs site with the docs kit
 # (design/source/docs-kit/build.mjs) and deploys it to Cloudflare Workers Static
 # Assets at https://PROJECT.monte3l.com, on a Custom Domain
-# (.github/deploy-tools/wrangler.jsonc). Runs on every push to `main` and on
+# (tools/deploy/wrangler.jsonc). Runs on every push to `main` and on
 # manual dispatch, not on every PR: `verify` already runs the kit's `--check`
 # on each PR, and this workflow is what ships the result.
 #
@@ -98,10 +98,10 @@ jobs:
       # postinstall-fetched binaries -- verified locally before adding this
       # step. Same pattern as release.yml's `npm ci --ignore-scripts --prefix
       # tools/release`.
-      - run: npm ci --ignore-scripts --prefix .github/deploy-tools
+      - run: npm ci --ignore-scripts --prefix tools/deploy
 
       - name: Deploy to Cloudflare
-        working-directory: .github/deploy-tools
+        working-directory: tools/deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
