@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026 Enrico Lionello
+// SPDX-FileCopyrightText: Copyright (c) 2026 Enrico Lionello (enri3l) and Giulia Montevecchi (giulmonte), monte3l
 // SPDX-License-Identifier: MIT
 
 // The monte3l org site (monte3l.com). The home page is the org profile README,
