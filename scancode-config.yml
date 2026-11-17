@@ -7,6 +7,9 @@ ignored_patterns:
   # License ids as data: REUSE.toml records them, and dependency-review.yml
   # lists the allowed ones.
   - "REUSE.toml"
+  # The REUSE.toml starter that other repositories copy: the same data, kept
+  # under blueprint/files/, and it names LicenseRef-MONTE3L-Brand.
+  - "blueprint/files/REUSE.toml"
   - ".github/workflows/dependency-review.yml"
   - "workflow-templates/dependency-review.yml"
   # m3l-design's brand assets declare LicenseRef-MONTE3L-Brand, a custom
