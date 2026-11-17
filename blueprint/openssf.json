@@ -1,0 +1,9 @@
+{
+  "minimum": {
+    "level": "silver",
+    "baseline": 3
+  },
+  "exempt": {
+    ".github": "publishes no releases or packages, so most criteria would be N/A"
+  }
+}

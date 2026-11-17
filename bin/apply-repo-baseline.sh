@@ -320,6 +320,101 @@ if [[ "$private" != "true" ]]; then
   fi
 fi
 
+# --- REUSE API and OpenSSF Best Practices (report only; public repositories) ---
+# Both are registrations on a service outside GitHub, so no API call here can
+# fix them: an Owner registers the repository, and for OpenSSF someone answers
+# the criteria on bestpractices.dev. A service that cannot be reached is a
+# SKIP, not drift, so an outage never fails a run.
+if [[ "$private" == "true" ]]; then
+  skip "REUSE API" "private repository"
+  skip "OpenSSF Best Practices" "private repository"
+elif ! command -v curl >/dev/null; then
+  skip "REUSE API" "curl is not installed"
+  skip "OpenSSF Best Practices" "curl is not installed"
+else
+  # REUSE API: the README badge only resolves once the repository is registered
+  # and has been checked at least once.
+  reuse_reply="$(curl -sS --max-time 20 -w '\n%{http_code}' "https://api.reuse.software/status/github.com/$repo" 2>/dev/null || true)"
+  reuse_code="${reuse_reply##*$'\n'}"
+  reuse_json="${reuse_reply%$'\n'*}"
+  case "$reuse_code" in
+    200)
+      reuse_status="$(jq -r '.status // "unknown"' <<<"$reuse_json" 2>/dev/null || echo unknown)"
+      if [[ "$reuse_status" == "compliant" ]]; then
+        printf 'OK     REUSE API: compliant\n'
+        ok=$((ok + 1))
+      else
+        drift=$((drift + 1))
+        printf 'DRIFT  REUSE API: status is %s\n' "$reuse_status"
+        [[ "$mode" == "check" ]] || printf '         an "uninitialised" repository was registered but never checked; otherwise run reuse lint and open https://api.reuse.software/info/github.com/%s\n' "$repo"
+      fi
+      ;;
+    404)
+      drift=$((drift + 1))
+      printf 'DRIFT  REUSE API: not registered at api.reuse.software\n'
+      [[ "$mode" == "check" ]] || printf '         an Owner registers it at https://api.reuse.software/register\n'
+      ;;
+    *) skip "REUSE API" "api.reuse.software unreachable" ;;
+  esac
+
+  # OpenSSF Best Practices: the project is found by the badge in the README, and
+  # openssf.json holds the level to reach and the repositories exempt from it.
+  bp_exempt="$(jq -r --arg name "${repo##*/}" '.exempt[$name] // empty' "$here/openssf.json")"
+  if [[ -n "$bp_exempt" ]]; then
+    skip "OpenSSF Best Practices" "$bp_exempt"
+  else
+    bp_readme=""
+    for readme_path in README.md readme.md .github/README.md docs/README.md; do
+      bp_readme="$(file_content "$readme_path" || true)"
+      [[ -z "$bp_readme" ]] || break
+    done
+    bp_id="$(grep -oE 'bestpractices\.dev/projects/[0-9]+' <<<"$bp_readme" | head -n 1 | grep -oE '[0-9]+$' || true)"
+    bp_level_min="$(jq -r .minimum.level "$here/openssf.json")"
+    bp_baseline_min="$(jq -r .minimum.baseline "$here/openssf.json")"
+    if [[ -z "$bp_id" ]]; then
+      drift=$((drift + 1))
+      printf 'DRIFT  OpenSSF Best Practices: the README has no bestpractices.dev badge\n'
+      [[ "$mode" == "check" ]] || printf '         register the project at https://www.bestpractices.dev and add both badges to the README\n'
+    else
+      bp_reply="$(curl -sS --max-time 20 -w '\n%{http_code}' "https://www.bestpractices.dev/projects/$bp_id.json" 2>/dev/null || true)"
+      bp_code="${bp_reply##*$'\n'}"
+      bp_json="${bp_reply%$'\n'*}"
+      case "$bp_code" in
+        200)
+          # A reply of another shape (an error page that is still JSON) is a
+          # SKIP too: the summary below must never run on it, or set -e would
+          # end the whole run.
+          if bp_summary="$(jq -r --arg min "$bp_level_min" --argjson baseline "$bp_baseline_min" '
+            def rank: {in_progress: 0, passing: 1, silver: 2, gold: 3}[.] // 0;
+            if (type == "object" and ((.badge_level // "in_progress") | type) == "string") then
+              (.badge_level // "in_progress") as $level
+              | (.["badge_percentage_baseline_\($baseline)"] // 0) as $base
+              | [(if ($level | rank) >= ($min | rank) then "ok" else "low" end),
+                 "\($level), Baseline \($baseline) at \($base)%"] | @tsv
+            else error("unexpected reply") end' <<<"$bp_json" 2>/dev/null)"; then
+            if [[ "${bp_summary%%$'\t'*}" == "ok" && "${bp_summary#*$'\t'}" == *"at 100%" ]]; then
+              printf 'OK     OpenSSF Best Practices: %s (project %s)\n' "${bp_summary#*$'\t'}" "$bp_id"
+              ok=$((ok + 1))
+            else
+              drift=$((drift + 1))
+              printf 'DRIFT  OpenSSF Best Practices: %s, want %s with Baseline %s at 100%% (project %s)\n' "${bp_summary#*$'\t'}" "$bp_level_min" "$bp_baseline_min" "$bp_id"
+              [[ "$mode" == "check" ]] || printf '         answer the open criteria at https://www.bestpractices.dev/projects/%s\n' "$bp_id"
+            fi
+          else
+            skip "OpenSSF Best Practices" "unexpected reply from bestpractices.dev"
+          fi
+          ;;
+        404)
+          drift=$((drift + 1))
+          printf 'DRIFT  OpenSSF Best Practices: project %s from the README badge does not exist\n' "$bp_id"
+          [[ "$mode" == "check" ]] || printf '         fix the project id in the README badges\n'
+          ;;
+        *) skip "OpenSSF Best Practices" "bestpractices.dev unreachable" ;;
+      esac
+    fi
+  fi
+fi
+
 # Dependabot must exist and keep the github-actions ecosystem, the one every
 # repository has regardless of language.
 dependabot="$(file_content .github/dependabot.yml || file_content .github/dependabot.yaml || true)"

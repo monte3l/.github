@@ -27,6 +27,8 @@ export const INLINE_ITEMS = [
   "release: immutable releases",
   "Node pin",
   "Scorecard alerts",
+  "REUSE API",
+  "OpenSSF Best Practices",
   "Dependabot",
   "env-janitor: branch policy",
   "env-janitor: org secrets",
