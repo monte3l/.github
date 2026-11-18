@@ -38,8 +38,8 @@ jobs:
 
       - name: Script syntax and shellcheck
         run: |
-          bash -n bin/apply-repo-baseline.sh bin/design-resync-pr.sh
-          shellcheck bin/apply-repo-baseline.sh bin/design-resync-pr.sh
+          bash -n bin/apply-repo-baseline.sh bin/design-resync-pr.sh bin/pin-freshness.sh bin/lib/upsert-issue.sh
+          shellcheck bin/apply-repo-baseline.sh bin/design-resync-pr.sh bin/pin-freshness.sh bin/lib/upsert-issue.sh
 
       - name: JSON files parse
         run: |
@@ -48,5 +48,5 @@ jobs:
 
       - name: actionlint
         # Templates use `$default-branch`, which is valid text for actionlint.
-        # Pinned by tag: Dependabot does not track this value, bump it by hand.
-        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color .github/workflows/*.yml workflow-templates/*.yml
+        # Pinned by tag. Dependabot does not read this value: see blueprint/pins.json.
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color .github/workflows/*.yml workflow-templates/*.yml
