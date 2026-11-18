@@ -53,12 +53,17 @@ Done by hand, before merging the pull request that adds `docs.yml`.
    - Set a TTL of one year at most, and record the expiry in the repository's
      `SECURITY.md` secrets table.
    - The token cannot be scoped to a single Worker: Workers Scripts Edit is
-     account-wide. That is why it is stored as an **environment** secret
-     restricted to `main`, not a plain repository secret.
-   - A fresh, narrowly scoped token per project, never one shared token.
+     account-wide. It is stored as an **organization** secret shared with the
+     repositories that deploy a docs site, so every workflow in those
+     repositories can read it, on any branch. The `docs-cloudflare`
+     environment restricts where the deploy job runs, not who can read the
+     secret. What limits the exposure is the required review of every workflow
+     change, and that only `docs.yml` names the secret.
+   - Issue one token for the organization and rotate it in one place, rather
+     than a token per repository.
 2. **Get the account ID** (dashboard sidebar, or the Workers & Pages overview).
-3. **Create the GitHub environment**, so the token is scoped to protected
-   deploys only:
+3. **Create the GitHub environment** that restricts the deploy to `main`, and
+   share the two organization secrets with the repository:
 
    ```sh
    gh api -X PUT repos/monte3l/<repo>/environments/docs-cloudflare \
@@ -66,9 +71,14 @@ Done by hand, before merging the pull request that adds `docs.yml`.
      -f 'deployment_branch_policy[custom_branch_policies]=true'
    gh api -X POST repos/monte3l/<repo>/environments/docs-cloudflare/deployment-branch-policies \
      -f name=main
-   gh secret set CLOUDFLARE_API_TOKEN --env docs-cloudflare --repo monte3l/<repo>
-   gh secret set CLOUDFLARE_ACCOUNT_ID --env docs-cloudflare --repo monte3l/<repo>
+   id="$(gh api repos/monte3l/<repo> --jq .id)"
+   gh api -X PUT "orgs/monte3l/actions/secrets/CLOUDFLARE_API_TOKEN/repositories/$id"
+   gh api -X PUT "orgs/monte3l/actions/secrets/CLOUDFLARE_ACCOUNT_ID/repositories/$id"
    ```
+
+   Never also set either secret on the environment: an environment secret
+   overrides the organization one, so a copy left there keeps an old token
+   alive after a rotation. The environment holds no secret.
 
    The new environment also needs the weekly `env-janitor` cleanup, with
    `docs-cloudflare` in its policy. See
