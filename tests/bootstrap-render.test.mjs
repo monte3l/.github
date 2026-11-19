@@ -21,7 +21,7 @@ for (const file of out.files.filter((f) => f.to.startsWith(".github/workflows/")
   const rendered = render(base.read(`workflow-templates/${name}.yml`), { site: project.site, flags: [], defaultBranch: "main" });
   assert.equal(classify(file.text, rendered, []).state, "IDENTICAL", `${name} must classify IDENTICAL`);
   assert.ok(!file.text.includes("$default-branch"), `${name}: no $default-branch left`);
-  assert.ok(!file.text.includes("PROJECT.monte3l.com"), `${name}: no PROJECT url left`);
+  assert.doesNotMatch(file.text, /PROJECT\.monte3l\.com/, `${name}: no PROJECT url left`);
 }
 // every `managed` template that is not conditional is written, so nothing the sync manages is missing
 const written = new Set(out.files.map((f) => f.to));
@@ -42,7 +42,7 @@ assert.ok(out.unfilled.some((u) => u.to === "release-please-config.json" && u.fo
 for (const f of out.files.filter((f) => f.to.endsWith(".json"))) JSON.parse(f.text);
 // the name replaces its placeholder words, and nothing of ours is left unreported
 assert.ok(out.files.find((f) => f.to === "REUSE.toml").text.includes('SPDX-PackageName = "m3l-plugins"'));
-assert.ok(out.files.find((f) => f.to === "SECURITY.md").text.includes("https://github.com/monte3l/m3l-plugins/security/advisories/new"));
+assert.match(out.files.find((f) => f.to === "SECURITY.md").text, /https:\/\/github\.com\/monte3l\/m3l-plugins\/security\/advisories\/new/);
 assert.ok(!out.files.find((f) => f.to === "SECURITY.md").text.includes("{repo}"));
 // design marker
 const marker = out.files.find((f) => f.to === "design/README.md").text;
@@ -105,7 +105,8 @@ const cfg = text(docs, "docs.config.mjs");
 assert.ok(!cfg.includes("CONTRIBUTING.md") && !cfg.includes("CHANGELOG.md") && !cfg.includes(".claude/**"));
 assert.ok(cfg.includes('glob: "design/README.md"') && cfg.includes('navGroups: ["Start", "Security"]'));
 // negation: exactly one of each pair
-assert.ok(text(docs, "README.md").includes("https://github.com/monte3l/.github/blob/main/CONTRIBUTING.md") && !text(docs, "README.md").includes("](CONTRIBUTING.md)"), "docs README links the org CONTRIBUTING");
+assert.match(text(docs, "README.md"), /https:\/\/github\.com\/monte3l\/\.github\/blob\/main\/CONTRIBUTING\.md/, "docs README links the org CONTRIBUTING");
+assert.doesNotMatch(text(docs, "README.md"), /\]\(CONTRIBUTING\.md\)/, "and no longer links a local one");
 assert.ok(text(go({ kind: "simple" }), "README.md").includes("](CONTRIBUTING.md)"), "plain README keeps its local link");
 assert.ok(text(docs, ".github/dependabot.yml").includes("directory: /tools/deploy"), "docs dependabot has the deploy entry");
 assert.ok(!text(go({ kind: "simple" }), ".github/dependabot.yml").includes("directory: /tools/deploy"), "plain dependabot does not");
