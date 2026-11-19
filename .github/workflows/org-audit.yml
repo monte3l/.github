@@ -81,6 +81,22 @@ jobs:
           cat "$RUNNER_TEMP/report.md" >>"$GITHUB_STEP_SUMMARY"
           echo "code=$code" >>"$GITHUB_OUTPUT"
 
+      # Counts only, like the rest of this workflow: the repository is public, so
+      # no repository name or title is printed. Not fatal: the search API is a
+      # convenience and must never hide the audit result.
+      - name: Count open freshness issues across the organization
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          if rows="$(gh search issues --owner "$OWNER" --state open --label freshness --limit 200 --json repository --jq '.[].repository.nameWithOwner')"; then
+            issues="$(grep -c . <<<"$rows" || true)"
+            repos="$(sort -u <<<"$rows" | grep -c . || true)"
+            printf '\n**Open freshness issues:** %s in %s repositories\n' "$issues" "$repos" >>"$GITHUB_STEP_SUMMARY"
+          else
+            printf '\n**Open freshness issues:** the search failed, see the run log\n' >>"$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Update the tracking issue
         env:
           GH_TOKEN: ${{ github.token }}
@@ -88,9 +104,9 @@ jobs:
           CODE: ${{ steps.audit.outputs.code }}
         run: |
           if [[ -s "$RUNNER_TEMP/findings.md" ]]; then
-            bin/lib/upsert-issue.sh "Org baseline drift" area:ci "$RUNNER_TEMP/findings.md"
+            bin/lib/upsert-issue.sh "Org baseline drift" area:ci,freshness "$RUNNER_TEMP/findings.md"
           elif [[ "$CODE" == "0" ]]; then
-            bin/lib/upsert-issue.sh "Org baseline drift" area:ci "$RUNNER_TEMP/findings.md" --clean
+            bin/lib/upsert-issue.sh "Org baseline drift" area:ci,freshness "$RUNNER_TEMP/findings.md" --clean
           fi
 
       # Drift (1) is reported by the issue. Anything else (2 usage or a missing

@@ -4,5 +4,6 @@
   { "name": "area:ci", "color": "692746", "description": "CI, workflows and repository automation" },
   { "name": "area:docs", "color": "692746", "description": "Documentation and the docs site" },
   { "name": "area:design", "color": "692746", "description": "Vendored m3l-design copy and local divergence" },
+  { "name": "freshness", "color": "b77610", "description": "A scheduled check found something to update" },
   { "name": "area:harness", "color": "692746", "description": "Claude Code harness: rules, skills, agents, settings" }
 ]

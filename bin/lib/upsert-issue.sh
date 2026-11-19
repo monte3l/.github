@@ -5,10 +5,14 @@
 # Keeps one tracking issue per concern, so a scheduled check reports a finding
 # once instead of opening a new issue or a reminder every run.
 #
-#   upsert-issue.sh TITLE LABEL BODY-FILE [--clean]
+#   upsert-issue.sh TITLE LABEL[,LABEL...] BODY-FILE [--clean]
+#
+# LABEL may be a comma-separated list. The first label identifies the issue (an
+# issue is matched by exact title plus that label); every label is applied when
+# the issue is opened, and each one that the repository lacks is created.
 #
 # Without --clean: opens the issue if no open issue with that exact title and
-# label exists. If one exists and the findings changed, it rewrites the body and
+# first label exists. If one exists and the findings changed, it rewrites the body and
 # adds one comment. If they did not change, nothing happens.
 # With --clean: closes the open issue with a comment, or does nothing if none.
 #
@@ -25,12 +29,13 @@ set -eEuo pipefail
 trap 'exit 3' ERR
 
 usage() {
-  printf 'usage: %s TITLE LABEL BODY-FILE [--clean]\n' "${0##*/}" >&2
+  printf 'usage: %s TITLE LABEL[,LABEL...] BODY-FILE [--clean]\n' "${0##*/}" >&2
   exit 2
 }
 [[ $# -eq 3 || ( $# -eq 4 && "$4" == "--clean" ) ]] || usage
 title="$1"
-label="$2"
+labels="$2"
+label="${labels%%,*}"
 body_file="$3"
 clean=0
 [[ $# -eq 4 ]] && clean=1
@@ -78,20 +83,29 @@ trap 'rm -f "$full_body"' EXIT
 { cat "$body_file"; printf '\n\n<!-- fp:%s -->\n' "$fingerprint"; } >"$full_body"
 
 if [[ -z "$number" ]]; then
-  # The label normally comes from blueprint/labels.json; create it if the
-  # repository does not have it yet so the first finding is not lost.
-  if [[ -z "$dry" ]] && ! gh label list "${repo_args[@]}" --limit 200 --json name --jq '.[].name' | grep -qxF "$label"; then
-    color="692746"
-    description="Scheduled check findings"
-    if [[ -f blueprint/labels.json ]]; then
-      color="$(jq -r --arg l "$label" '.[] | select(.name == $l) | .color' blueprint/labels.json | head -n 1)"
-      description="$(jq -r --arg l "$label" '.[] | select(.name == $l) | .description' blueprint/labels.json | head -n 1)"
-      [[ -n "$color" ]] || color="692746"
-      [[ -n "$description" ]] || description="Scheduled check findings"
-    fi
-    gh label create "${repo_args[@]}" "$label" --color "$color" --description "$description" || true
+  # The labels normally come from blueprint/labels.json; create any the
+  # repository does not have yet so the first finding is not lost.
+  label_args=()
+  if [[ -z "$dry" ]]; then
+    existing_labels="$(gh label list "${repo_args[@]}" --limit 200 --json name --jq '.[].name')"
   fi
-  run issue create "${repo_args[@]}" --title "$title" --label "$label" --body-file "$full_body"
+  IFS=',' read -r -a label_list <<<"$labels"
+  for one in "${label_list[@]}"; do
+    [[ -n "$one" ]] || continue
+    label_args+=(--label "$one")
+    if [[ -z "$dry" ]] && ! grep -qxF "$one" <<<"$existing_labels"; then
+      color="692746"
+      description="Scheduled check findings"
+      if [[ -f blueprint/labels.json ]]; then
+        color="$(jq -r --arg l "$one" '.[] | select(.name == $l) | .color' blueprint/labels.json | head -n 1)"
+        description="$(jq -r --arg l "$one" '.[] | select(.name == $l) | .description' blueprint/labels.json | head -n 1)"
+        [[ -n "$color" ]] || color="692746"
+        [[ -n "$description" ]] || description="Scheduled check findings"
+      fi
+      gh label create "${repo_args[@]}" "$one" --color "$color" --description "$description" || true
+    fi
+  done
+  run issue create "${repo_args[@]}" --title "$title" "${label_args[@]}" --body-file "$full_body"
   printf 'opened "%s"\n' "$title"
 elif [[ "$old_fp" == "$fingerprint" ]]; then
   printf '#%s "%s" is unchanged\n' "$number" "$title"
