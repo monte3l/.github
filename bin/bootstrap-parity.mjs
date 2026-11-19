@@ -22,13 +22,15 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
 const WHERE = "blueprint/bootstrap.json";
-const TOP_KEYS = new Set(["$comment", "kinds", "options", "orgSecrets", "starters", "templates", "generated", "excluded"]);
+const TOP_KEYS = new Set(["$comment", "kinds", "options", "orgSecrets", "starters", "templates", "generated", "excluded", "todos"]);
 const ENTRY_KEYS = {
   starters: new Set(["from", "to", "substitute", "replace", "requires", "perKind", "todo"]),
   templates: new Set(["name", "requires", "unlessScaffold", "todo"]),
   generated: new Set(["to", "what"]),
   excluded: new Set(["from", "reason"]),
+  todos: new Set(["text", "requires"]),
 };
+const TOKENS = new Set(["repo", "site", "host", "subdomain"]);
 const WORD_RE = /^[a-z][a-z0-9-]*$/;
 
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -42,6 +44,11 @@ async function filesUnder(dir) {
     else if (entry.name !== ".DS_Store") found.push(entry.name);
   }
   return found.sort();
+}
+
+/** @param {string} text @returns {string[]} the {word} tokens in text that are not defined */
+function unknownTokens(text) {
+  return [...text.matchAll(/\{([a-z][a-z-]*)\}/g)].map((match) => match[1]).filter((token) => !TOKENS.has(token));
 }
 
 /** @param {unknown} value @returns {boolean} a relative path that stays inside the repository, and is not in `.git` */
@@ -87,12 +94,25 @@ export default async function parity({ root }) {
   if (options.includes("public")) problems.push(`${WHERE}: "public" is not an option: it is on unless --private`);
   if (options.includes("kind")) problems.push(`${WHERE}: "kind" is not an option: it is what --kind sets`);
   const conditions = new Set(["kind", "public", ...options]);
+  const needs = (entry, by) => {
+    const condition = typeof entry.requires === "string" ? entry.requires.replace(/^!/, "") : entry.requires;
+    if (entry.requires !== undefined && !conditions.has(condition)) problems.push(`${WHERE}: ${by} requires ${JSON.stringify(entry.requires)}, which is neither "kind", "public" nor a declared option`);
+  };
 
   if (data.orgSecrets !== undefined) {
     if (!Array.isArray(data.orgSecrets)) problems.push(`${WHERE}: "orgSecrets" must be an array`);
     else {
-      for (const secret of data.orgSecrets) if (typeof secret !== "string" || !/^[A-Z][A-Z0-9_]*$/.test(secret)) problems.push(`${WHERE}: orgSecrets has ${JSON.stringify(secret)}, which is not a secret name`);
-      if (new Set(data.orgSecrets).size !== data.orgSecrets.length) problems.push(`${WHERE}: "orgSecrets" lists a secret twice`);
+      const names = [];
+      for (const [i, secret] of data.orgSecrets.entries()) {
+        const entry = typeof secret === "string" ? { name: secret } : secret;
+        if (!isObject(entry) || typeof entry.name !== "string" || !/^[A-Z][A-Z0-9_]*$/.test(entry.name) || Object.keys(entry).some((key) => key !== "name" && key !== "requires")) {
+          problems.push(`${WHERE}: orgSecrets[${i}] ${JSON.stringify(secret)} is not a secret name or {name, requires}`);
+          continue;
+        }
+        names.push(entry.name);
+        needs(entry, `orgSecrets[${i}]`);
+      }
+      if (new Set(names).size !== names.length) problems.push(`${WHERE}: "orgSecrets" lists a secret twice`);
     }
   }
 
@@ -115,17 +135,23 @@ export default async function parity({ root }) {
   };
   const starters = section("starters");
   const templates = section("templates");
+  const todos = section("todos");
   const generated = section("generated");
   const excluded = section("excluded");
 
   const writes = new Map();
-  const claim = (to, by) => {
-    if (!safePath(to)) problems.push(`${WHERE}: ${by} writes to ${JSON.stringify(to)}, which is not a relative path inside the repository (and outside .git)`);
-    else if (writes.has(to.toLowerCase())) problems.push(`${WHERE}: ${by} and ${writes.get(to.toLowerCase())} both write ${to}`);
-    else writes.set(to.toLowerCase(), by);
-  };
-  const needs = (entry, by) => {
-    if (entry.requires !== undefined && !conditions.has(entry.requires)) problems.push(`${WHERE}: ${by} requires ${JSON.stringify(entry.requires)}, which is neither "kind", "public" nor a declared option`);
+  // Two entries may write one path only if exactly one of them applies: X and !X.
+  const opposite = (a, b) => a !== undefined && b !== undefined && (a === `!${b}` || b === `!${a}`);
+  const claim = (to, by, requires) => {
+    const key = typeof to === "string" ? to.toLowerCase() : to;
+    if (!safePath(to)) {
+      problems.push(`${WHERE}: ${by} writes to ${JSON.stringify(to)}, which is not a relative path inside the repository (and outside .git)`);
+      return;
+    }
+    // At most two writers, and then exactly X and !X: a third would apply together with one of them.
+    const earlier = writes.get(key) ?? [];
+    if (earlier.length > 0 && (earlier.length > 1 || !opposite(earlier[0].requires, requires))) problems.push(`${WHERE}: ${by} and ${earlier[0].by} both write ${to}`);
+    else writes.set(key, [...earlier, { by, requires }]);
   };
   /** @returns {boolean} whether the source is a readable file inside the repository */
   const source = (from, by) => {
@@ -148,7 +174,7 @@ export default async function parity({ root }) {
     }
     needs(starter, by);
     if (starter.todo !== undefined && (typeof starter.todo !== "string" || starter.todo.trim() === "")) problems.push(`${WHERE}: ${by} "todo" must be a non-empty line`);
-    claim(starter.to, by);
+    claim(starter.to, by, starter.requires);
     if (starter.to.toLowerCase().startsWith(".github/workflows/")) problems.push(`${WHERE}: ${by} writes into .github/workflows/, which is for "templates"`);
     if (starter.perKind !== undefined && typeof starter.perKind !== "boolean") problems.push(`${WHERE}: ${by} "perKind" must be true or false`);
     let sources = [starter.from];
@@ -165,8 +191,10 @@ export default async function parity({ root }) {
     }
     let replace = {};
     if (starter.replace !== undefined) {
-      if (isObject(starter.replace) && Object.keys(starter.replace).every((text) => text !== "") && Object.values(starter.replace).every((value) => typeof value === "string")) replace = starter.replace;
-      else problems.push(`${WHERE}: ${by} "replace" must map non-empty texts to strings`);
+      if (isObject(starter.replace) && Object.keys(starter.replace).every((text) => text !== "") && Object.values(starter.replace).every((value) => typeof value === "string")) {
+        replace = starter.replace;
+        for (const value of Object.values(replace)) for (const token of unknownTokens(value)) problems.push(`${WHERE}: ${by} uses {${token}} in a replace value, which is not one of ${[...TOKENS].map((t) => `{${t}}`).join(", ")}`);
+      } else problems.push(`${WHERE}: ${by} "replace" must map non-empty texts to strings`);
     }
     for (const from of sources) {
       covered.add(from);
@@ -188,10 +216,16 @@ export default async function parity({ root }) {
     if (template.unlessScaffold !== undefined && typeof template.unlessScaffold !== "boolean") problems.push(`${WHERE}: ${by} "unlessScaffold" must be true or false`);
     if (named.has(template.name)) problems.push(`${WHERE}: the template "${template.name}" is listed twice`);
     named.add(template.name);
-    claim(`.github/workflows/${template.name}.yml`, by);
+    claim(`.github/workflows/${template.name}.yml`, by, template.requires);
     if (!isFile(path.join(root, "workflow-templates", `${template.name}.yml`))) problems.push(`${WHERE}: ${by} names "${template.name}", which is not in workflow-templates/`);
     if (!Object.hasOwn(syncTemplates, template.name)) problems.push(`${WHERE}: ${by} names "${template.name}", which blueprint/sync.json does not list`);
     covered.add(`workflow-templates/${template.name}.yml`);
+  }
+
+  for (const { entry, by } of todos) {
+    if (typeof entry.text !== "string" || entry.text.trim() === "") problems.push(`${WHERE}: ${by} needs "text"`);
+    else for (const token of unknownTokens(entry.text)) problems.push(`${WHERE}: ${by} uses {${token}}, which is not one of ${[...TOKENS].map((t) => `{${t}}`).join(", ")}`);
+    needs(entry, by);
   }
 
   for (const { entry, by } of generated) {

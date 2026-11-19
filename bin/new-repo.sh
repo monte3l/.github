@@ -2,7 +2,7 @@
 # Creates a new monte3l repository that starts out following the blueprint.
 #
 #   new-repo.sh NAME [--kind library|plugin|simple] [--claude] [--private]
-#                    [--scaffold] [--dry-run | --apply [--yes]]
+#                    [--docs] [--scaffold] [--dry-run | --apply [--yes]]
 #
 #   (default)   read-only: checks the inputs, renders every file into a temporary
 #               directory and prints what --apply would do. Creates nothing.
@@ -14,6 +14,11 @@
 #               two other items cannot exist there: the baseline prints SKIP.
 #               Scorecard and Dependency Review are not written: they need a
 #               public repository
+#   --docs      adds a docs site (monte3l.com standard): the docs kit config, the
+#               deploy tools and workflows, the environment cleanup, and the
+#               design vendored from the pinned m3l-design release. The docs
+#               gate runs on the result before anything is created. Not with
+#               --scaffold yet
 #   --scaffold  runs the pinned, published @monte3l/groundwork CLI first, in
 #               fresh mode, for a TypeScript project. Whatever it writes wins:
 #               this script only adds the files that are missing
@@ -45,8 +50,10 @@
 # an input that is refused, 3 a call failed (after the repository was created,
 # the message says how to finish).
 #
-# Environment, for tests only: NEW_REPO_BASELINE (the baseline script to run) and
-# NEW_REPO_REMOTE_BASE (where `origin` points; default https://github.com).
+# Environment, for tests only: NEW_REPO_BASELINE (the baseline script to run),
+# NEW_REPO_REMOTE_BASE (where `origin` points; default https://github.com) and
+# NEW_REPO_DESIGN_SYNC (a command run as `CMD TAG DIR` instead of cloning
+# m3l-design and running its bin/sync-design.sh).
 set -eEuo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -61,6 +68,7 @@ name=""
 kind=""
 claude=0
 private=0
+docs=0
 scaffold=0
 mode="plan"
 yes=0
@@ -126,6 +134,7 @@ while (($#)); do
       ;;
     --claude) claude=1 ;;
     --private) private=1 ;;
+    --docs) docs=1 ;;
     --scaffold) scaffold=1 ;;
     --dry-run) mode="plan" ;;
     --apply) mode="apply" ;;
@@ -142,6 +151,7 @@ done
 [[ -n "$name" ]] || usage 2
 [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "\"$name\" is not a repository name"
 [[ "$yes" == 0 || "$mode" == apply ]] || die "--yes only goes with --apply"
+((docs == 0 || scaffold == 0)) || die "--docs and --scaffold cannot be combined yet: the scaffold has its own docs setup"
 
 for tool in gh git jq node; do
   command -v "$tool" >/dev/null 2>&1 || die "$tool is required"
@@ -154,11 +164,11 @@ if [[ -n "$kind" ]]; then
   jq -e --arg kind "$kind" '.kinds | index($kind) != null' "$here/../blueprint/bootstrap.json" >/dev/null ||
     die "\"$kind\" is not a kind (use $(jq -r '.kinds | join(", ")' "$here/../blueprint/bootstrap.json"))"
 fi
-# The organization secrets this repository must be shared: from the data, plus the release App's when it releases.
-org_secrets=()
-while IFS= read -r secret; do org_secrets+=("$secret"); done < <(jq -r '.orgSecrets[]?' "$here/../blueprint/bootstrap.json")
-if [[ -n "$kind" ]]; then
-  while IFS= read -r secret; do org_secrets+=("$secret"); done < <(jq -r '.secrets[]?' "$here/../blueprint/release.json")
+if [[ "$mode" == apply ]] && ((docs)); then
+  # --docs runs bin/sync-design.sh, which verifies the release with `gh release verify` (gh 2.81 or later),
+  # and makes the deploy lockfile with npm. Say so now, not after the confirmation.
+  command -v npm >/dev/null 2>&1 || die "npm is required for --docs (it makes the deploy lockfile)"
+  gh release verify --help >/dev/null 2>&1 || die "gh is too old for --docs: bin/sync-design.sh needs gh release verify (gh 2.81 or later)"
 fi
 if [[ "$mode" == apply ]]; then
   # A token that cannot push a workflow file would fail after the repository exists. Only a classic or
@@ -186,6 +196,7 @@ render_args=("$name")
 [[ -z "$kind" ]] || render_args+=(--kind "$kind")
 ((claude)) && render_args+=(--claude)
 ((private)) && render_args+=(--private)
+((docs)) && render_args+=(--docs)
 ((scaffold)) && render_args+=(--scaffold)
 
 # render OUT [--keep-existing]: writes the files into OUT and the report into $work/result.json
@@ -200,12 +211,18 @@ render() {
 mkdir -p "$work/preview"
 render "$work/preview"
 project="$(jq -c .project "$work/result.json")"
+# The organization secrets this repository must be shared: from the data (by the options given), plus the release App's.
+org_secrets=()
+while IFS= read -r secret; do org_secrets+=("$secret"); done < <(jq -r '.orgSecrets[]?' "$work/result.json")
+if [[ -n "$kind" ]]; then
+  while IFS= read -r secret; do org_secrets+=("$secret"); done < <(jq -r '.secrets[]?' "$here/../blueprint/release.json")
+fi
 description="$(jq -er .description <<<"$project")"
 site="$(jq -er .site <<<"$project")"
 visibility="public"
 ((private)) && visibility="private"
 
-printf 'new-repo: %s/%s (%s, kind: %s, claude: %s, scaffold: %s)\n\n' "$owner" "$name" "$visibility" "${kind:-none}" "$((claude))" "$((scaffold))"
+printf 'new-repo: %s/%s (%s, kind: %s, claude: %s, docs: %s, scaffold: %s)\n\n' "$owner" "$name" "$visibility" "${kind:-none}" "$((claude))" "$((docs))" "$((scaffold))"
 printf 'Files (%s):\n' "$(jq '.written | length' "$work/result.json")"
 jq -r '.written[] | "  + " + .' "$work/result.json"
 jq -r '.left[] | "  - " + .' "$work/result.json"
@@ -215,6 +232,16 @@ fi
 if [[ "$(jq '.unfilled | length' "$work/result.json")" != 0 ]]; then
   printf '\nA person fills these in (placeholders still in the files):\n'
   jq -r '.unfilled[] | "  " + .to + ": " + (.found | join(", "))' "$work/result.json"
+fi
+if [[ "$(jq '.todo | length' "$work/result.json")" != 0 ]]; then
+  printf '\nAfterwards, for a person:\n'
+  jq -r '.todo[] | "  - " + .' "$work/result.json"
+fi
+if ((docs)) && command -v dig >/dev/null 2>&1; then
+  # A Custom Domain fails to attach over an existing record, and the first deploy runs on the first push.
+  if [[ -n "$(dig +short "$(jq -r '.site | sub("^https://"; "")' <<<"$project")" 2>/dev/null)" ]]; then
+    printf '\nWarning: dig reports a record for %s. A Cloudflare Custom Domain fails to attach over an existing CNAME, so the first deploy would fail. Remove the record first.\n' "$(jq -r '.site | sub("^https://"; "")' <<<"$project")"
+  fi
 fi
 if [[ -z "$kind" ]]; then
   printf '\nNo --kind: the release items will report drift until release-please is set up (or blueprint/release.json exempts the repository).\n'
@@ -229,7 +256,12 @@ fi
 if [[ "$mode" == plan ]]; then
   printf '\nWith --apply this would, in order:\n'
   ((scaffold)) && printf '  - run npx %s in fresh mode (code from npm, run with your credentials in the environment), then add the files above\n' "$scaffold_package"
+  if ((docs)); then
+    printf '  - vendor the design: bin/sync-design.sh of m3l-design %s, then commit the deploy lockfile (npm install --package-lock-only)\n' "$(jq -r .version "$here/../blueprint/design-system.json")"
+    printf '  - run the docs gate (build.mjs --check) on the result: nothing is created if it fails\n'
+  fi
   printf '  - make one signed-off commit and create %s/%s (%s: "%s")\n' "$owner" "$name" "$visibility" "$description"
+  ((docs)) && printf '  - create the docs-cloudflare environment, limited to main\n'
   printf '  - add the repository to the Apps: %s\n' "${apps[*]}"
   printf '  - share the organization secrets with it: %s (organization-level writes)\n' "$(printf '%s ' "${org_secrets[@]}")"
   [[ -z "$kind" ]] || printf '  - turn on immutable releases for it, which the release workflow needs\n'
@@ -260,7 +292,34 @@ else
   render "$repo_dir"
 fi
 [[ -d "$repo_dir/.git" ]] || git -C "$repo_dir" init -q -b main
+if ((docs)); then
+  # The design is copied from the pinned release, with its attestation checked by sync-design.sh itself.
+  design_tag="$(jq -r .version "$here/../blueprint/design-system.json")"
+  [[ "$design_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "blueprint/design-system.json has \"$design_tag\" as the version, which is not a release tag like v1.4.0"
+  printf '# vendoring m3l-design %s\n' "$design_tag"
+  if [[ -n "${NEW_REPO_DESIGN_SYNC:-}" ]]; then
+    printf 'warning: NEW_REPO_DESIGN_SYNC is set, so %s runs instead of the verified sync-design.sh\n' "$NEW_REPO_DESIGN_SYNC" >&2
+    "$NEW_REPO_DESIGN_SYNC" "$design_tag" "$repo_dir"
+  else
+    # Fetch the tag by its full ref. `git clone --branch TAG` takes a branch of the same name first, and
+    # this script then runs the cloned sync-design.sh with your credentials.
+    mkdir "$work/m3l-design"
+    git -C "$work/m3l-design" init -q
+    git -C "$work/m3l-design" fetch -q --depth 1 "$remote_base/$owner/m3l-design.git" "refs/tags/$design_tag"
+    git -C "$work/m3l-design" checkout -q --detach FETCH_HEAD
+    bash "$work/m3l-design/bin/sync-design.sh" "$design_tag" "$repo_dir"
+  fi
+  # The deploy workflow installs with npm ci, which needs the lockfile committed.
+  npm install --package-lock-only --ignore-scripts --prefix "$repo_dir/tools/deploy" >/dev/null
+fi
 git -C "$repo_dir" add -A
+if ((docs)); then
+  # The same gate the first push will run. A docs site that fails it would fail its first deploy.
+  if ! (cd "$repo_dir" && node design/source/docs-kit/build.mjs --check); then
+    printf 'error: the docs gate fails on the rendered repository, so nothing was created\n' >&2
+    exit 3
+  fi
+fi
 git -C "$repo_dir" commit -q -s -m "chore: start from the org blueprint" \
   -m "Files from monte3l/.github blueprint/bootstrap.json, rendered by bin/new-repo.sh."
 # A scaffold that ran git init may have chosen another branch name.
@@ -273,9 +332,23 @@ visibility_flag=--public
 gh repo create "$owner/$name" "$visibility_flag" --description="$description" --homepage="$site" >/dev/null
 stage=1
 printf 'created: %s/%s\n' "$owner" "$name"
-# The Apps are installed on selected repositories, so a new repository is added by hand otherwise
 manual=()
 repo_id="$(gh api "repos/$owner/$name" --jq .id)"
+if ((docs)); then
+  # The deploy job runs in this environment, which restricts it to main. It holds no secret: the two
+  # Cloudflare secrets are the organization's, shared below.
+  printf '\n== docs-cloudflare environment ==\n'
+  # The branch policy flags are JSON booleans, which gh api -f would send as strings.
+  if env_error="$(printf '%s' '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' |
+    gh api -X PUT "repos/$owner/$name/environments/docs-cloudflare" --input - 2>&1 >/dev/null)" &&
+    env_error="$(gh api -X POST "repos/$owner/$name/environments/docs-cloudflare/deployment-branch-policies" -f name=main 2>&1 >/dev/null)"; then
+    printf 'OK     docs-cloudflare, limited to main\n'
+  else
+    manual+=("create the docs-cloudflare environment limited to main: see blueprint/docs-site.md, One-time setup, step 3 (${env_error%%$'\n'*})")
+    printf 'MANUAL docs-cloudflare: refused (%s)\n' "${env_error%%$'\n'*}"
+  fi
+fi
+# The Apps are installed on selected repositories, so a new repository is added by hand otherwise
 printf '\n== Apps ==\n'
 if installations="$(gh api --paginate "orgs/$owner/installations" --jq '.installations[] | .app_slug + " " + (.id | tostring)' 2>&1)"; then
   for app in "${apps[@]}"; do

@@ -53,3 +53,7 @@ Running `bin/new-repo.sh` for real on a throwaway private repository showed thre
 ## [2026-11-19] decision | Secrets and Apps come before the first push
 
 A second real run, public with kind `plugin`, showed Gitleaks and Release failing again on the first push although the secrets were now shared: the push starts them at once, and the secrets were shared minutes later. The Apps, secrets and immutable releases now come before the push. What a new public repository still has afterwards is not a defect: the Scorecard alerts of its first run, and the reuse.software and bestpractices.dev registrations.
+
+## [2026-11-19] decision | A docs site is an option of the bootstrap, gated before anything is created
+
+`bin/new-repo.sh --docs` adds a docs site. Running the real docs gate on a rendered repository found three things its data had wrong before any repository existed: the design folder's marker must be excluded from the pages, an `exclude` entry that matches no file fails the kit, and the README skeleton links to a `CONTRIBUTING.md` that a docs repository does not have. The gate now runs on the result before the repository is created. A docs repository's Dependabot, dependency-review config and README differ from the plain ones, so the data picks between starters with `requires` and its negation.

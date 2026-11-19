@@ -28,7 +28,7 @@ in `m3l-groundwork`.
 | `bootstrap.json`         | What a new repository starts with: the starter files, the workflow templates, the optional parts (`--kind`, docs, Claude, environments) and where each is written. Never applied by the script. `bin/bootstrap-parity.mjs` fails the docs check if a starter or template is neither listed nor excluded with a reason, or if an entry points at a missing file, writes a path twice or outside the repository, or has a key or condition nobody defined |
 | `org.json`               | The organization's display name, description and website. Never applied or checked by the script, because it is an org setting. An Owner sets it, see [Descriptions](#descriptions) |
 | `docs-site.md`           | The docs site standard, the Cloudflare one-time setup and the runbook. See [Docs site](#docs-site) |
-| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependency-review-config.yml`, `SECURITY.md` and `CODEOWNERS` (starting points with placeholders), `policies.yml` and `scancode-config.yml` (the ScanCode license policy and ignored paths), `dependabot.yml`, `labeler.yml`, a `README.md` skeleton, `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
+| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependency-review-config.yml`, `SECURITY.md` and `CODEOWNERS` (starting points with placeholders), and for a docs site `docs.config.mjs`, `deploy-tools/`, `environments.json` (the environment cleanup policy) and `dependency-review-config-docs.yml` (the `sharp` exemptions), `policies.yml` and `scancode-config.yml` (the ScanCode license policy and ignored paths), `dependabot.yml`, `labeler.yml`, a `README.md` skeleton, `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
 | `claude/managed-settings.json` | The Claude Code policy for the whole Claude Team organization, pasted into the admin console by an Owner. Never applied by the script. See [Claude Code managed settings](#claude-code-managed-settings) |
 | `../bin/new-repo.sh`, `../bin/bootstrap-render.mjs` | Creates a repository that starts out following this blueprint. See [New repository](#new-repository) |
@@ -110,9 +110,22 @@ anything. `--scaffold` runs a **pinned** version of the CLI, recorded in
 
 A private repository gets neither `scorecard.yml` (it cannot check itself out) nor `dependency-review.yml` (it needs a public repository or Code Security), and the first push always shows the placeholder `verify` step failing: it fails on purpose until a person replaces it with the repository's checks.
 
-Not covered yet: the docs site (it needs the vendored design, a deploy lockfile
-and a `.node-version`) and the environment cleanup. They are set up by hand, see
-[Docs site](#docs-site) and [Environment cleanup](#environment-cleanup).
+`--docs` adds a docs site, which is most of the nine steps of
+[Wiring a new site](docs-site.md#wiring-a-new-site): the docs kit config, the
+deploy tools with their committed lockfile, the `docs`, `docs-live` and
+`environments` workflows, `.node-version`, the environment cleanup policy, the
+`sharp` exemptions in the dependency-review config, a Dependabot entry for
+`tools/deploy`, and the design **vendored** from the pinned m3l-design release by
+its own `bin/sync-design.sh`, which verifies the attestation. The release is fetched by its full tag ref, never by a name that a branch could also have, because the script then runs it with your credentials. It runs the real
+docs gate (`build.mjs --check`) on the result **before anything is created**, so
+a site that would fail its first deploy fails on your machine. It then creates the
+`docs-cloudflare` environment limited to `main` and shares the two Cloudflare
+organization secrets. Left for a person: the Cloudflare DNS check, a docs lane in
+`verify.yml` so a pull request is gated, and the repository's entry in
+`design-system.json`'s `consumers`. It cannot be combined with `--scaffold` yet.
+Its starters for the two options differ (a docs repository's Dependabot,
+dependency-review config and README), and `bootstrap.json` chooses between them
+with `requires` and `!requires`.
 
 ## Design system
 

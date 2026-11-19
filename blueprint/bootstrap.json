@@ -1,12 +1,13 @@
 {
-  "$comment": "What a new repository starts with. Read by bin/new-repo.sh, checked against blueprint/files/, workflow-templates/ and sync.json by bin/bootstrap-parity.mjs, so a starter or a template cannot be added and forgotten. `from` is a path in this repository, `to` the path in the new one. `substitute` lists the placeholder words replaced by the repository name; any other {placeholder} is left for a person. Templates are rendered as the template sync renders them (site, flags, default branch). `requires` makes an entry conditional: `kind` (--kind, which is needed unless blueprint/release.json exempts the repository, or the release items report drift) or a declared option. A starter with `perKind` has KIND in its `from`, replaced by the kind. A starter or template that is not bootstrapped is in `excluded` with the reason. `replace` maps a literal text to its value (a new repository has no release history to skip, and starts at version 0.0.0). A template with `unlessScaffold` is left out when the groundwork scaffold ran, because its own ci.yml already defines that check; on any other path the scaffold wrote, the scaffold wins and the file is not overwritten. `requires: public` is on unless --private: Scorecard cannot check out a private repository, and Dependency Review needs a public one or Code Security. `todo` is a line the script prints at the end for a person. `orgSecrets` are organization secrets the new repository must be shared (a private repository gets none by default; the release secrets come from blueprint/release.json when a kind is given), and a kind also turns on immutable releases, which the release workflow needs.",
+  "$comment": "What a new repository starts with. Read by bin/new-repo.sh, checked against blueprint/files/, workflow-templates/ and sync.json by bin/bootstrap-parity.mjs, so a starter or a template cannot be added and forgotten. `from` is a path in this repository, `to` the path in the new one. `substitute` lists the placeholder words replaced by the repository name; any other {placeholder} is left for a person. Templates are rendered as the template sync renders them (site, flags, default branch). `requires` makes an entry conditional: `kind` (--kind, which is needed unless blueprint/release.json exempts the repository, or the release items report drift) or a declared option. A starter with `perKind` has KIND in its `from`, replaced by the kind. A starter or template that is not bootstrapped is in `excluded` with the reason. `replace` maps a literal text to its value (a new repository has no release history to skip, and starts at version 0.0.0). A template with `unlessScaffold` is left out when the groundwork scaffold ran, because its own ci.yml already defines that check; on any other path the scaffold wrote, the scaffold wins and the file is not overwritten. `requires: public` is on unless --private: Scorecard cannot check out a private repository, and Dependency Review needs a public one or Code Security. `todo` is a line the script prints at the end for a person. `orgSecrets` are organization secrets the new repository must be shared (a private repository gets none by default; the release secrets come from blueprint/release.json when a kind is given), and a kind also turns on immutable releases, which the release workflow needs. `requires` may be negated with `!` (`!docs`): two entries may write the same path only when their conditions are opposites. In a `replace` value, `{repo}`, `{site}`, `{host}` and `{subdomain}` stand for the repository, its site URL, the site's host and the first label of that host (all from projects.json). `orgSecrets` entries are a name or {name, requires}. `todos` are lines printed at the end for a person, with the same tokens. With the docs option the script also vendors the design (bin/sync-design.sh of the pinned m3l-design release), commits the deploy lockfile, runs the docs gate on the result before anything is created, and creates the docs-cloudflare environment.",
   "kinds": [
     "library",
     "plugin",
     "simple"
   ],
   "options": [
-    "claude"
+    "claude",
+    "docs"
   ],
   "starters": [
     {
@@ -14,7 +15,19 @@
       "to": "README.md",
       "substitute": [
         "{repo}"
-      ]
+      ],
+      "requires": "!docs"
+    },
+    {
+      "from": "blueprint/files/README.md",
+      "to": "README.md",
+      "substitute": [
+        "{repo}"
+      ],
+      "replace": {
+        "(CONTRIBUTING.md)": "(https://github.com/monte3l/.github/blob/main/CONTRIBUTING.md)"
+      },
+      "requires": "docs"
     },
     {
       "from": "blueprint/files/SECURITY.md",
@@ -56,11 +69,13 @@
     },
     {
       "from": "blueprint/files/dependabot.yml",
-      "to": ".github/dependabot.yml"
+      "to": ".github/dependabot.yml",
+      "requires": "!docs"
     },
     {
       "from": "blueprint/files/dependency-review-config.yml",
-      "to": ".github/dependency-review-config.yml"
+      "to": ".github/dependency-review-config.yml",
+      "requires": "!docs"
     },
     {
       "from": "blueprint/files/labeler.yml",
@@ -90,6 +105,70 @@
       "replace": {
         "REPLACE-WITH-THE-CURRENT-VERSION": "0.0.0"
       }
+    },
+    {
+      "from": "blueprint/files/dependabot.yml",
+      "to": ".github/dependabot.yml",
+      "replace": {
+        "  # Example for a pinned CI tool folder (see \"Tool pins\" in blueprint/README.md).\n  # - package-ecosystem: npm\n  #   directory: /tools/ci\n  #   schedule:\n  #     interval: weekly\n  #   commit-message:\n  #     prefix: ci\n  #   cooldown:\n  #     default-days: 1\n  #   labels:\n  #     - dependencies\n": "  # The pinned wrangler of the docs deploy (tools/deploy): Dependabot reads a\n  # lockfile here, never under the root .github/.\n  - package-ecosystem: npm\n    directory: /tools/deploy\n    schedule:\n      interval: weekly\n    commit-message:\n      prefix: ci\n    cooldown:\n      default-days: 1\n    labels:\n      - dependencies\n"
+      },
+      "requires": "docs"
+    },
+    {
+      "from": "blueprint/files/dependency-review-config-docs.yml",
+      "to": ".github/dependency-review-config.yml",
+      "requires": "docs"
+    },
+    {
+      "from": "blueprint/files/docs.config.mjs",
+      "to": "docs.config.mjs",
+      "substitute": [
+        "PROJECT"
+      ],
+      "replace": {
+        "https://PROJECT.monte3l.com": "{site}",
+        "    { src: \"CONTRIBUTING.md\", out: \"CONTRIBUTING.html\", group: \"Project\", label: \"Contributing\" },\n": "",
+        "navGroups: [\"Start\", \"Project\", \"Security\"]": "navGroups: [\"Start\", \"Security\"]",
+        "    { glob: \"CHANGELOG.md\", reason: \"release notes live on the GitHub releases page\" },\n    { glob: \".claude/**\", reason: \"instructions for coding agents, not reader-facing\" },\n": "    { glob: \"design/README.md\", reason: \"the marker of the m3l-design copy, not reader-facing\" },\n"
+      },
+      "requires": "docs"
+    },
+    {
+      "from": "blueprint/files/deploy-tools/package.json",
+      "to": "tools/deploy/package.json",
+      "replace": {
+        "PROJECT-deploy-tools": "{subdomain}-deploy-tools"
+      },
+      "requires": "docs"
+    },
+    {
+      "from": "blueprint/files/deploy-tools/wrangler.jsonc",
+      "to": "tools/deploy/wrangler.jsonc",
+      "replace": {
+        "PROJECT-docs": "{subdomain}-docs",
+        "PROJECT.monte3l.com": "{host}"
+      },
+      "requires": "docs"
+    },
+    {
+      "from": ".node-version",
+      "to": ".node-version",
+      "requires": "docs"
+    },
+    {
+      "from": "blueprint/files/environments.json",
+      "to": ".github/environments.json",
+      "requires": "docs"
+    },
+    {
+      "from": "LICENSES/OFL-1.1.txt",
+      "to": "LICENSES/OFL-1.1.txt",
+      "requires": "docs"
+    },
+    {
+      "from": "LICENSES/LicenseRef-MONTE3L-Brand.txt",
+      "to": "LICENSES/LicenseRef-MONTE3L-Brand.txt",
+      "requires": "docs"
     }
   ],
   "templates": [
@@ -134,41 +213,58 @@
     {
       "name": "claude",
       "requires": "claude"
+    },
+    {
+      "name": "docs",
+      "requires": "docs"
+    },
+    {
+      "name": "docs-live",
+      "requires": "docs"
+    },
+    {
+      "name": "environments",
+      "requires": "docs"
     }
   ],
   "generated": [
     {
       "to": "design/README.md",
-      "what": "the design marker of the content tier, from blueprint/design-system.json"
+      "what": "the design marker from blueprint/design-system.json: the content tier, or the vendored tier with the docs option"
     }
   ],
-  "excluded": [
-    {
-      "from": "blueprint/files/docs.config.mjs",
-      "reason": "Not bootstrapped yet: a docs site needs the vendored design (design/source/ from sync-design.sh, the vendored-tier marker, OFL-1.1 and brand license texts), PROJECT replaced, and a committed package-lock.json for tools/deploy. Set up by hand, see blueprint/docs-site.md."
-    },
-    {
-      "from": "blueprint/files/deploy-tools/package.json",
-      "reason": "Not bootstrapped yet: a docs site needs the vendored design (design/source/ from sync-design.sh, the vendored-tier marker, OFL-1.1 and brand license texts), PROJECT replaced, and a committed package-lock.json for tools/deploy. Set up by hand, see blueprint/docs-site.md."
-    },
-    {
-      "from": "blueprint/files/deploy-tools/wrangler.jsonc",
-      "reason": "Not bootstrapped yet: a docs site needs the vendored design (design/source/ from sync-design.sh, the vendored-tier marker, OFL-1.1 and brand license texts), PROJECT replaced, and a committed package-lock.json for tools/deploy. Set up by hand, see blueprint/docs-site.md."
-    },
-    {
-      "from": "workflow-templates/docs.yml",
-      "reason": "Not bootstrapped yet: a docs site needs the vendored design (design/source/ from sync-design.sh, the vendored-tier marker, OFL-1.1 and brand license texts), PROJECT replaced, and a committed package-lock.json for tools/deploy. Set up by hand, see blueprint/docs-site.md. It also needs a .node-version."
-    },
-    {
-      "from": "workflow-templates/docs-live.yml",
-      "reason": "Not bootstrapped yet: a docs site needs the vendored design (design/source/ from sync-design.sh, the vendored-tier marker, OFL-1.1 and brand license texts), PROJECT replaced, and a committed package-lock.json for tools/deploy. Set up by hand, see blueprint/docs-site.md. It also needs a .node-version."
-    },
-    {
-      "from": "workflow-templates/environments.yml",
-      "reason": "Not bootstrapped yet: it needs .github/environments.json (the environments the repository really has) and a .node-version. Set up by hand, see Environment cleanup in blueprint/README.md."
-    }
-  ],
+  "excluded": [],
   "orgSecrets": [
-    "GITLEAKS_LICENSE"
+    "GITLEAKS_LICENSE",
+    {
+      "name": "CLOUDFLARE_API_TOKEN",
+      "requires": "docs"
+    },
+    {
+      "name": "CLOUDFLARE_ACCOUNT_ID",
+      "requires": "docs"
+    },
+    {
+      "name": "JANITOR_APP_CLIENT_ID",
+      "requires": "docs"
+    },
+    {
+      "name": "JANITOR_APP_PRIVATE_KEY",
+      "requires": "docs"
+    }
+  ],
+  "todos": [
+    {
+      "requires": "docs",
+      "text": "docs site: `dig {host}` should return nothing before the first deploy, which the first push starts (a Custom Domain fails to attach over an existing CNAME). The script warns when it does. See blueprint/docs-site.md in monte3l/.github for the zone settings"
+    },
+    {
+      "requires": "docs",
+      "text": "docs site: add `node design/source/docs-kit/build.mjs --check` to verify.yml, with actions/setup-node reading .node-version, so a pull request is gated as well as a push to main"
+    },
+    {
+      "requires": "docs",
+      "text": "docs site: add \"{repo}\" to \"consumers\" in blueprint/design-system.json of monte3l/.github, so a new m3l-design release opens its re-sync pull request"
+    }
   ]
 }

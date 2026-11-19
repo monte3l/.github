@@ -77,9 +77,8 @@ Done by hand, before merging the pull request that adds `docs.yml`.
    share the two organization secrets with the repository:
 
    ```sh
-   gh api -X PUT repos/monte3l/<repo>/environments/docs-cloudflare \
-     -f 'deployment_branch_policy[protected_branches]=false' \
-     -f 'deployment_branch_policy[custom_branch_policies]=true'
+   echo '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' |
+     gh api -X PUT repos/monte3l/<repo>/environments/docs-cloudflare --input -
    gh api -X POST repos/monte3l/<repo>/environments/docs-cloudflare/deployment-branch-policies \
      -f name=main
    id="$(gh api repos/monte3l/<repo> --jq .id)"
@@ -147,6 +146,12 @@ Done by hand, before merging the pull request that adds `docs.yml`.
 
 ## Wiring a new site
 
+`bin/new-repo.sh NAME --docs` does steps 1 to 4 and 6 for a new repository, and
+runs the gate of step 5 locally before anything is created (adding the gate to
+`verify` stays with a person). See
+[New repository](README.md#new-repository). The steps below are what to do by hand
+for a repository that already exists.
+
 1. Add `design/README.md` with the vendored marker, then run
    `bin/sync-design.sh vX.Y.Z <repo>` from an m3l-design checkout.
 2. Copy `files/docs.config.mjs` to the repository root and fill it in. List
@@ -161,7 +166,8 @@ Done by hand, before merging the pull request that adds `docs.yml`.
    workflow, with `actions/setup-node` reading `.node-version`.
 6. Add an `npm` entry for `/tools/deploy` to `dependabot.yml`, with a
    one-day cooldown, and the `sharp` libvips allowance to
-   `dependency-review.yml` (copy it from m3l-design's workflow).
+   `.github/dependency-review-config.yml` (start from
+   `files/dependency-review-config-docs.yml`; the workflow never carries it).
 7. Add the parity module the repository needs, listed in `parity`.
 8. Add the site to `blueprint/projects.json` in this repository.
 9. Run `bin/apply-repo-baseline.sh monte3l/<repo>` and fix any `docs site`
