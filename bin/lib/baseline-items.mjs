@@ -17,11 +17,13 @@
 export const INLINE_ITEMS = [
   "design system",
   "docs site: tier",
+  "docs site: parity",
   "docs site: daily check",
   "docs site: homepage",
   "repository description",
   "repository topics",
   "release: workflow pin",
+  "release: workflow pin age",
   "release: app installation",
   "release: app secrets",
   "release: immutable releases",
@@ -40,7 +42,7 @@ export const INLINE_ITEMS = [
 
 /**
  * @param {string} script the text of apply-repo-baseline.sh
- * @returns {{ settle: string[], reportFile: string[], reportWorkflow: string[], skip: string[] }}
+ * @returns {{ settle: string[], reportFile: string[], reportWorkflow: string[], reportPlaceholders: string[], skip: string[] }}
  */
 export function parseBaselineScript(script) {
   // A label built from a shell variable (`ruleset: $name`) is one item per
@@ -54,6 +56,7 @@ export function parseBaselineScript(script) {
     settle: labels("settle"),
     reportFile: labels("report_file"),
     reportWorkflow: labels("report_workflow"),
+    reportPlaceholders: labels("report_placeholders"),
     skip: labels("skip"),
   };
 }
