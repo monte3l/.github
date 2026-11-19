@@ -219,12 +219,19 @@ counts only, so a closed issue is not proof that everything was verified. The
 job summary says how many items were skipped. Run `bin/org-audit.sh` with your
 own admin token now and then: its report has a SKIP column per repository.
 
+> [!IMPORTANT]
+> The scheduled run cannot see the merge settings or **who may bypass the
+> rulesets**. A change to either shows up only in a local admin run, so run one
+> after anything that touches rulesets or repository settings.
+
 | Item | Skipped under the App token | Until |
 | --- | --- | --- |
 | `release: app installation` | Always. GitHub's `GET /user/installations/{id}/repositories` accepts a user access token only | Never: only an admin token can run it |
 | `labels` | Only if the token lacks **Issues** read (the App has it) | The token has it |
 | `env-janitor: no environment secrets` | Only if the token lacks **Environments** read (the App has it) | The token has it |
 | `security: Dependabot alerts`, `security: Dependabot security updates` | Only if GitHub answers the token with a 403. A 404 is read as off, so a token that GitHub answers with 404 still shows drift | The token can read those settings |
+| `repository settings` (the merge settings) | When GitHub does not return them to the token, so every key reads as absent. It does not, with no token at all | Never for the read-only App, as far as I know. Only a local admin run checks them |
+| `ruleset: NAME: bypass actors` | When GitHub does not show who may bypass the ruleset to the token. The rest of the ruleset (rules, conditions, enforcement) is still compared | Never for the read-only App, as far as I know. Only a local admin run checks who may bypass the rulesets |
 | Items a plan cannot have (rulesets and fork-PR approval on a private free-plan repository, OpenSSF for `.github`) | On any token | The plan changes |
 
 ## Environment cleanup
