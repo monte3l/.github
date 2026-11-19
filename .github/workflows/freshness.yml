@@ -203,7 +203,7 @@ jobs:
                 cat <<'TEXT'
           ```
 
-          Refresh a stale copy from `workflow-templates/`. A copy a person changed on purpose is never reported, and neither is one that differs only in comments, blank lines or action pins. A flag that disagrees with a repository's `docs.config.mjs` is fixed in `blueprint/sync.json`.
+          `template-sync.yml` opens a pull request for each repository at 06:15 UTC the same day, or run it by hand. A copy a person changed on purpose is never reported, and neither is one that differs only in comments, blank lines or action pins. A flag that disagrees with a repository's `docs.config.mjs` is fixed in `blueprint/sync.json`.
           TEXT
               } >"$RUNNER_TEMP/body.md"
               bin/lib/upsert-issue.sh "Workflow copies are behind their templates" area:ci "$RUNNER_TEMP/body.md"
