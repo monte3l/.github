@@ -24,6 +24,7 @@ in `m3l-groundwork`.
 | `openssf.json`           | The OpenSSF Best Practices level every public repository should reach (`minimum`: a metal level and a Baseline level), and the repositories exempt from it, each with its reason. Checked by the script, never applied |
 | `pins.json`              | The tool versions pinned by hand because Dependabot does not read them (`GITLEAKS_VERSION`, the actionlint image, zizmor): the version, the upstream repository, the text each listed file must contain. `bin/pin-parity.mjs` checks every copy offline, and `.github/workflows/freshness.yml` reports a stale pin weekly. Never applied by the script |
 | `upstream.json`          | The upstream policies the standard follows (the OpenSSF Scorecard checks, the OpenSSF Baseline, the OpenSSF Best Practices criteria, the REUSE specification) and the value of each that a person last reviewed. `bin/upstream-watch.sh` compares them weekly and `.github/workflows/freshness.yml` reports a change in one issue. Never applied by the script. See [Keeping the standard current](#keeping-the-standard-current) |
+| `sync.json`              | How the template sync treats each workflow template (`managed` or `unmanaged`), the optional blocks a repository takes (its flags), and which repositories are consumers. `bin/sync-parity.mjs` checks it against `workflow-templates/` and `projects.json`. Never applied by the script. See [Workflow template sync](#workflow-template-sync) |
 | `org.json`               | The organization's display name, description and website. Never applied or checked by the script, because it is an org setting. An Owner sets it, see [Descriptions](#descriptions) |
 | `docs-site.md`           | The docs site standard, the Cloudflare one-time setup and the runbook. See [Docs site](#docs-site) |
 | `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `policies.yml` and `scancode-config.yml` (the ScanCode license policy and ignored paths), `dependabot.yml`, `labeler.yml`, a `README.md` skeleton, `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
@@ -266,6 +267,50 @@ The workflow only reports, and it never accepts a change. To review one:
 > The first values in `upstream.json` record what each source said on the day the
 > watcher was added. They are a starting point, not proof that the standard was
 > checked against them.
+
+## Workflow template sync
+
+A workflow copied from `workflow-templates/` is never updated by GitHub, so a
+change to a template used to reach no repository. `bin/template-sync.mjs`
+compares each consumer's copy with the template, read-only, and
+`freshness.yml` reports the result every Monday in one issue, **Workflow copies
+are behind their templates**.
+
+The template is first **rendered** for the repository: `https://PROJECT.monte3l.com`
+becomes its site, and a block between `# sync:if FLAG` and `# sync:end` stays
+only in a repository that has that flag in `sync.json`. Then the two are
+compared in two ways, on purpose not equally forgiving. A **lenient** comparison
+ignores comments, blank lines, the SPDX header and action pins, and can only
+decide that nothing needs doing. A **strict** comparison ignores everything
+except the SPDX header, blank lines and pins, and decides that a copy is stale.
+A line that starts with `#` is not always a comment: inside a script it can be a
+heredoc heading, and a person who commented a step out leaves one behind.
+Dependabot owns the pins in each repository.
+
+| State | Meaning | What happens |
+| --- | --- | --- |
+| Identical | The copy is the rendered template | Nothing |
+| Equivalent | Same text once comments, blank lines and pins are ignored | Nothing |
+| **Stale** | Strictly equal to an **older** version of the template | Reported |
+| Custom | Anything else: a person's change | Never reported, never overwritten |
+
+The error to avoid is calling a custom copy stale, because a refresh would
+overwrite someone's work. So a copy is stale only if it strictly matches a
+version the template really had, and nothing looser. The tool also stops with an
+error, and never reports "nothing", when it cannot read a repository in full or
+the template history is missing, because the weekly job closes its issue on a
+clean result.
+
+Keep per-repository data out of a template. A package allow-list or a URL in the
+file turns every copy custom. A URL is a parameter (`PROJECT`), an optional step
+is a `sync:if` block, and data belongs in a config file the workflow reads.
+`workflow-templates/docs-live.yml` has the one block today: `--metadata` fails
+when `docs.config.mjs` has no `manifest`, so only a repository with one takes it.
+
+`verify.yml`, `release.yml` and `claude.yml` are `unmanaged`: their lanes and
+inputs belong to each repository. The sync opens no pull request yet. That needs
+its own GitHub App with the `workflows` permission, which the release App does
+not hold on purpose.
 
 ## Environment cleanup
 

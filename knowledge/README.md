@@ -11,7 +11,7 @@ The [engineering standard](../blueprint/README.md) is not here. It is written by
 | [LLM wiki, llms.txt and RAG](wiki/llm-wiki-and-llms-txt.md) | Decision | What the docs use to serve agents, and what they do not |
 | [The weekly org audit](wiki/org-audit-decisions.md) | Decision | Why the audit is a script, what it publishes, what it cannot see |
 | [Pinned tools and upstream policies](wiki/pin-and-policy-freshness.md) | Decision | How versions Dependabot cannot read, and policies other people change, are watched |
-| [Bootstrapping and template sync](wiki/template-sync-options.md) | Research | The options for new repositories and for copied files that never update |
+| [Keeping copied workflows current](wiki/template-sync-options.md) | Decision | How stale workflow copies are found and refreshed, and why reusable workflows wait |
 
 ## How it is kept
 

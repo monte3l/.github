@@ -25,7 +25,7 @@ export default {
     { src: "knowledge/wiki/llm-wiki-and-llms-txt.md", out: "knowledge/llm-wiki-and-llms-txt.html", group: "Knowledge", label: "LLM wiki, llms.txt and RAG", summary: "What the docs use to serve agents (llms.txt and an LLM-maintained wiki), and why not retrieval" },
     { src: "knowledge/wiki/org-audit-decisions.md", out: "knowledge/org-audit-decisions.html", group: "Knowledge", label: "The weekly org audit", summary: "Why the weekly audit is a script, what it publishes, and what it cannot see" },
     { src: "knowledge/wiki/pin-and-policy-freshness.md", out: "knowledge/pin-and-policy-freshness.html", group: "Knowledge", label: "Pinned tools and upstream policies", summary: "How hand-pinned tool versions and upstream policies such as Scorecard are watched for change" },
-    { src: "knowledge/wiki/template-sync-options.md", out: "knowledge/template-sync-options.html", group: "Knowledge", label: "Bootstrapping and template sync", summary: "Research on creating repositories and keeping copied files current; nothing is decided yet" },
+    { src: "knowledge/wiki/template-sync-options.md", out: "knowledge/template-sync-options.html", group: "Knowledge", label: "Keeping copied workflows current", summary: "How stale workflow copies are found and refreshed, what was measured, and why reusable workflows wait" },
     { src: "knowledge/log.md", out: "knowledge/log.html", group: "Knowledge", label: "Log", summary: "What was added, checked or decided in the knowledge base, oldest first" },
     { src: "CODE_OF_CONDUCT.md", out: "CODE_OF_CONDUCT.html", group: "Community", label: "Code of conduct", summary: "The standard of behaviour in monte3l projects" },
     { src: "CONTRIBUTING.md", out: "CONTRIBUTING.html", group: "Community", label: "Contributing", summary: "How to propose and make a change, and what the checks expect" },
@@ -52,5 +52,5 @@ export default {
   },
   sitemap: true,
   generators: ["bin/site/templates.mjs", "bin/site/baseline.mjs"],
-  parity: ["bin/doc-parity.mjs", "bin/pin-parity.mjs", "bin/knowledge-parity.mjs"],
+  parity: ["bin/doc-parity.mjs", "bin/pin-parity.mjs", "bin/knowledge-parity.mjs", "bin/sync-parity.mjs"],
 };

@@ -30,3 +30,11 @@ A second reader re-fetched the primary pages behind the cards. Corrected: the Be
 
 Kit 1.4.0 reached all six consumers, and this site set `llms` and `sitemap` with a one-line summary on every page. The two generated pages, the template catalog and the baseline-check catalog, return their own Markdown, so an agent gets them as tables instead of a link to HTML. The llms.txt page was corrected: it had said the site did not publish the files.
 
+## [2026-11-19] ingest | Workflow copies and template sync
+
+Measured 76 workflow copies against their templates and rewrote the template-sync page from research to a decision. Three new cards (the measurement, the dependency-review config file, gitleaks' config lookup) and a re-read line on the App permissions card. Two things first believed were corrected by checking: the `--metadata` step is a per-repository variant, not a template improvement, and `GITLEAKS_CONFIG` is redundant. A review then found that the first classifier could call a copy with a step commented out stale, which would have let a sync overwrite it, and that three of my own statements were wrong (a copy total of 63 that is 67, a claim about the gitleaks template, and a reading of the dependency-review config keys). All are fixed and the log of this decision says how.
+
+## [2026-11-19] decision | Sync before reusable workflows, with a separate App
+
+Defer reusable workflows. Refresh only copies that equal an older template version. Open the pull requests from a separate `monte3l-sync` App rather than widening the release App.
+
