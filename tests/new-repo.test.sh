@@ -85,9 +85,6 @@ cat > "$T/stubs/npm" <<'STUB'
 #!/usr/bin/env bash
 echo "npm $* (in $PWD)" >> "$LOG"
 case "$1" in
-  install)
-    if [[ -n "${STUB_LOCK_BAD:-}" ]]; then echo '{"name":"x","version":"file:../../../tmp/repo","lockfileVersion":3,"packages":{"":{},"../../../tmp/x":{}}}' > package-lock.json
-    else echo '{"name":"x","version":"0.0.0","lockfileVersion":3,"packages":{"":{},"node_modules/wrangler":{}}}' > package-lock.json; fi ;;
   ci) [[ -z "${STUB_NPM_CI_FAIL:-}" ]] || exit 1 ;;
 esac
 STUB
@@ -324,11 +321,15 @@ check "no docs: no docs files, no Cloudflare secrets" '! grep -q "docs.config.mj
 reset_remote
 run zz-test-repo --kind simple --docs --apply --yes
 check "docs apply: design vendored at the pinned tag into the repo dir" 'grep -q "^design-sync v[0-9]" "$LOG"'
-check "docs apply: the lockfile is made without scripts, INSIDE the deploy directory (no --prefix)" 'grep -q "^npm install --package-lock-only --ignore-scripts (in .*/tools/deploy)$" "$LOG" && ! grep -q -- "--prefix" "$LOG"'
+check "docs apply: no npm install runs (nothing is resolved at bootstrap), the lockfile is the reviewed starter" '! grep -q "^npm install" "$LOG"'
+check "docs apply: npm ci --dry-run runs inside the deploy directory" 'grep -q "^npm ci --dry-run --ignore-scripts (in .*/tools/deploy)$" "$LOG"'
 check "docs apply: the gate ran BEFORE the repository was created" 'awk "/^gate ran/{g=NR} /^gh repo create/{c=NR} END{exit !(g && c && g<c)}" "$LOG"'
 check "docs apply: the environment is created after the repo and before the Apps" 'awk "/^gh repo create/{a=NR} /environments\/docs-cloudflare\/deployment/{b=NR} /^gh api -X PUT user/{c=NR} END{exit !(a<b && b<c)}" "$LOG"'
 check "docs apply: the environment branch policy is main" 'grep -q "deployment-branch-policies -f name=main" "$LOG"'
 check "docs apply: the Cloudflare secrets are shared" 'grep -q "secrets/CLOUDFLARE_API_TOKEN/repositories/4242" "$LOG" && grep -q "secrets/CLOUDFLARE_ACCOUNT_ID/repositories/4242" "$LOG"'
+# The lock is large: capture it first, because `git show | grep -q` makes git take SIGPIPE when grep exits early,
+# and pipefail then calls a successful match a failure.
+check "docs apply: the starter lockfile has the repository's name, not PROJECT" 'lock="$(git -C "$T/remotes/monte3l/zz-test-repo.git" show main:tools/deploy/package-lock.json)"; grep -q "\"name\": \"zz-test-repo-deploy-tools\"" <<<"$lock" && ! grep -q PROJECT <<<"$lock"'
 check "docs apply: vendored files and the lockfile are in the first commit" 'files="$(git -C "$T/remotes/monte3l/zz-test-repo.git" ls-tree -r --name-only main)"; grep -q "^design/tokens.css$" <<<"$files" && grep -q "^tools/deploy/package-lock.json$" <<<"$files" && grep -q "^docs.config.mjs$" <<<"$files"'
 check "docs apply: the vendored marker is in the commit" 'git -C "$T/remotes/monte3l/zz-test-repo.git" show main:design/README.md | grep -q "^- \*\*Tier:\*\* vendored$"'
 check "docs apply: the site URL and host are filled in" 'git -C "$T/remotes/monte3l/zz-test-repo.git" show main:tools/deploy/wrangler.jsonc | grep -q "zz-test-repo.monte3l.com" && git -C "$T/remotes/monte3l/zz-test-repo.git" show main:docs.config.mjs | grep -q "siteUrl: \"https://zz-test-repo.monte3l.com\""'
@@ -392,11 +393,8 @@ reset_remote
 run zz-test-repo --kind simple --docs --apply --yes
 check "docs apply: npm ci --dry-run validated the lockfile before anything was created" 'awk "/^npm ci --dry-run/{n=NR} /^gh repo create/{c=NR} END{exit !(n && c && n<c)}" "$LOG"'
 reset_remote
-STUB_LOCK_BAD=1 run zz-test-repo --kind simple --docs --apply --yes
-check "a lockfile with a path of this machine is refused (3), nothing created" '[[ $RC == 3 ]] && grep -q "deploy lockfile is not usable" <<<"$OUT" && ! grep -q "^gh repo create" "$LOG" && ! grep -q "was created before that" <<<"$OUT"'
-reset_remote
 STUB_NPM_CI_FAIL=1 run zz-test-repo --kind simple --docs --apply --yes
-check "a lockfile npm ci refuses is refused (3), nothing created" '[[ $RC == 3 ]] && grep -q "deploy lockfile is not usable" <<<"$OUT" && ! grep -q "^gh repo create" "$LOG"'
+check "a lockfile npm ci refuses is refused (3), nothing created" '[[ $RC == 3 ]] && grep -q "npm ci refuses the deploy lockfile" <<<"$OUT" && ! grep -q "^gh repo create" "$LOG"'
 
 # ---- the cleanup dry run (found by the third real run)
 run zz-test-repo --kind simple --docs

@@ -167,8 +167,8 @@ if [[ -n "$kind" ]]; then
 fi
 if [[ "$mode" == apply ]] && ((docs)); then
   # --docs runs bin/sync-design.sh, which verifies the release with `gh release verify` (gh 2.81 or later),
-  # and makes the deploy lockfile with npm. Say so now, not after the confirmation.
-  command -v npm >/dev/null 2>&1 || die "npm is required for --docs (it makes the deploy lockfile)"
+  # and checks the deploy lockfile with npm ci. Say so now, not after the confirmation.
+  command -v npm >/dev/null 2>&1 || die "npm is required for --docs (it checks the deploy lockfile)"
   gh release verify --help >/dev/null 2>&1 || die "gh is too old for --docs: bin/sync-design.sh needs gh release verify (gh 2.81 or later)"
 fi
 if [[ "$mode" == apply ]]; then
@@ -258,7 +258,7 @@ if [[ "$mode" == plan ]]; then
   printf '\nWith --apply this would, in order:\n'
   ((scaffold)) && printf '  - run npx %s in fresh mode (code from npm, run with your credentials in the environment), then add the files above\n' "$scaffold_package"
   if ((docs)); then
-    printf '  - vendor the design: bin/sync-design.sh of m3l-design %s, then commit the deploy lockfile (npm install --package-lock-only)\n' "$(jq -r .version "$here/../blueprint/design-system.json")"
+    printf '  - vendor the design: bin/sync-design.sh of m3l-design %s, then check the deploy lockfile starter with npm ci --dry-run\n' "$(jq -r .version "$here/../blueprint/design-system.json")"
     printf '  - run the docs gate (build.mjs --check) on the result: nothing is created if it fails\n'
   fi
   printf '  - make one signed-off commit and create %s/%s (%s: "%s")\n' "$owner" "$name" "$visibility" "$description"
@@ -311,13 +311,12 @@ if ((docs)); then
     git -C "$work/m3l-design" checkout -q --detach FETCH_HEAD
     bash "$work/m3l-design/bin/sync-design.sh" "$design_tag" "$repo_dir"
   fi
-  # The deploy workflow installs with npm ci, which needs the lockfile committed. npm runs inside the deploy
-  # directory: with --prefix from elsewhere, a temp directory under a symlink (macOS /var) leaves this machine's
-  # paths in the lockfile and `npm ci` then reports every package as missing.
-  (cd "$repo_dir/tools/deploy" && npm install --package-lock-only --ignore-scripts >/dev/null)
-  if ! jq -e '((.version // "") | startswith("file:") | not) and ([.packages | keys[] | select(startswith("../"))] | length == 0)' "$repo_dir/tools/deploy/package-lock.json" >/dev/null ||
-    ! (cd "$repo_dir/tools/deploy" && npm ci --dry-run --ignore-scripts >/dev/null 2>&1); then
-    printf 'error: the deploy lockfile is not usable (it names a path of this machine, or npm ci refuses it), so nothing was created\n' >&2
+  # The deploy workflow installs with npm ci, so the lockfile is committed. It is a starter
+  # (blueprint/files/deploy-tools/), reviewed here and kept current by Dependabot, with an integrity hash for
+  # every package: nothing is resolved from the network at bootstrap. npm ci --dry-run only proves it still
+  # matches package.json, and it fails the whole run before anything is created if it does not.
+  if ! (cd "$repo_dir/tools/deploy" && npm ci --dry-run --ignore-scripts >/dev/null 2>&1); then
+    printf 'error: npm ci refuses the deploy lockfile (it does not match tools/deploy/package.json), so nothing was created\n' >&2
     exit 3
   fi
 fi

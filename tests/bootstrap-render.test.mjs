@@ -88,6 +88,18 @@ assert.ok(text(docs, "docs.config.mjs").includes('repo: "https://github.com/mont
 assert.ok(text(docs, "docs.config.mjs").includes('title: "m3l-plugins"'));
 assert.ok(!docs.files.filter((f) => !f.to.startsWith(".github/workflows/")).some((f) => /\bPROJECT\b/.test(f.text)), "no PROJECT is left in any starter (a workflow template keeps its own Adopting comment)");
 assert.deepEqual(docs.unfilled.filter((u) => u.found.some((x) => /PROJECT|REPOSITORY/.test(x))), []);
+// The deploy lockfile is a reviewed starter, copied and never generated at bootstrap. It must still be the pair
+// npm ci accepts: the same wrangler, a lock whose root names the repository, and an integrity hash everywhere.
+const pkg = JSON.parse(text(docs, "tools/deploy/package.json"));
+const lock = JSON.parse(text(docs, "tools/deploy/package-lock.json"));
+assert.equal(lock.name, "plugins-deploy-tools", "the lock names the repository's subdomain, like package.json");
+assert.equal(lock.packages[""].name, pkg.name);
+assert.ok(!text(docs, "tools/deploy/package-lock.json").includes("PROJECT"), "no PROJECT is left in the lock");
+assert.equal(lock.packages[""].dependencies.wrangler, pkg.dependencies.wrangler, "the lock asks for the same wrangler as package.json");
+assert.equal(lock.packages["node_modules/wrangler"].version, pkg.dependencies.wrangler, "and locks exactly that version");
+assert.deepEqual(Object.entries(lock.packages).filter(([, entry]) => entry.resolved && !entry.integrity).map(([key]) => key), [], "every resolved package carries an integrity hash");
+assert.deepEqual(Object.keys(lock.packages).filter((key) => key.startsWith("../")), [], "no path of the machine that made it");
+assert.ok(text(go({ kind: "simple" }), "tools/deploy/package-lock.json") === undefined, "no docs, no lock");
 // the config the docs gate needs: no page for a file the repo does not have, no stale excludes, the marker excluded
 const cfg = text(docs, "docs.config.mjs");
 assert.ok(!cfg.includes("CONTRIBUTING.md") && !cfg.includes("CHANGELOG.md") && !cfg.includes(".claude/**"));
