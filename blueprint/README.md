@@ -401,8 +401,11 @@ the `template-sync` environment of `monte3l/.github` (`SYNC_APP_CLIENT_ID`,
 `.github/environments.json`. The release App stays without `workflows`. Each
 leg mints a token for the one repository it changes.
 
-The workflow does not run on a schedule yet. The weekly `freshness.yml` issue
-reports what is stale, and a person starts the sync.
+The workflow runs every Monday at 06:15 UTC, an hour after the weekly
+`freshness.yml` issue reports what is stale, and a scheduled run is a real one:
+it opens the pull requests. A run that finds nothing stale opens nothing, and a
+person still reviews and merges each pull request. Started by hand it only
+reports, unless `dry_run` is turned off.
 
 ## Environment cleanup
 
@@ -739,6 +742,12 @@ gh api -X PATCH repos/monte3l/REPO/code-scanning/alerts/N \
 The reason lives in an `## Accepted OpenSSF Scorecard findings` section of the
 repository's `SECURITY.md`: a table of Check, Score and Why it stays, as in
 `m3l-output-governor`. Do not turn a dismissed finding into a standing bypass.
+
+A **new public repository gets several alerts on its first run**: Maintained and
+Fuzzing, for example, cannot pass for a repository with no history, and
+BranchProtection can show up from the scan that ran before the ruleset was
+applied. That is expected, not a defect of `bin/new-repo.sh`. The `SECURITY.md`
+starter already has the section to list them in.
 
 ## Claude Code plugins
 

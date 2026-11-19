@@ -45,10 +45,10 @@ Include the affected version, the steps to reproduce and the impact you think it
 
 Dependency Review fails a pull request that adds a dependency with a high or critical known vulnerability or a license outside the allow-list. CodeQL fails it on a new alert of error severity or critical or high security severity. Gitleaks scans for secrets.
 
-### Accepted findings
+## Accepted OpenSSF Scorecard findings
 
-A scanner finding that is dismissed instead of fixed is listed here with the reason, and the dismissal cites this section.
+Background, not policy: this explains the Scorecard results for anyone who looks them up. `scorecard.yml` runs weekly and surfaces its findings as Code Scanning alerts. A new repository gets several on its first run (Maintained, Fuzzing and others it cannot satisfy yet). One that is dismissed instead of fixed is listed here with the reason, and the dismissal cites this section. Do not turn a dismissed finding into a standing bypass.
 
-| Finding | Why it is accepted | Reviewed |
+| Check | Score | Why it stays |
 | --- | --- | --- |
 | None yet | | |
