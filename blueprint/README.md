@@ -119,8 +119,10 @@ deploy tools with their committed lockfile, the `docs`, `docs-live` and
 its own `bin/sync-design.sh`, which verifies the attestation. The release is fetched by its full tag ref, never by a name that a branch could also have, because the script then runs it with your credentials. It runs the real
 docs gate (`build.mjs --check`) on the result **before anything is created**, so
 a site that would fail its first deploy fails on your machine. It then creates the
-`docs-cloudflare` environment limited to `main` and shares the two Cloudflare
-organization secrets. Left for a person: the Cloudflare DNS check, a docs lane in
+`docs-cloudflare` environment limited to `main`, shares the two Cloudflare
+organization secrets and, after the settings, dispatches the cleanup workflow
+once as a dry run and waits for it: the baseline wants one green run of it, and
+it proves the App, the secrets and the policy resolve together. Left for a person: the Cloudflare DNS check, a docs lane in
 `verify.yml` so a pull request is gated, and the repository's entry in
 `design-system.json`'s `consumers`. It cannot be combined with `--scaffold` yet.
 Its starters for the two options differ (a docs repository's Dependabot,

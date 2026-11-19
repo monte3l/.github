@@ -50,7 +50,8 @@
 # an input that is refused, 3 a call failed (after the repository was created,
 # the message says how to finish).
 #
-# Environment, for tests only: NEW_REPO_BASELINE (the baseline script to run),
+# Environment, for tests only: NEW_REPO_POLL_SECONDS (seconds between polls; default 5),
+# NEW_REPO_BASELINE (the baseline script to run),
 # NEW_REPO_REMOTE_BASE (where `origin` points; default https://github.com) and
 # NEW_REPO_DESIGN_SYNC (a command run as `CMD TAG DIR` instead of cloning
 # m3l-design and running its bin/sync-design.sh).
@@ -268,6 +269,7 @@ if [[ "$mode" == plan ]]; then
   printf '  - push main, which starts Gitleaks and Release: the Apps and secrets come first for that reason\n'
   printf '  - set the topics: %s\n' "$(jq -r '.topics | join(", ")' <<<"$project")"
   printf '  - run apply-repo-baseline.sh --apply (settings, ruleset, labels)\n'
+  ((docs)) && printf '  - dispatch environments.yml once, a dry run, and wait: the baseline wants one green run of the cleanup\n'
   printf '  - run the baseline check and print what is left\n'
   printf '\nNothing was created. Run again with --apply.\n'
   exit 0
@@ -309,8 +311,15 @@ if ((docs)); then
     git -C "$work/m3l-design" checkout -q --detach FETCH_HEAD
     bash "$work/m3l-design/bin/sync-design.sh" "$design_tag" "$repo_dir"
   fi
-  # The deploy workflow installs with npm ci, which needs the lockfile committed.
-  npm install --package-lock-only --ignore-scripts --prefix "$repo_dir/tools/deploy" >/dev/null
+  # The deploy workflow installs with npm ci, which needs the lockfile committed. npm runs inside the deploy
+  # directory: with --prefix from elsewhere, a temp directory under a symlink (macOS /var) leaves this machine's
+  # paths in the lockfile and `npm ci` then reports every package as missing.
+  (cd "$repo_dir/tools/deploy" && npm install --package-lock-only --ignore-scripts >/dev/null)
+  if ! jq -e '((.version // "") | startswith("file:") | not) and ([.packages | keys[] | select(startswith("../"))] | length == 0)' "$repo_dir/tools/deploy/package-lock.json" >/dev/null ||
+    ! (cd "$repo_dir/tools/deploy" && npm ci --dry-run --ignore-scripts >/dev/null 2>&1); then
+    printf 'error: the deploy lockfile is not usable (it names a path of this machine, or npm ci refuses it), so nothing was created\n' >&2
+    exit 3
+  fi
 fi
 git -C "$repo_dir" add -A
 if ((docs)); then
@@ -403,6 +412,37 @@ stage=3
 printf '\n== apply-repo-baseline.sh --apply ==\n'
 "$baseline" "$owner/$name" --apply
 stage=4
+
+# The cleanup workflow has never run in a new repository, and the baseline wants one green run of it: it
+# shows the App installation, the secrets and the policy all resolve together. A dry run changes nothing.
+if ((docs)); then
+  printf '\n== environment cleanup: one dry run ==\n'
+  poll="${NEW_REPO_POLL_SECONDS:-5}"
+  janitor_state=""
+  if gh workflow run environments.yml -R "$owner/$name" >/dev/null 2>&1; then
+    run_id=""
+    tries=0
+    while [[ -z "$run_id" && $tries -lt 12 ]]; do
+      run_id="$(gh run list -R "$owner/$name" --workflow environments.yml --limit 1 --event workflow_dispatch --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)"
+      [[ -n "$run_id" ]] || sleep "$poll"
+      tries=$((tries + 1))
+    done
+    if [[ -n "$run_id" ]]; then
+      tries=0
+      while [[ "$janitor_state" != completed* && $tries -lt 60 ]]; do
+        janitor_state="$(gh run view "$run_id" -R "$owner/$name" --json status,conclusion --jq '.status + " " + (.conclusion // "")' 2>/dev/null || true)"
+        [[ "$janitor_state" == completed* ]] || sleep "$poll"
+        tries=$((tries + 1))
+      done
+    fi
+  fi
+  if [[ "$janitor_state" == "completed success" ]]; then
+    printf 'OK     environments.yml: success\n'
+  else
+    manual+=("dispatch environments.yml in $owner/$name with dry_run on and read the job summary: it did not finish green (${janitor_state:-it could not be started or found})")
+    printf 'MANUAL environments.yml: %s\n' "${janitor_state:-not started}"
+  fi
+fi
 
 # 7. the check
 printf '\n== apply-repo-baseline.sh --check ==\n'
