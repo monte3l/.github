@@ -197,7 +197,7 @@ publish it. To audit one repository, run `bin/org-audit.sh --repos NAME` locally
 | Step | Where | Value |
 | --- | --- | --- |
 | Create the App | Organization settings, GitHub Apps | `monte3l-audit`, no webhook, no user authorization. **Read-only** repository permissions: Actions, Administration, Contents, Environments, Issues, Metadata, Code scanning alerts. **Read-only** organization permissions: Administration, Secrets. A later change to the permissions stays pending until an Owner accepts it on the installation, and the workflow's `permission-*` inputs must not ask for more than the installation holds |
-| Install it | The App's page | **All repositories**, so a new repository is covered without a step |
+| Install it | The App's page | **Selected repositories**: every repository today. A new repository is **not** covered until it is added here, so the audit does not read it |
 | Create the environment | `monte3l/.github`, Settings, Environments | `org-audit`, deployment branches limited to `main`, no reviewers needed |
 | Add two environment secrets | Same environment | `AUDIT_APP_CLIENT_ID` and `AUDIT_APP_PRIVATE_KEY` |
 
@@ -441,7 +441,7 @@ gh attestation verify <file> -R monte3l/<repo> --signer-repo monte3l/.github
 
 | What | Value |
 | ---- | ----- |
-| The `monte3l-release` GitHub App, owned by the organization and installed on every repository | Contents and Pull requests write. Metadata read. Nothing else |
+| The `monte3l-release` GitHub App, owned by the organization and installed on selected repositories (every repository today; add a new one) | Contents and Pull requests write. Metadata read. Nothing else |
 | Organization secret `RELEASE_APP_CLIENT_ID` | The App's client ID, shared with the repositories that release. A secret, like `JANITOR_APP_CLIENT_ID`, so both Apps are set up the same way |
 | Organization secret `RELEASE_APP_PRIVATE_KEY` | The App's private key, shared with the repositories that release. Rotate it yearly like any other secret |
 | Allowed actions | `googleapis/release-please-action@*` in the organization's allowed-actions list. Actions the shared workflows use that GitHub owns need nothing. Without the entry every `Release` run fails at startup with "is not allowed", and a run that failed that way cannot be re-run |
