@@ -1,12 +1,21 @@
 name: Freshness (Scheduled)
 
-# What this does: once a week, compares the hand-pinned tool versions in
-# `blueprint/pins.json` (GITLEAKS_VERSION, the actionlint image, zizmor) with
-# the newest upstream release that is at least seven days old, and keeps one
-# tracking issue up to date. Dependabot only reads `uses:`, so nothing else
-# notices these. The run never edits a pin: a person bumps `pins.json` and every
-# copy, and `bin/pin-parity.mjs` (part of `verify`) fails if one copy is missed.
-# The run fails only when it cannot check; a stale pin is reported by the issue.
+# What this does, once a week, with one tracking issue per job:
+#
+# - `pins`: compares the hand-pinned tool versions in `blueprint/pins.json`
+#   (GITLEAKS_VERSION, the actionlint image, zizmor) with the newest upstream
+#   release that is at least seven days old. Dependabot only reads `uses:`, so
+#   nothing else notices these. The run never edits a pin: a person bumps
+#   `pins.json` and every copy, and `bin/pin-parity.mjs` (part of `verify`)
+#   fails if one copy is missed.
+# - `upstream`: compares the policies the standard follows (the OpenSSF
+#   Scorecard checks, the OpenSSF Baseline, the OpenSSF Best Practices criteria,
+#   the REUSE specification) with the values a person last reviewed in
+#   `blueprint/upstream.json`. It never accepts a change: a person reads it,
+#   updates `blueprint/` if the standard should follow, and runs
+#   `bin/upstream-watch.sh --accept`.
+#
+# A run fails only when it cannot check; a finding is reported by its issue.
 on:
   schedule:
     # Monday 05:15 UTC, ahead of the other weekly Monday jobs.
@@ -59,4 +68,45 @@ jobs:
               bin/lib/upsert-issue.sh "Pinned tool versions are stale" dependencies "$RUNNER_TEMP/body.md"
               ;;
             *) printf 'pin-freshness.sh failed with exit code %s\n' "$code" >&2; exit "$code" ;;
+          esac
+
+  upstream:
+    name: Upstream policies
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write # the tracking issue is the only write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Compare upstream policies with the reviewed values and update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          code=0
+          bin/upstream-watch.sh >"$RUNNER_TEMP/upstream.txt" || code=$?
+          cat "$RUNNER_TEMP/upstream.txt" >>"$GITHUB_STEP_SUMMARY"
+          case "$code" in
+            0) bin/lib/upsert-issue.sh "Upstream policy changed" area:ci "$RUNNER_TEMP/upstream.txt" --clean ;;
+            1)
+              {
+                cat <<'TEXT'
+          These upstream policies changed since they were last reviewed.
+
+          ```text
+          TEXT
+                cat "$RUNNER_TEMP/upstream.txt"
+                cat <<'TEXT'
+          ```
+
+          Read each change. If the standard should follow, update `blueprint/` (`affects` in `blueprint/upstream.json` says where). Then run `bin/upstream-watch.sh --accept NAME` and commit `blueprint/upstream.json` in the same pull request.
+          TEXT
+              } >"$RUNNER_TEMP/body.md"
+              bin/lib/upsert-issue.sh "Upstream policy changed" area:ci "$RUNNER_TEMP/body.md"
+              ;;
+            *) printf 'upstream-watch.sh failed with exit code %s\n' "$code" >&2; exit "$code" ;;
           esac

@@ -1,0 +1,33 @@
+[
+  {
+    "name": "OpenSSF Scorecard checks",
+    "kind": "scorecard-checks",
+    "repo": "ossf/scorecard",
+    "path": "docs/checks/internal/checks.yaml",
+    "reviewed": "Binary-Artifacts=High Branch-Protection=High CI-Tests=Low CII-Best-Practices=Low Code-Review=High Contributors=Low Dangerous-Workflow=Critical Dependency-Update-Tool=High Fuzzing=Medium License=Low Maintained=High Packaging=Medium Pinned-Dependencies=Medium SAST=Medium SBOM=Medium Security-Policy=Medium Signed-Releases=High Token-Permissions=High Vulnerabilities=High Webhooks=Critical",
+    "affects": "the Scorecard items in bin/apply-repo-baseline.sh, workflow-templates/scorecard.yml, and the Scorecard findings section of blueprint/README.md"
+  },
+  {
+    "name": "OpenSSF Baseline",
+    "kind": "latest-release",
+    "repo": "ossf/security-baseline",
+    "reviewed": "v2026.08.28",
+    "affects": "the Baseline level in blueprint/openssf.json"
+  },
+  {
+    "name": "OpenSSF Best Practices criteria",
+    "kind": "last-commit",
+    "repo": "ossf/best-practices-badge",
+    "path": "criteria",
+    "reviewed": "368d8945519afa083105ef64740fb41cfc8476ae",
+    "affects": "the metal level in blueprint/openssf.json, and each repository's .bestpractices.json answers"
+  },
+  {
+    "name": "REUSE specification",
+    "kind": "changelog-heading",
+    "repo": "fsfe/reuse-website",
+    "path": "CHANGELOG.md",
+    "reviewed": "3.3 - 2024-11-14",
+    "affects": "blueprint/files/REUSE.toml, workflow-templates/reuse.yml and the REUSE items in bin/apply-repo-baseline.sh"
+  }
+]
