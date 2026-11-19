@@ -37,6 +37,7 @@ export default {
     { glob: "CLAUDE.md", reason: "instructions for coding agents, not reader-facing" },
     { glob: ".claude/**", reason: "Claude Code agents, skills and hooks for working in this repository" },
     { glob: "blueprint/files/README.md", reason: "README skeleton with placeholders, copied rather than read" },
+    { glob: "blueprint/files/SECURITY.md", reason: "SECURITY.md skeleton with placeholders, copied rather than read" },
     { glob: ".github/pull_request_template.md", reason: "GitHub pull request template" },
     { glob: ".github/PULL_REQUEST_TEMPLATE/**", reason: "GitHub pull request template variants, chosen with ?template=" },
     { glob: ".groundwork/**", reason: "m3l-groundwork adoption and customization reports, a record for maintainers" },
@@ -52,5 +53,5 @@ export default {
   },
   sitemap: true,
   generators: ["bin/site/templates.mjs", "bin/site/baseline.mjs"],
-  parity: ["bin/doc-parity.mjs", "bin/pin-parity.mjs", "bin/knowledge-parity.mjs", "bin/sync-parity.mjs"],
+  parity: ["bin/doc-parity.mjs", "bin/pin-parity.mjs", "bin/knowledge-parity.mjs", "bin/sync-parity.mjs", "bin/bootstrap-parity.mjs"],
 };
