@@ -215,10 +215,13 @@ published release and never imported.
 bin/apply-repo-baseline.sh monte3l/<repo>
 ```
 
-It is read-only and exits 1 on drift. `--dry-run` also prints the `gh api` call
-for each drifted item. It needs `gh` with admin on the repository, and `jq`.
-For every repository in the organization at once, run `/org-drift` in Claude
-Code from this repository.
+It is read-only and exits 1 on drift, or 3 if a call failed and the result
+cannot be trusted. `--dry-run` also prints the `gh api` call for each drifted
+item. It needs `gh` with admin on the repository, and `jq`. For every
+repository in the organization at once, run `bin/org-audit.sh` or `/org-drift`
+in Claude Code from this repository. The **Org baseline drift** issue, which
+`org-audit.yml` updates every Monday, carries counts only, because this
+repository is public. See [Org audit](blueprint/README.md#org-audit).
 
 **What the script cannot see.** Check these by hand:
 

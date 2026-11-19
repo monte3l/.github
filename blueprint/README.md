@@ -28,6 +28,7 @@ in `m3l-groundwork`.
 | `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `policies.yml` and `scancode-config.yml` (the ScanCode license policy and ignored paths), `dependabot.yml`, `labeler.yml`, a `README.md` skeleton, `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
 | `claude/managed-settings.json` | The Claude Code policy for the whole Claude Team organization, pasted into the admin console by an Owner. Never applied by the script. See [Claude Code managed settings](#claude-code-managed-settings) |
+| `../.github/workflows/org-audit.yml`, `../bin/org-audit.sh` | The weekly read-only run of the script over every repository, reported in one tracking issue. See [Org audit](#org-audit) |
 | `../workflow-templates/environments.yml` | The weekly `env-janitor` cleanup workflow. See [Environment cleanup](#environment-cleanup) |
 | `../workflow-templates/release.yml`, `commit-lint.yml` | The release caller and the Conventional Commits check. The shared workflows they call are `../.github/workflows/release-prepare.yml` and `release-finalize.yml`. See [Releases](#releases) |
 
@@ -38,7 +39,7 @@ organization.
 ## Use
 
 ```sh
-bin/apply-repo-baseline.sh monte3l/NEW-REPO             # read-only comparison, exit 1 on drift
+bin/apply-repo-baseline.sh monte3l/NEW-REPO             # read-only comparison, exit 1 on drift, 3 if a call failed
 bin/apply-repo-baseline.sh monte3l/NEW-REPO --dry-run   # also shows what --apply would run
 bin/apply-repo-baseline.sh monte3l/NEW-REPO --apply     # changes the repository
 ```
@@ -157,6 +158,73 @@ and the social card never drift apart.
 `gh api -X PATCH orgs/monte3l -f name=... -f description=... -f blog=...`.
 
 `bin/doc-parity.mjs` fails on a card line or description that breaks these rules, a profile row that does not carry its description, and a profile tagline that is not `org.json`'s description. To change a text, edit `projects.json`, rewrite the profile row, change the manifest in the repository and run `gh repo edit` (the script prints the command). Then render the social card again with `node bin/build-brand.mjs --social <dir>` in `m3l-design` and upload it in the repository's settings.
+
+## Org audit
+
+`.github/workflows/org-audit.yml` runs `bin/apply-repo-baseline.sh` in its
+default, read-only mode against every repository every Monday, through
+`bin/org-audit.sh --public`. It keeps one issue in this repository, **Org
+baseline drift**, labelled `area:ci`: opened or rewritten when the counts
+change, closed when the organization is clean. It is the scheduled form of the
+`/org-drift` skill.
+
+> [!IMPORTANT]
+> This repository is public, so the issue, the job summary, the logs and any
+> artifact are readable by anyone. The scheduled run therefore publishes
+> **counts only**: how many repositories differ and how many items. Which
+> repository differs, and in which setting, would tell an outsider where to
+> aim, so it never leaves your machine. Read the detail with `bin/org-audit.sh`
+> (or `/org-drift` in Claude Code) and an admin token. Do not add per-repository
+> output to the workflow, to a summary or to an artifact.
+
+| Exit code | Meaning | What the audit does |
+| --- | --- | --- |
+| 0 | No drift | Closes the issue |
+| 1 | Drift | Rewrites the issue with the new counts. The run stays green, because the issue is the report |
+| 2 | Usage or a missing tool | Fails the run |
+| 3 | A call failed, so a repository could not be checked | Counts it in the issue where it can, and fails the run, so a broken audit is never read as a clean one |
+
+The workflow has no inputs. A dispatch input is shown on the public run page,
+and a step's `env:` value in the public log, so naming a repository there would
+publish it. To audit one repository, run `bin/org-audit.sh --repos NAME` locally.
+
+### One-time setup (an Owner)
+
+| Step | Where | Value |
+| --- | --- | --- |
+| Create the App | Organization settings, GitHub Apps | `monte3l-audit`, no webhook, no user authorization. **Read-only** repository permissions: Actions, Administration, Contents, Environments, Issues, Metadata, Code scanning alerts. **Read-only** organization permissions: Administration, Secrets. A later change to the permissions stays pending until an Owner accepts it on the installation, and the workflow's `permission-*` inputs must not ask for more than the installation holds |
+| Install it | The App's page | **All repositories**, so a new repository is covered without a step |
+| Create the environment | `monte3l/.github`, Settings, Environments | `org-audit`, deployment branches limited to `main`, no reviewers needed |
+| Add two environment secrets | Same environment | `AUDIT_APP_CLIENT_ID` and `AUDIT_APP_PRIVATE_KEY` |
+
+> [!WARNING]
+> The App's private key can read every repository's settings and the names of
+> the organization's secrets. It belongs only in the `org-audit` environment.
+> The workflow mints the token in one step and passes it to no other, and
+> `.github/environments.json` lists the environment so the weekly cleanup does
+> not remove it.
+
+The App has no write permission. The issue is written with the workflow's own
+`GITHUB_TOKEN`. **Issues** read lets it list labels on a private repository and
+**Environments** read lets it read environment secrets. A token without them
+prints `SKIP` for those two items, never a false `OK`. The token covers every repository the App is installed on,
+which `zizmor` flags (`github-app`); the workflow ignores that one finding on
+that one line, with the reason beside it.
+
+### What "no drift" covers
+
+**No drift** means none in the items that ran. Under the App token the baseline
+prints `SKIP`, which is not drift, for what it cannot read, and the issue shows
+counts only, so a closed issue is not proof that everything was verified. The
+job summary says how many items were skipped. Run `bin/org-audit.sh` with your
+own admin token now and then: its report has a SKIP column per repository.
+
+| Item | Skipped under the App token | Until |
+| --- | --- | --- |
+| `release: app installation` | Always. GitHub's `GET /user/installations/{id}/repositories` accepts a user access token only | Never: only an admin token can run it |
+| `labels` | Only if the token lacks **Issues** read (the App has it) | The token has it |
+| `env-janitor: no environment secrets` | Only if the token lacks **Environments** read (the App has it) | The token has it |
+| Items a plan cannot have (rulesets and fork-PR approval on a private free-plan repository, OpenSSF for `.github`) | On any token | The plan changes |
 
 ## Environment cleanup
 

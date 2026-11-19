@@ -8,6 +8,10 @@
 #   --dry-run  read-only; also prints the gh command each drifted item would run
 #   --apply    runs those commands
 #
+# Exit codes: 0 clean (and any --dry-run or --apply run), 1 drift found in
+# --check, 2 usage or a missing tool, 3 a call failed, so the result cannot be
+# trusted (a scheduled audit must not read that as drift).
+#
 # Every item is compared with the live state first, so a second --apply run
 # changes nothing. Items a private repository on a free plan cannot have
 # (fork-PR approval, private vulnerability reporting, rulesets) print SKIP,
@@ -20,10 +24,13 @@
 # are applied. The App installation, the secrets themselves and the pinned
 # planner commit only report. Needs gh (authenticated, repository admin, plus
 # admin:org to read or share org secrets) and jq.
-set -euo pipefail
+set -eEuo pipefail
+# Any command that stops the script is a failed call, not drift: exit 3, so
+# exit 1 means one thing only.
+trap 'exit 3' ERR
 
 usage() {
-  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-2}"
 }
 
@@ -143,7 +150,7 @@ if ! existing="$(gh api "repos/$repo/rulesets" 2>&1)"; then
     skip "rulesets" "not available on this plan for a private repository"
   else
     printf '%s\n' "$existing" >&2
-    exit 1
+    exit 3
   fi
 fi
 for file in "$here"/rulesets/*.json; do
@@ -160,7 +167,20 @@ for file in "$here"/rulesets/*.json; do
 done
 
 # --- labels (created when missing; an existing label is never rewritten) ------
-have="$(gh label list --repo "$repo" --limit 200 --json name --jq '.[].name')"
+# Listing labels needs Issues or Pull requests read, which a read-only App token
+# may not have on a private repository: say so with SKIP instead of stopping.
+labels_source="$here/labels.json"
+if ! have="$(gh label list --repo "$repo" --limit 200 --json name --jq '.[].name' 2>&1)"; then
+  # Only a 403 means the token lacks the permission. Any other failure (a 5xx,
+  # a rate limit, the network) is a failed call, not a skipped item.
+  if grep -q 'HTTP 403' <<<"$have"; then
+    skip "labels" "cannot list labels (the token needs Issues or Pull requests read)"
+    labels_source=/dev/null
+  else
+    printf '%s\n' "$have" >&2
+    exit 3
+  fi
+fi
 while IFS= read -r label; do
   name="$(jq -r .name <<<"$label")"
   if grep -Fxq -- "$name" <<<"$have"; then
@@ -179,7 +199,7 @@ while IFS= read -r label; do
       printf '         applied\n'
       ;;
   esac
-done < <(jq -c '.[]' "$here/labels.json")
+done < <(jq -c '.[]' "$labels_source")
 
 # --- design system (report only: adopting it is a commit in the repository) ---
 # The marker file must exist and name the pinned m3l-design version. Nothing
@@ -447,7 +467,7 @@ fi
 if [[ -z "$(file_content docs.config.mjs)" ]]; then
   skip "docs site" "no docs.config.mjs"
 else
-  docs_marker="$(file_content "$marker_path")"
+  docs_marker="$(file_content "$marker_path" || true)"
   # shellcheck disable=SC2016 # the backticks are literal markdown in the grep regex
   if grep -Eq '^- \*\*Version copied:\*\* `v[0-9]' <<<"$docs_marker" ||
     { grep -Eq '^- \*\*Version adopted:\*\* `v[0-9]' <<<"$docs_marker" && grep -Eq '^- \*\*Tier:\*\* source' <<<"$docs_marker"; }; then
@@ -738,11 +758,17 @@ else
 
   # An environment secret wins over an org one, so a leftover copy keeps the
   # old key alive after a rotation. Never deleted here.
-  leftover=""
-  if env_secrets="$(gh api "repos/$repo/environments/$janitor_env/secrets" --jq '.secrets[].name' 2>/dev/null)"; then
+  # A 404 means the environment does not exist, so there is nothing leftover. Any
+  # other failure (the read needs Environments read) is not "no secrets".
+  leftover="" env_secrets_unreadable=""
+  if env_secrets="$(gh api "repos/$repo/environments/$janitor_env/secrets" --jq '.secrets[].name' 2>&1)"; then
     leftover="$(grep -E '^JANITOR_APP_' <<<"$env_secrets" | tr '\n' ' ' || true)"
+  elif ! grep -q 'HTTP 404' <<<"$env_secrets"; then
+    env_secrets_unreadable=1
   fi
-  if [[ -z "$leftover" ]]; then
+  if [[ -n "$env_secrets_unreadable" ]]; then
+    skip "env-janitor: no environment secrets" "cannot read them (the token needs Environments read)"
+  elif [[ -z "$leftover" ]]; then
     printf 'OK     env-janitor: no environment secrets\n'
     ok=$((ok + 1))
   else
@@ -776,7 +802,7 @@ else
   # The pinned planner commit. m3l-groundwork itself runs its own bin/. Two
   # tiers: the pin must be on main, and must contain the newest commit that
   # touched the planner's files. Merely trailing main is fine.
-  env_wf="$(file_content .github/workflows/environments.yml)"
+  env_wf="$(file_content .github/workflows/environments.yml || true)"
   if [[ -z "$env_wf" ]]; then
     drift=$((drift + 1))
     printf 'DRIFT  env-janitor: planner pin: no .github/workflows/environments.yml\n'

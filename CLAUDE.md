@@ -24,7 +24,8 @@ The org site (monte3l.com) is built from this repo by the docs kit in `design/so
 ## Commands
 
 ```sh
-bin/apply-repo-baseline.sh monte3l/REPO             # read-only, exit 1 on drift
+bin/apply-repo-baseline.sh monte3l/REPO             # read-only, exit 1 on drift, 3 if a call failed
+bin/org-audit.sh [--repos a,b]                      # the same over every repo, as one report (read-only); --public prints counts only
 bin/apply-repo-baseline.sh monte3l/REPO --dry-run   # also prints the gh api call per drifted item
 bin/apply-repo-baseline.sh monte3l/REPO --apply     # mutates the repository — confirm with the user first
 ```
@@ -33,6 +34,8 @@ Needs `gh` (repo admin) and `jq`. Validate edits with `bash -n bin/apply-repo-ba
 
 ## Blueprint script internals
 
+- This repository is public: `org-audit.yml` publishes counts only (`org-audit.sh --public`). Never put per-repository drift in its issue, summary, logs or artifacts.
+- Exit codes: 0 clean, 1 drift in `--check`, 2 usage or a missing tool, 3 any failed call (`trap 'exit 3' ERR`). Keep 1 for drift only: `org-audit.yml` reads 3 as "could not be checked".
 - `settle LABEL CURRENT DESIRED METHOD PATH [BODY]` is the single compare-then-act primitive: both sides are `jq -S`-normalized and compared; only on mismatch does it diff/print/apply. `pick` reduces live API JSON to just the keys the blueprint file names — so **a blueprint JSON file owns exactly the keys it lists**; adding a key extends what's enforced, keys not listed are never touched.
 - Rulesets are matched to live ones **by `name`** (POST if absent, PUT by id if present) and compared after `normalize_ruleset` (rules sorted by `type`). Renaming a ruleset in a file creates a second ruleset rather than renaming the old one.
 - Labels are create-only: an existing label with the same name is never rewritten.

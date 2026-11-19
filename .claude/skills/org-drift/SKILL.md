@@ -12,7 +12,9 @@ Compare every repository in the `monte3l` organization against this repo's bluep
 
 - Run the script in its default check mode only. Never pass `--apply`: it mutates repository settings, and `--dry-run` adds nothing the report needs.
 - Exit code 1 from the script means drift was found. It is a result, not a failure, so keep going to the next repo.
+- Exit code 3 means a call failed, so that repo could not be checked. List it as "could not be checked" with the last line of its stderr, and keep going. Never count it as drift or as clean.
 - Exit code 2 means a tool is missing or an option was wrong. Stop and tell the user.
+- `org-audit.yml` keeps a public issue, "Org baseline drift", up to date every Monday, but it carries counts only, because `monte3l/.github` is public. This skill is where the detail lives. Never post its table to an issue, a pull request or any other public place.
 
 ## Steps
 
