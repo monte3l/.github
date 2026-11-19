@@ -192,7 +192,7 @@ publish it. To audit one repository, run `bin/org-audit.sh --repos NAME` locally
 
 | Step | Where | Value |
 | --- | --- | --- |
-| Create the App | Organization settings, GitHub Apps | `monte3l-audit`, no webhook, no user authorization. **Read-only** repository permissions: Actions, Administration, Contents, Metadata, Code scanning alerts. **Read-only** organization permissions: Administration, Secrets |
+| Create the App | Organization settings, GitHub Apps | `monte3l-audit`, no webhook, no user authorization. **Read-only** repository permissions: Actions, Administration, Contents, Environments, Issues, Metadata, Code scanning alerts. **Read-only** organization permissions: Administration, Secrets. A later change to the permissions stays pending until an Owner accepts it on the installation, and the workflow's `permission-*` inputs must not ask for more than the installation holds |
 | Install it | The App's page | **All repositories**, so a new repository is covered without a step |
 | Create the environment | `monte3l/.github`, Settings, Environments | `org-audit`, deployment branches limited to `main`, no reviewers needed |
 | Add two environment secrets | Same environment | `AUDIT_APP_CLIENT_ID` and `AUDIT_APP_PRIVATE_KEY` |
@@ -205,11 +205,9 @@ publish it. To audit one repository, run `bin/org-audit.sh --repos NAME` locally
 > not remove it.
 
 The App has no write permission. The issue is written with the workflow's own
-`GITHUB_TOKEN`. Two optional read permissions widen what it can see: **Issues**
-(to list labels on a private repository) and **Environments** (to read
-environment secrets). Without them the `labels` and `env-janitor: no environment
-secrets` items print `SKIP`, never a false `OK`. Add them to the App, then to the
-`permission-*` inputs in `org-audit.yml`, if you want that coverage. The token covers every repository the App is installed on,
+`GITHUB_TOKEN`. **Issues** read lets it list labels on a private repository and
+**Environments** read lets it read environment secrets. A token without them
+prints `SKIP` for those two items, never a false `OK`. The token covers every repository the App is installed on,
 which `zizmor` flags (`github-app`); the workflow ignores that one finding on
 that one line, with the reason beside it.
 
@@ -224,8 +222,8 @@ own admin token now and then: its report has a SKIP column per repository.
 | Item | Skipped under the App token | Until |
 | --- | --- | --- |
 | `release: app installation` | Always. GitHub's `GET /user/installations/{id}/repositories` accepts a user access token only | Never: only an admin token can run it |
-| `labels` | On a private repository | The App gets **Issues** read |
-| `env-janitor: no environment secrets` | When it cannot read them | The App gets **Environments** read |
+| `labels` | Only if the token lacks **Issues** read (the App has it) | The token has it |
+| `env-janitor: no environment secrets` | Only if the token lacks **Environments** read (the App has it) | The token has it |
 | Items a plan cannot have (rulesets and fork-PR approval on a private free-plan repository, OpenSSF for `.github`) | On any token | The plan changes |
 
 ## Environment cleanup

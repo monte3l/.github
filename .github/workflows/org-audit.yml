@@ -63,6 +63,8 @@ jobs:
           permission-actions: read
           permission-administration: read
           permission-contents: read
+          permission-environments: read
+          permission-issues: read
           permission-metadata: read
           permission-organization-administration: read
           permission-organization-secrets: read
