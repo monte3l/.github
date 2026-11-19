@@ -22,10 +22,10 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
 const WHERE = "blueprint/bootstrap.json";
-const TOP_KEYS = new Set(["$comment", "kinds", "options", "starters", "templates", "generated", "excluded"]);
+const TOP_KEYS = new Set(["$comment", "kinds", "options", "orgSecrets", "starters", "templates", "generated", "excluded"]);
 const ENTRY_KEYS = {
-  starters: new Set(["from", "to", "substitute", "replace", "requires", "perKind"]),
-  templates: new Set(["name", "requires", "unlessScaffold"]),
+  starters: new Set(["from", "to", "substitute", "replace", "requires", "perKind", "todo"]),
+  templates: new Set(["name", "requires", "unlessScaffold", "todo"]),
   generated: new Set(["to", "what"]),
   excluded: new Set(["from", "reason"]),
 };
@@ -84,8 +84,17 @@ export default async function parity({ root }) {
   const options = words("options");
   if (new Set(kinds).size !== kinds.length) problems.push(`${WHERE}: "kinds" lists a kind twice`);
   if (new Set(options).size !== options.length) problems.push(`${WHERE}: "options" lists an option twice`);
+  if (options.includes("public")) problems.push(`${WHERE}: "public" is not an option: it is on unless --private`);
   if (options.includes("kind")) problems.push(`${WHERE}: "kind" is not an option: it is what --kind sets`);
-  const conditions = new Set(["kind", ...options]);
+  const conditions = new Set(["kind", "public", ...options]);
+
+  if (data.orgSecrets !== undefined) {
+    if (!Array.isArray(data.orgSecrets)) problems.push(`${WHERE}: "orgSecrets" must be an array`);
+    else {
+      for (const secret of data.orgSecrets) if (typeof secret !== "string" || !/^[A-Z][A-Z0-9_]*$/.test(secret)) problems.push(`${WHERE}: orgSecrets has ${JSON.stringify(secret)}, which is not a secret name`);
+      if (new Set(data.orgSecrets).size !== data.orgSecrets.length) problems.push(`${WHERE}: "orgSecrets" lists a secret twice`);
+    }
+  }
 
   /** The entries of one section that are objects with only known keys; the rest are reported. */
   const section = (key) => {
@@ -116,7 +125,7 @@ export default async function parity({ root }) {
     else writes.set(to.toLowerCase(), by);
   };
   const needs = (entry, by) => {
-    if (entry.requires !== undefined && !conditions.has(entry.requires)) problems.push(`${WHERE}: ${by} requires ${JSON.stringify(entry.requires)}, which is neither "kind" nor a declared option`);
+    if (entry.requires !== undefined && !conditions.has(entry.requires)) problems.push(`${WHERE}: ${by} requires ${JSON.stringify(entry.requires)}, which is neither "kind", "public" nor a declared option`);
   };
   /** @returns {boolean} whether the source is a readable file inside the repository */
   const source = (from, by) => {
@@ -138,6 +147,7 @@ export default async function parity({ root }) {
       continue;
     }
     needs(starter, by);
+    if (starter.todo !== undefined && (typeof starter.todo !== "string" || starter.todo.trim() === "")) problems.push(`${WHERE}: ${by} "todo" must be a non-empty line`);
     claim(starter.to, by);
     if (starter.to.toLowerCase().startsWith(".github/workflows/")) problems.push(`${WHERE}: ${by} writes into .github/workflows/, which is for "templates"`);
     if (starter.perKind !== undefined && typeof starter.perKind !== "boolean") problems.push(`${WHERE}: ${by} "perKind" must be true or false`);
@@ -174,6 +184,7 @@ export default async function parity({ root }) {
       continue;
     }
     needs(template, by);
+    if (template.todo !== undefined && (typeof template.todo !== "string" || template.todo.trim() === "")) problems.push(`${WHERE}: ${by} "todo" must be a non-empty line`);
     if (template.unlessScaffold !== undefined && typeof template.unlessScaffold !== "boolean") problems.push(`${WHERE}: ${by} "unlessScaffold" must be true or false`);
     if (named.has(template.name)) problems.push(`${WHERE}: the template "${template.name}" is listed twice`);
     named.add(template.name);

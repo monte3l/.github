@@ -86,14 +86,18 @@ With `--apply`, in this order:
 
 | Step | Why this order |
 | --- | --- |
-| One signed-off commit, then create the repository and push `main` | The ruleset does not exist yet, so this is the one direct push the repository ever gets |
+| One signed-off commit, then create the repository | Nothing is pushed yet |
+| Add the repository to the four Apps | They are installed on selected repositories, so a new one is not covered until it is added. The first real run showed gh's OAuth token is accepted; GitHub documents the call for a classic token, so another kind may be refused: that is listed for a person (organization settings, GitHub Apps, Configure, repositories), never a failure |
+| Share the organization secrets (`GITLEAKS_LICENSE`, and the release App's when there is a kind) and turn on immutable releases | A new repository is shared no organization secret by default, and the baseline reports a missing release secret but does not share it. This comes **before the push**, because the push starts Gitleaks and Release at once, and a secret shared afterwards does not rescue those first runs. Both are organization or repository writes, covered by the confirmation |
+| Push `main` | The ruleset does not exist yet, so this is the one direct push the repository ever gets |
 | Set the topics | They come from `projects.json` |
-| `apply-repo-baseline.sh --apply` | Settings, ruleset, labels and the organization's secret access, an org-level write: the confirmation covers it |
-| Add the repository to the four Apps | They are installed on selected repositories, so a new one is not covered until it is added. GitHub documents this call for a classic token, so it may be refused for another kind: that is listed for a person (organization settings, GitHub Apps, Configure, repositories), never a failure |
-| `apply-repo-baseline.sh --check`, then the list of what is left | Placeholders in the starters, the `sync.json` entry to add, the reuse.software and bestpractices.dev registrations |
+| `apply-repo-baseline.sh --apply` | Settings, ruleset and labels |
+| `apply-repo-baseline.sh --check`, then the list of what is left | Placeholders in the starters, the `sync.json` entry to add, the reuse.software and bestpractices.dev registrations, and for a public repository the Scorecard alerts of its first run |
 
-Exit `0` means done, the check is clean and every App call was accepted, `1` done
-but the check reports drift or an App call needs a person, `2` a refused input,
+Exit `0` means done, the check is clean and nothing needs a person, `1` done but
+the check reports drift or a step needs a person (a new public repository
+normally ends `1`: the Scorecard alerts and the two registrations cannot be
+settled on day one), `2` a refused input,
 `3` a failed call. The placeholders left in the starters are always listed at
 the end and never change the exit code: a person fills them in. After a failure
 past the point where the repository exists, the message says how to finish by
@@ -103,6 +107,8 @@ It needs `gh` as an organization owner, with the `repo`, `workflow` (the push
 includes workflow files) and `admin:org` scopes, which it checks before creating
 anything. `--scaffold` runs a **pinned** version of the CLI, recorded in
 `pins.json` like `GITLEAKS_VERSION`, and asks before running it.
+
+A private repository gets neither `scorecard.yml` (it cannot check itself out) nor `dependency-review.yml` (it needs a public repository or Code Security), and the first push always shows the placeholder `verify` step failing: it fails on purpose until a person replaces it with the repository's checks.
 
 Not covered yet: the docs site (it needs the vendored design, a deploy lockfile
 and a `.node-version`) and the environment cleanup. They are set up by hand, see
