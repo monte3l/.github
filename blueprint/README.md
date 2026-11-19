@@ -30,6 +30,7 @@ in `m3l-groundwork`.
 | `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `policies.yml` and `scancode-config.yml` (the ScanCode license policy and ignored paths), `dependabot.yml`, `labeler.yml`, a `README.md` skeleton, `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
 | `claude/managed-settings.json` | The Claude Code policy for the whole Claude Team organization, pasted into the admin console by an Owner. Never applied by the script. See [Claude Code managed settings](#claude-code-managed-settings) |
+| `../.github/workflows/template-sync.yml`, `../bin/template-sync-pr.sh` | Opens the pull requests that refresh stale workflow copies. See [Refreshing stale copies](#refreshing-stale-copies) |
 | `../.github/workflows/org-audit.yml`, `../bin/org-audit.sh` | The weekly read-only run of the script over every repository, reported in one tracking issue. See [Org audit](#org-audit) |
 | `../workflow-templates/environments.yml` | The weekly `env-janitor` cleanup workflow. See [Environment cleanup](#environment-cleanup) |
 | `../workflow-templates/release.yml`, `commit-lint.yml` | The release caller and the Conventional Commits check. The shared workflows they call are `../.github/workflows/release-prepare.yml` and `release-finalize.yml`. See [Releases](#releases) |
@@ -308,9 +309,35 @@ is a `sync:if` block, and data belongs in a config file the workflow reads.
 when `docs.config.mjs` has no `manifest`, so only a repository with one takes it.
 
 `verify.yml`, `release.yml` and `claude.yml` are `unmanaged`: their lanes and
-inputs belong to each repository. The sync opens no pull request yet. That needs
-its own GitHub App with the `workflows` permission, which the release App does
-not hold on purpose.
+inputs belong to each repository.
+
+### Refreshing stale copies
+
+`.github/workflows/template-sync.yml` opens one pull request per repository that
+has a stale managed copy. It is started by hand (`gh workflow run
+template-sync.yml -f dry_run=false -f repositories="m3l-plugins"`) and, with
+`dry_run` on (the default), only lists what would change.
+
+| Rule | Why |
+| --- | --- |
+| Only a **stale** managed copy is written, with the current template rendered for that repository | A custom copy is someone's work |
+| A copy whose refresh would change the set of job names is left out, and said so in the log | A required check is a job name: renaming one stops merges |
+| Only existing files under `.github/workflows/` are sent, and the script refuses anything else | A sync refreshes, it never adds or removes |
+| The repository's own action pins are kept | The comparison ignores pins, so a refresh must not move one: it could put back a version Dependabot had replaced |
+| One branch per set of files (`chore/template-sync-<hash>`): a repeated run finds its own pull request, and one a person closed is not opened again | Closing it was an answer |
+| A newer pull request closes an older one of the bot, if only the bot committed to it | A person's commits are never discarded |
+| The commit goes through the API as the App | GitHub signs it, and the required checks run on the pull request |
+
+It uses its own App, **`monte3l-sync`**: repository permissions `contents`,
+`pull requests` and `workflows` write and `metadata` read, no webhook, installed
+only on the consumers listed in `sync.json`, never on `.github`. The key is in
+the `template-sync` environment of `monte3l/.github` (`SYNC_APP_CLIENT_ID`,
+`SYNC_APP_PRIVATE_KEY`), limited to `main` and listed in
+`.github/environments.json`. The release App stays without `workflows`. Each
+leg mints a token for the one repository it changes.
+
+The workflow does not run on a schedule yet. The weekly `freshness.yml` issue
+reports what is stale, and a person starts the sync.
 
 ## Environment cleanup
 

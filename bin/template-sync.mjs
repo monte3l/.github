@@ -8,9 +8,17 @@
  * person has changed.
  *
  *   node bin/template-sync.mjs [--repos a,b] [--owner OWNER] [--json] [--check] [--findings FILE]
+ *   node bin/template-sync.mjs --repos NAME --write DIR
  *
- * READ-ONLY: it reads files through `gh api` and the template's git history,
- * and changes nothing. The rules of the comparison are in
+ * READ-ONLY toward every repository: it reads files through `gh api` and the
+ * template's git history. With --write it also writes, into the local directory
+ * DIR only, the current template for each STALE managed copy of that one
+ * repository, at its path (`DIR/.github/workflows/NAME.yml`). Nothing else is
+ * written and nothing is sent: `bin/template-sync-pr.sh` commits what is there.
+ * The repository's own action pins are kept (the comparison ignores pins, so a
+ * refresh must not move one).
+ * A copy is left out, and said so on stderr, when the refresh would change the
+ * set of job names, because a required check is a job name. The rules of the comparison are in
  * `bin/lib/template-sync.mjs`, and the data (which templates are managed, which
  * repositories take which optional blocks) is `blueprint/sync.json`.
  *
@@ -33,10 +41,10 @@
  * 2 usage, a missing tool or a shallow clone, 3 a read failed.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { classify, render } from "./lib/template-sync.mjs";
+import { classify, jobNames, keepPins, render } from "./lib/template-sync.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const NAME_RE = /^[A-Za-z0-9._][A-Za-z0-9._-]*$/;
@@ -44,13 +52,14 @@ const fail = (code, message) => {
   console.error(`template-sync: ${message}`);
   process.exit(code);
 };
-const USAGE = "usage: node bin/template-sync.mjs [--repos a,b] [--owner OWNER] [--json] [--check] [--findings FILE]";
+const USAGE = "usage: node bin/template-sync.mjs [--repos a,b] [--owner OWNER] [--json] [--check] [--findings FILE]\n       node bin/template-sync.mjs --repos NAME --write DIR";
 
 let owner = "monte3l";
 let only = null;
 let asJson = false;
 let check = false;
 let findingsFile = null;
+let writeDir = null;
 const args = process.argv.slice(2);
 const value = (i) => {
   const next = args[i + 1];
@@ -63,8 +72,10 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === "--owner") owner = value(i++);
   else if (args[i] === "--repos") only = value(i++).split(",");
   else if (args[i] === "--findings") findingsFile = value(i++);
+  else if (args[i] === "--write") writeDir = value(i++);
   else fail(2, `cannot use "${args[i]}"\n${USAGE}`);
 }
+if (writeDir !== null && (only === null || only.length !== 1)) fail(2, `--write needs --repos with exactly one repository\n${USAGE}`);
 for (const name of [owner, ...(only ?? [])]) if (!NAME_RE.test(name)) fail(2, `not an owner or repository name: ${name}`);
 
 const run = (cmd, argv) => execFileSync(cmd, argv, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 16 * 1024 * 1024 });
@@ -173,7 +184,19 @@ try {
           // An older version with broken markers cannot be rendered, so nothing is called stale against it.
         }
       }
-      results.push({ repo, template, managed, ...classify(copy, current, old) });
+      const verdict = classify(copy, current, old);
+      results.push({ repo, template, managed, ...verdict });
+      if (writeDir !== null && managed && verdict.state === "STALE") {
+        const before = jobNames(copy).join("\n");
+        if (before !== jobNames(current).join("\n")) {
+          console.error(`template-sync: left out ${repo} ${template}.yml: the refresh would change its job names, which a required check depends on. A person does this one`);
+          continue;
+        }
+        const target = path.join(writeDir, ".github", "workflows", `${template}.yml`);
+        mkdirSync(path.dirname(target), { recursive: true });
+        const out = keepPins(current, copy);
+        writeFileSync(target, out.endsWith("\n") ? out : `${out}\n`);
+      }
     }
   }
 } catch (error) {
