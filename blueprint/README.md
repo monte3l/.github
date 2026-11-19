@@ -86,15 +86,18 @@ With `--apply`, in this order:
 
 | Step | Why this order |
 | --- | --- |
-| One signed-off commit, then create the repository and push `main` | The ruleset does not exist yet, so this is the one direct push the repository ever gets |
-| Set the topics | They come from `projects.json` |
-| `apply-repo-baseline.sh --apply` | Settings, ruleset, labels and the organization's secret access, an org-level write: the confirmation covers it |
+| One signed-off commit, then create the repository | Nothing is pushed yet |
 | Add the repository to the four Apps | They are installed on selected repositories, so a new one is not covered until it is added. The first real run showed gh's OAuth token is accepted; GitHub documents the call for a classic token, so another kind may be refused: that is listed for a person (organization settings, GitHub Apps, Configure, repositories), never a failure |
-| Share the organization secrets (`GITLEAKS_LICENSE`, and the release App's when there is a kind) and turn on immutable releases | A new repository is shared no organization secret by default, so Gitleaks and Release fail on its first push. The baseline reports a missing release secret but does not share it. Immutable releases are a per-repository setting the release workflow needs. Both are organization or repository writes, covered by the confirmation |
-| `apply-repo-baseline.sh --check`, then the list of what is left | Placeholders in the starters, the `sync.json` entry to add, the reuse.software and bestpractices.dev registrations |
+| Share the organization secrets (`GITLEAKS_LICENSE`, and the release App's when there is a kind) and turn on immutable releases | A new repository is shared no organization secret by default, and the baseline reports a missing release secret but does not share it. This comes **before the push**, because the push starts Gitleaks and Release at once, and a secret shared afterwards does not rescue those first runs. Both are organization or repository writes, covered by the confirmation |
+| Push `main` | The ruleset does not exist yet, so this is the one direct push the repository ever gets |
+| Set the topics | They come from `projects.json` |
+| `apply-repo-baseline.sh --apply` | Settings, ruleset and labels |
+| `apply-repo-baseline.sh --check`, then the list of what is left | Placeholders in the starters, the `sync.json` entry to add, the reuse.software and bestpractices.dev registrations, and for a public repository the Scorecard alerts of its first run |
 
-Exit `0` means done, the check is clean and every App call was accepted, `1` done
-but the check reports drift or an App call needs a person, `2` a refused input,
+Exit `0` means done, the check is clean and nothing needs a person, `1` done but
+the check reports drift or a step needs a person (a new public repository
+normally ends `1`: the Scorecard alerts and the two registrations cannot be
+settled on day one), `2` a refused input,
 `3` a failed call. The placeholders left in the starters are always listed at
 the end and never change the exit code: a person fills them in. After a failure
 past the point where the repository exists, the message says how to finish by

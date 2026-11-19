@@ -25,20 +25,23 @@
 # what apply-repo-baseline.sh is for. What goes in is blueprint/bootstrap.json.
 #
 # With --apply, in this order: ask once, run the scaffold if asked, render the
-# files, make one signed-off commit, create the repository and push `main` (the
-# ruleset does not exist yet, so this is the only direct push the repository
-# ever gets), set the topics, run `apply-repo-baseline.sh --apply` (settings,
-# rulesets, labels), add the repository to the organization's Apps (installed on
-# selected repositories only), share the organization secrets with it (the
-# baseline reports a missing one but does not share it) and turn on immutable
-# releases when it has a release kind, and run the baseline check.
+# files, make one signed-off commit, create the repository, add it to the
+# organization's Apps (installed on selected repositories only), share the
+# organization secrets with it (the baseline reports a missing one but does not
+# share it) and turn on immutable releases when it has a release kind, then
+# push `main` (the ruleset does not exist yet, so this is the only direct push
+# the repository ever gets, and the Apps and secrets come first because the push
+# starts Gitleaks and Release), set the topics, run `apply-repo-baseline.sh
+# --apply` (settings, rulesets, labels) and run the baseline check.
 #
 # Needs gh (an organization owner; the repo, workflow and admin:org scopes), git,
 # jq and node. Placeholders in the starters are always listed at the end, and do
 # not change the exit code: a person fills them in.
 #
-# Exit codes: 0 done, the check is clean and nothing was refused by an App call,
-# 1 done, but the check reports drift or an App call needs a person, 2 usage or
+# Exit codes: 0 done, the check is clean and nothing needs a person, 1 done, but
+# the check reports drift or a step needs a person (a new public repository
+# normally ends 1: Scorecard alerts and the REUSE and bestpractices.dev
+# registrations cannot be settled on day one), 2 usage or
 # an input that is refused, 3 a call failed (after the repository was created,
 # the message says how to finish).
 #
@@ -91,6 +94,9 @@ recovery() {
   fi
   if ((stage < 4)); then
     printf '  %s %s/%s --apply\n' "$baseline" "$owner" "$name" >&2
+  fi
+  if ((stage < 2)); then
+    printf '  share the organization secrets (%s) with it, as the Secrets step does, before the push\n' "${org_secrets[*]}" >&2
   fi
   printf '  %s %s/%s --check\n' "$baseline" "$owner" "$name" >&2
   printf '  and add the repository to the Apps (organization settings, GitHub Apps): %s\n' "${apps[*]}" >&2
@@ -223,12 +229,13 @@ fi
 if [[ "$mode" == plan ]]; then
   printf '\nWith --apply this would, in order:\n'
   ((scaffold)) && printf '  - run npx %s in fresh mode (code from npm, run with your credentials in the environment), then add the files above\n' "$scaffold_package"
-  printf '  - make one signed-off commit, create %s/%s (%s: "%s") and push main\n' "$owner" "$name" "$visibility" "$description"
-  printf '  - set the topics: %s\n' "$(jq -r '.topics | join(", ")' <<<"$project")"
-  printf '  - run apply-repo-baseline.sh --apply (settings, ruleset, labels, and the organization'"'"'s secret access: an org-level write)\n'
+  printf '  - make one signed-off commit and create %s/%s (%s: "%s")\n' "$owner" "$name" "$visibility" "$description"
   printf '  - add the repository to the Apps: %s\n' "${apps[*]}"
   printf '  - share the organization secrets with it: %s (organization-level writes)\n' "$(printf '%s ' "${org_secrets[@]}")"
   [[ -z "$kind" ]] || printf '  - turn on immutable releases for it, which the release workflow needs\n'
+  printf '  - push main, which starts Gitleaks and Release: the Apps and secrets come first for that reason\n'
+  printf '  - set the topics: %s\n' "$(jq -r '.topics | join(", ")' <<<"$project")"
+  printf '  - run apply-repo-baseline.sh --apply (settings, ruleset, labels)\n'
   printf '  - run the baseline check and print what is left\n'
   printf '\nNothing was created. Run again with --apply.\n'
   exit 0
@@ -260,28 +267,13 @@ git -C "$repo_dir" commit -q -s -m "chore: start from the org blueprint" \
 git -C "$repo_dir" branch -M main
 printf 'committed: %s\n' "$(git -C "$repo_dir" log -1 --format='%h %G?')"
 
-# 4. the repository
+# 4. the repository, its Apps and secrets, then the push
 visibility_flag=--public
 ((private)) && visibility_flag=--private
 gh repo create "$owner/$name" "$visibility_flag" --description="$description" --homepage="$site" >/dev/null
 stage=1
 printf 'created: %s/%s\n' "$owner" "$name"
-git -C "$repo_dir" remote add origin "$remote_base/$owner/$name.git"
-git -C "$repo_dir" -c credential.helper= -c credential.helper='!gh auth git-credential' push -q -u origin main
-stage=2
-printf 'pushed: main\n'
-
-while IFS= read -r topic; do
-  gh repo edit "$owner/$name" --add-topic "$topic" >/dev/null
-done < <(jq -r '.topics[]' <<<"$project")
-stage=3
-
-# 5. the settings
-printf '\n== apply-repo-baseline.sh --apply ==\n'
-"$baseline" "$owner/$name" --apply
-stage=4
-
-# 6. the Apps are installed on selected repositories, so a new repository is added by hand otherwise
+# The Apps are installed on selected repositories, so a new repository is added by hand otherwise
 manual=()
 repo_id="$(gh api "repos/$owner/$name" --jq .id)"
 printf '\n== Apps ==\n'
@@ -303,8 +295,9 @@ else
   printf 'MANUAL could not list the organization'"'"'s installations: %s\n' "${installations%%$'\n'*}"
 fi
 
-# 7. what a private repository does not get by itself: the organization secrets (a failed Gitleaks or
-# Release run otherwise), and immutable releases, which the release workflow needs
+# What a new repository is not given by itself: the organization secrets, and immutable releases, which
+# the release workflow needs. All of it is in place before the push, because the push starts Gitleaks and
+# Release, and a secret shared afterwards does not save those first runs.
 printf '\n== Secrets and releases ==\n'
 for secret in "${org_secrets[@]}"; do
   if gh api -X PUT "orgs/$owner/actions/secrets/$secret/repositories/$repo_id" >/dev/null 2>&1; then
@@ -323,7 +316,22 @@ if [[ -n "$kind" ]]; then
   fi
 fi
 
-# 8. the check
+git -C "$repo_dir" remote add origin "$remote_base/$owner/$name.git"
+git -C "$repo_dir" -c credential.helper= -c credential.helper='!gh auth git-credential' push -q -u origin main
+stage=2
+printf 'pushed: main\n'
+
+while IFS= read -r topic; do
+  gh repo edit "$owner/$name" --add-topic "$topic" >/dev/null
+done < <(jq -r '.topics[]' <<<"$project")
+stage=3
+
+# 6. the settings
+printf '\n== apply-repo-baseline.sh --apply ==\n'
+"$baseline" "$owner/$name" --apply
+stage=4
+
+# 7. the check
 printf '\n== apply-repo-baseline.sh --check ==\n'
 rc=0
 "$baseline" "$owner/$name" --check >"$work/check.txt" 2>&1 || rc=$?
@@ -345,6 +353,7 @@ if [[ "$(jq '.kept | length' "$work/result.json")" != 0 ]]; then
 fi
 printf '  - add to blueprint/sync.json "repos": %s\n' "$(jq -r .syncEntry "$work/result.json")"
 printf '  - register the repository at https://api.reuse.software/register, and on bestpractices.dev\n'
+((private)) || printf '  - Scorecard opens alerts on its first run (Maintained, Fuzzing and others a new repository cannot satisfy yet): fix them, or dismiss them citing the accepted findings in SECURITY.md\n'
 ((scaffold)) && printf "  - m3l-groundwork's dependency-review.yml does not read .github/dependency-review-config.yml yet\n"
 for item in "${manual[@]+"${manual[@]}"}"; do
   [[ -n "$item" ]] || continue

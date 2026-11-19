@@ -49,3 +49,7 @@ New repositories come from `blueprint/bootstrap.json`, which a parity check keep
 ## [2026-11-19] decision | The first real run found three gaps
 
 Running `bin/new-repo.sh` for real on a throwaway private repository showed three things its stub tests could not. A new repository is shared no organization secret, so Gitleaks and Release failed on the first push, and `apply-repo-baseline.sh` reports a missing release secret but does not share it: the script now shares `GITLEAKS_LICENSE` and, with a kind, the release App's secrets, and turns on immutable releases. A private repository cannot run Scorecard or Dependency Review, so those two templates are written only for a public one. The placeholder `verify` step fails on purpose, so the script lists it for a person. The earlier plan said the baseline shares the organization secrets: that was wrong, it does so only for the environment cleanup's.
+
+## [2026-11-19] decision | Secrets and Apps come before the first push
+
+A second real run, public with kind `plugin`, showed Gitleaks and Release failing again on the first push although the secrets were now shared: the push starts them at once, and the secrets were shared minutes later. The Apps, secrets and immutable releases now come before the push. What a new public repository still has afterwards is not a defect: the Scorecard alerts of its first run, and the reuse.software and bestpractices.dev registrations.
