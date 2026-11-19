@@ -59,14 +59,18 @@ else
   fingerprint="$(shasum -a 256 "$body_file" | cut -d' ' -f1)"
 fi
 
-# `gh --jq` takes no --arg, so the JSON goes through jq itself.
-existing="$(gh issue list "${repo_args[@]}" --state open --label "$label" --limit 100 --json number,title,body \
+# `gh --jq` takes no --arg, so the JSON goes through jq itself. Fields: number,
+# the issue's labels (comma-joined) and the stored fingerprint, which may be empty
+# and so comes last: a tab is whitespace to `read`, and an empty middle field would
+# be skipped.
+existing="$(gh issue list "${repo_args[@]}" --state open --label "$label" --limit 100 --json number,title,body,labels \
   | jq -r --arg t "$title" '
       [.[] | select(.title == $t)] | first // empty
-      | [.number, ((.body | capture("<!-- fp:(?<fp>[0-9a-f]+) -->") | .fp) // "")] | @tsv')"
-number="${existing%%$'\t'*}"
-old_fp="${existing#*$'\t'}"
-[[ -n "$existing" ]] || { number=""; old_fp=""; }
+      | [.number, ([(.labels // [])[].name] | join(",")), ((.body | capture("<!-- fp:(?<fp>[0-9a-f]+) -->") | .fp) // "")] | @tsv')"
+number=""
+have_labels=""
+old_fp=""
+[[ -z "$existing" ]] || IFS=$'\t' read -r number have_labels old_fp <<<"$existing"
 
 if [[ "$clean" -eq 1 ]]; then
   if [[ -z "$number" ]]; then
@@ -82,35 +86,60 @@ full_body="$(mktemp)"
 trap 'rm -f "$full_body"' EXIT
 { cat "$body_file"; printf '\n\n<!-- fp:%s -->\n' "$fingerprint"; } >"$full_body"
 
-if [[ -z "$number" ]]; then
-  # The labels normally come from blueprint/labels.json; create any the
-  # repository does not have yet so the first finding is not lost.
-  label_args=()
-  if [[ -z "$dry" ]]; then
-    existing_labels="$(gh label list "${repo_args[@]}" --limit 200 --json name --jq '.[].name')"
-  fi
-  IFS=',' read -r -a label_list <<<"$labels"
+IFS=',' read -r -a label_list <<<"$labels"
+
+# ensure_labels NAME...: creates each label the repository lacks. The colour and
+# description come from blueprint/labels.json when it is in the working
+# directory, so the first finding is not lost to a missing label.
+repo_labels=""
+ensure_labels() {
+  local one color description
+  [[ -z "$dry" ]] || return 0
+  [[ -n "$repo_labels" ]] || repo_labels="$(gh label list "${repo_args[@]}" --limit 200 --json name --jq '.[].name')"
+  for one in "$@"; do
+    grep -qxF "$one" <<<"$repo_labels" && continue
+    color="692746"
+    description="Scheduled check findings"
+    if [[ -f blueprint/labels.json ]]; then
+      color="$(jq -r --arg l "$one" '.[] | select(.name == $l) | .color' blueprint/labels.json | head -n 1)"
+      description="$(jq -r --arg l "$one" '.[] | select(.name == $l) | .description' blueprint/labels.json | head -n 1)"
+      [[ -n "$color" ]] || color="692746"
+      [[ -n "$description" ]] || description="Scheduled check findings"
+    fi
+    gh label create "${repo_args[@]}" "$one" --color "$color" --description "$description" || true
+  done
+}
+
+# add_missing_labels: an issue opened before a label joined the list has the
+# first label only. Add what it lacks, so a later run does not leave it out of
+# the search that the new label exists for.
+add_missing_labels() {
+  local one joined missing=()
   for one in "${label_list[@]}"; do
     [[ -n "$one" ]] || continue
-    label_args+=(--label "$one")
-    if [[ -z "$dry" ]] && ! grep -qxF "$one" <<<"$existing_labels"; then
-      color="692746"
-      description="Scheduled check findings"
-      if [[ -f blueprint/labels.json ]]; then
-        color="$(jq -r --arg l "$one" '.[] | select(.name == $l) | .color' blueprint/labels.json | head -n 1)"
-        description="$(jq -r --arg l "$one" '.[] | select(.name == $l) | .description' blueprint/labels.json | head -n 1)"
-        [[ -n "$color" ]] || color="692746"
-        [[ -n "$description" ]] || description="Scheduled check findings"
-      fi
-      gh label create "${repo_args[@]}" "$one" --color "$color" --description "$description" || true
-    fi
+    grep -qxF "$one" < <(tr ',' '\n' <<<"$have_labels") || missing+=("$one")
+  done
+  [[ ${#missing[@]} -gt 0 ]] || return 0
+  ensure_labels "${missing[@]}"
+  joined="$(IFS=,; printf '%s' "${missing[*]}")"
+  run issue edit "${repo_args[@]}" "$number" --add-label "$joined"
+  printf '#%s "%s" gained the label(s) %s\n' "$number" "$title" "$joined"
+}
+
+if [[ -z "$number" ]]; then
+  label_args=()
+  ensure_labels "${label_list[@]}"
+  for one in "${label_list[@]}"; do
+    [[ -n "$one" ]] && label_args+=(--label "$one")
   done
   run issue create "${repo_args[@]}" --title "$title" "${label_args[@]}" --body-file "$full_body"
   printf 'opened "%s"\n' "$title"
 elif [[ "$old_fp" == "$fingerprint" ]]; then
+  add_missing_labels
   printf '#%s "%s" is unchanged\n' "$number" "$title"
 else
   run issue edit "${repo_args[@]}" "$number" --body-file "$full_body"
   run issue comment "${repo_args[@]}" "$number" --body "The findings changed. The description above is current."
+  add_missing_labels
   printf 'updated #%s "%s"\n' "$number" "$title"
 fi

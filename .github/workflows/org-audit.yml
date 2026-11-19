@@ -81,15 +81,10 @@ jobs:
           cat "$RUNNER_TEMP/report.md" >>"$GITHUB_STEP_SUMMARY"
           echo "code=$code" >>"$GITHUB_OUTPUT"
 
-      # Counts only, like the rest of this workflow: the repository is public, so
-      # no repository name or title is printed. Not fatal: the search API is a
-      # convenience and must never hide the audit result.
-      - name: Count open freshness issues across the organization
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          OWNER: ${{ github.repository_owner }}
-        run: |
-          if rows="$(gh search issues --owner "$OWNER" --state open --label freshness --limit 200 --json repository --jq '.[].repository.nameWithOwner')"; then
+          # Counts only, like everything here: the repository is public, so no
+          # repository name or title is printed. Not fatal, and in this step because
+          # no other step may see the token. The search returns at most 1000 issues.
+          if rows="$(gh search issues --owner "$OWNER" --state open --label freshness --limit 1000 --json repository --jq '.[].repository.nameWithOwner')"; then
             issues="$(grep -c . <<<"$rows" || true)"
             repos="$(sort -u <<<"$rows" | grep -c . || true)"
             printf '\n**Open freshness issues:** %s in %s repositories\n' "$issues" "$repos" >>"$GITHUB_STEP_SUMMARY"

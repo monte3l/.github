@@ -234,7 +234,7 @@ and the social card never drift apart.
 `.github/workflows/org-audit.yml` runs `bin/apply-repo-baseline.sh` in its
 default, read-only mode against every repository every Monday, through
 `bin/org-audit.sh --public`. It keeps one issue in this repository, **Org
-baseline drift**, labelled `area:ci`: opened or rewritten when the counts
+baseline drift**, labelled `area:ci` and `freshness`: opened or rewritten when the counts
 change, closed when the organization is clean. It is the scheduled form of the
 `/org-drift` skill.
 

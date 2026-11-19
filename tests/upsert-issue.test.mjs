@@ -61,7 +61,7 @@ test("a single label still works", () => {
 test("an existing issue with the same title is not duplicated, and an unchanged body is not rewritten", () => {
   const fp = createHash("sha256").update("finding\n").digest("hex");
   const { result, calls } = run(["Stale", "area:ci,freshness", "BODY"], {
-    issues: JSON.stringify([{ number: 7, title: "Stale", body: `x\n<!-- fp:${fp} -->` }]),
+    issues: JSON.stringify([{ number: 7, title: "Stale", body: `x\n<!-- fp:${fp} -->`, labels: [{ name: "area:ci" }, { name: "freshness" }] }]),
   });
   assert.equal(result.status, 0, result.stderr);
   assert.ok(!calls.some((c) => c.startsWith("issue create")), "no second issue");
@@ -75,6 +75,27 @@ test("a changed body rewrites the existing issue instead of opening another", ()
   assert.equal(result.status, 0, result.stderr);
   assert.ok(!calls.some((c) => c.startsWith("issue create")));
   assert.ok(calls.some((c) => c.startsWith("issue edit")));
+});
+
+test("an issue opened before the label joined the list gains it, changed or not", () => {
+  const fp = createHash("sha256").update("finding\n").digest("hex");
+  for (const body of [`x\n<!-- fp:${fp} -->`, "x\n<!-- fp:deadbeef -->"]) {
+    const { result, calls } = run(["Stale", "area:ci,freshness", "BODY"], {
+      issues: JSON.stringify([{ number: 7, title: "Stale", body, labels: [{ name: "area:ci" }] }]),
+      labels: "area:ci\n",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(calls.some((c) => c.startsWith("label create") && c.includes(" freshness ")), "creates the label if the repository lacks it");
+    assert.ok(calls.some((c) => c === "issue edit -R monte3l/x 7 --add-label freshness"), "adds only the missing label");
+  }
+});
+
+test("an issue that already has every label is not edited for labels", () => {
+  const fp = createHash("sha256").update("finding\n").digest("hex");
+  const { calls } = run(["Stale", "area:ci,freshness", "BODY"], {
+    issues: JSON.stringify([{ number: 7, title: "Stale", body: `x\n<!-- fp:${fp} -->`, labels: [{ name: "area:ci" }, { name: "freshness" }] }]),
+  });
+  assert.ok(!calls.some((c) => c.includes("--add-label")));
 });
 
 test("--clean closes the open issue", () => {
