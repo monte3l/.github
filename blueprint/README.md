@@ -23,6 +23,7 @@ in `m3l-groundwork`.
 | `projects.json`          | Every monte3l repository: its docs-site URL, card line, description and topics. The org site's project cards, `profile/README.md`'s table and each repository's GitHub description and topics are checked against it. See [Descriptions](#descriptions) |
 | `openssf.json`           | The OpenSSF Best Practices level every public repository should reach (`minimum`: a metal level and a Baseline level), and the repositories exempt from it, each with its reason. Checked by the script, never applied |
 | `pins.json`              | The tool versions pinned by hand because Dependabot does not read them (`GITLEAKS_VERSION`, the actionlint image, zizmor): the version, the upstream repository, the text each listed file must contain. `bin/pin-parity.mjs` checks every copy offline, and `.github/workflows/freshness.yml` reports a stale pin weekly. Never applied by the script |
+| `upstream.json`          | The upstream policies the standard follows (the OpenSSF Scorecard checks, the OpenSSF Baseline, the OpenSSF Best Practices criteria, the REUSE specification) and the value of each that a person last reviewed. `bin/upstream-watch.sh` compares them weekly and `.github/workflows/freshness.yml` reports a change in one issue. Never applied by the script. See [Keeping the standard current](#keeping-the-standard-current) |
 | `org.json`               | The organization's display name, description and website. Never applied or checked by the script, because it is an org setting. An Owner sets it, see [Descriptions](#descriptions) |
 | `docs-site.md`           | The docs site standard, the Cloudflare one-time setup and the runbook. See [Docs site](#docs-site) |
 | `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `policies.yml` and `scancode-config.yml` (the ScanCode license policy and ignored paths), `dependabot.yml`, `labeler.yml`, a `README.md` skeleton, `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
@@ -233,6 +234,38 @@ own admin token now and then: its report has a SKIP column per repository.
 | `repository settings` (the merge settings) | When GitHub does not return them to the token, so every key reads as absent. It does not, with no token at all | Never for the read-only App, as far as I know. Only a local admin run checks them |
 | `ruleset: NAME: bypass actors` | When GitHub does not show who may bypass the ruleset to the token. The rest of the ruleset (rules, conditions, enforcement) is still compared | Never for the read-only App, as far as I know. Only a local admin run checks who may bypass the rulesets |
 | Items a plan cannot have (rulesets and fork-PR approval on a private free-plan repository, OpenSSF for `.github`) | On any token | The plan changes |
+
+## Keeping the standard current
+
+The standard follows policies that other people change: which checks OpenSSF
+Scorecard runs, what the OpenSSF Baseline and the Best Practices criteria
+require, and what the REUSE specification says. Nothing told us when one moved.
+`.github/workflows/freshness.yml` now compares each with the value a person last
+reviewed, every Monday, and keeps one issue, **Upstream policy changed**, up to
+date. It closes the issue when nothing differs.
+
+| Source | What counts as a change | Why that signal |
+| --- | --- | --- |
+| OpenSSF Scorecard checks | A check added, removed or re-rated (name and risk level) | The file also changes for doc-link fixes, so the last commit would fire most weeks |
+| OpenSSF Baseline | A new release of `ossf/security-baseline` | It publishes tagged releases |
+| OpenSSF Best Practices criteria | A new commit under `criteria/` in `ossf/best-practices-badge` | It has no releases, and the commits there change the criteria |
+| REUSE specification | A new released heading in `fsfe/reuse-website`'s `CHANGELOG.md` | The site has no releases or tags |
+
+The workflow only reports, and it never accepts a change. To review one:
+
+1. Read the linked change.
+2. If the standard should follow, update what `affects` in
+   `blueprint/upstream.json` names. A re-rated Scorecard check can change which
+   findings to fix or dismiss, and a new Baseline release can raise the level in
+   `openssf.json`.
+3. Run `bin/upstream-watch.sh --accept NAME` and commit `blueprint/upstream.json`
+   in the same pull request.
+
+> [!NOTE]
+> `--accept` states that you have looked. Do not run it to silence the issue.
+> The first values in `upstream.json` record what each source said on the day the
+> watcher was added. They are a starting point, not proof that the standard was
+> checked against them.
 
 ## Environment cleanup
 
