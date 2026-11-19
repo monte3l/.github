@@ -89,7 +89,7 @@ With `--apply`, in this order:
 | One signed-off commit, then create the repository and push `main` | The ruleset does not exist yet, so this is the one direct push the repository ever gets |
 | Set the topics | They come from `projects.json` |
 | `apply-repo-baseline.sh --apply` | Settings, ruleset, labels and the organization's secret access, an org-level write: the confirmation covers it |
-| Add the repository to the four Apps | They are installed on selected repositories, so a new one is not covered until it is added. A refused call is listed for a person, not a failure |
+| Add the repository to the four Apps | They are installed on selected repositories, so a new one is not covered until it is added. GitHub documents this call for a classic token, so it may be refused for another kind: that is listed for a person (organization settings, GitHub Apps, Configure, repositories), never a failure |
 | `apply-repo-baseline.sh --check`, then the list of what is left | Placeholders in the starters, the `sync.json` entry to add, the reuse.software and bestpractices.dev registrations |
 
 Exit `0` means done, the check is clean and every App call was accepted, `1` done

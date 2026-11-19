@@ -79,7 +79,8 @@ recovery() {
   printf '\n%s/%s was created before that. To finish by hand:\n' "$owner" "$name" >&2
   if ((stage < 2)); then
     keep_work=1
-    printf '  git -C %s push -u origin main     # the files are kept there until you are done\n' "$repo_dir" >&2
+    printf "  git -C %s -c credential.helper= -c credential.helper='!gh auth git-credential' push -u origin main\n" "$repo_dir" >&2
+    printf '  (the rendered files stay there until you are done)\n' >&2
     printf '  (or start over: delete the repository, gh repo delete %s/%s, which needs the delete_repo scope)\n' "$owner" "$name" >&2
   fi
   if ((stage < 3)); then
@@ -92,6 +93,9 @@ recovery() {
   printf '  and add the repository to the Apps (organization settings, GitHub Apps): %s\n' "${apps[*]}" >&2
 }
 on_error() {
+  # Bash 3.2 (macOS /bin/bash) runs this trap inside a $(...) even when it is the test of an `if`, and
+  # bash 5 runs it in the subshell of one too. Only the main shell reports; a subshell just ends.
+  ((BASH_SUBSHELL == 0)) || exit 3
   printf 'error: a call failed (line %s)\n' "$1" >&2
   recovery
   exit 3
@@ -144,10 +148,10 @@ fi
 if [[ "$mode" == apply ]]; then
   # A token that cannot push a workflow file would fail after the repository exists. Only a classic or
   # OAuth token lists its scopes: for any other kind there is nothing to check here.
-  scopes="$(gh auth status 2>&1 | sed -n 's/.*Token scopes: //p' | head -n 1)"
-  if [[ -n "$scopes" ]]; then
+  scopes="$( (gh auth status --active --hostname github.com 2>&1 || true) | sed -n 's/.*Token scopes: //p' | head -n 1 | tr -d "',")"
+  if [[ -n "$scopes" && "$scopes" != none ]]; then
     for scope in repo workflow admin:org; do
-      [[ "$scopes" == *"'$scope'"* ]] || die "the gh token lacks the $scope scope (gh auth refresh -s $scope)"
+      grep -qw -- "$scope" <<<"$scopes" || die "the gh token lacks the $scope scope (gh auth refresh -s $scope)"
     done
   fi
 fi
@@ -303,6 +307,9 @@ if [[ "$(jq '.unfilled | length' "$work/result.json")" != 0 ]]; then
   jq -r '.unfilled[] | "  - fill in " + .to' "$work/result.json"
 fi
 jq -r '.kept[]? | select(startswith(".github/workflows/") or . == "design/README.md") | "  - review " + . + ": the scaffold wrote it, so it may not match the org template or the required check names"' "$work/result.json"
+if [[ "$(jq '.kept | length' "$work/result.json")" != 0 ]]; then
+  printf '  - the scaffold wrote these, so they were kept as they are: %s. Compare them with the org starters\n' "$(jq -r '.kept | join(", ")' "$work/result.json")"
+fi
 printf '  - add to blueprint/sync.json "repos": %s\n' "$(jq -r .syncEntry "$work/result.json")"
 printf '  - register the repository at https://api.reuse.software/register, and on bestpractices.dev\n'
 ((scaffold)) && printf "  - m3l-groundwork's dependency-review.yml does not read .github/dependency-review-config.yml yet\n"
