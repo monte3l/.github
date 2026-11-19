@@ -11,7 +11,9 @@
 #               exempts the repository.
 #   --claude    adds the Claude Code workflow (claude.yml, which needs a secret)
 #   --private   creates a private repository. On the Free plan the ruleset and
-#               two other items cannot exist there: the baseline prints SKIP
+#               two other items cannot exist there: the baseline prints SKIP.
+#               Scorecard and Dependency Review are not written: they need a
+#               public repository
 #   --scaffold  runs the pinned, published @monte3l/groundwork CLI first, in
 #               fresh mode, for a TypeScript project. Whatever it writes wins:
 #               this script only adds the files that are missing
@@ -26,9 +28,10 @@
 # files, make one signed-off commit, create the repository and push `main` (the
 # ruleset does not exist yet, so this is the only direct push the repository
 # ever gets), set the topics, run `apply-repo-baseline.sh --apply` (settings,
-# rulesets, labels, and the organization's secret access), add the repository
-# to the organization's Apps (they are installed on selected repositories only),
-# and run the baseline check.
+# rulesets, labels), add the repository to the organization's Apps (installed on
+# selected repositories only), share the organization secrets with it (the
+# baseline reports a missing one but does not share it) and turn on immutable
+# releases when it has a release kind, and run the baseline check.
 #
 # Needs gh (an organization owner; the repo, workflow and admin:org scopes), git,
 # jq and node. Placeholders in the starters are always listed at the end, and do
@@ -145,6 +148,12 @@ if [[ -n "$kind" ]]; then
   jq -e --arg kind "$kind" '.kinds | index($kind) != null' "$here/../blueprint/bootstrap.json" >/dev/null ||
     die "\"$kind\" is not a kind (use $(jq -r '.kinds | join(", ")' "$here/../blueprint/bootstrap.json"))"
 fi
+# The organization secrets this repository must be shared: from the data, plus the release App's when it releases.
+org_secrets=()
+while IFS= read -r secret; do org_secrets+=("$secret"); done < <(jq -r '.orgSecrets[]?' "$here/../blueprint/bootstrap.json")
+if [[ -n "$kind" ]]; then
+  while IFS= read -r secret; do org_secrets+=("$secret"); done < <(jq -r '.secrets[]?' "$here/../blueprint/release.json")
+fi
 if [[ "$mode" == apply ]]; then
   # A token that cannot push a workflow file would fail after the repository exists. Only a classic or
   # OAuth token lists its scopes: for any other kind there is nothing to check here.
@@ -170,6 +179,7 @@ fi
 render_args=("$name")
 [[ -z "$kind" ]] || render_args+=(--kind "$kind")
 ((claude)) && render_args+=(--claude)
+((private)) && render_args+=(--private)
 ((scaffold)) && render_args+=(--scaffold)
 
 # render OUT [--keep-existing]: writes the files into OUT and the report into $work/result.json
@@ -217,6 +227,8 @@ if [[ "$mode" == plan ]]; then
   printf '  - set the topics: %s\n' "$(jq -r '.topics | join(", ")' <<<"$project")"
   printf '  - run apply-repo-baseline.sh --apply (settings, ruleset, labels, and the organization'"'"'s secret access: an org-level write)\n'
   printf '  - add the repository to the Apps: %s\n' "${apps[*]}"
+  printf '  - share the organization secrets with it: %s (organization-level writes)\n' "$(printf '%s ' "${org_secrets[@]}")"
+  [[ -z "$kind" ]] || printf '  - turn on immutable releases for it, which the release workflow needs\n'
   printf '  - run the baseline check and print what is left\n'
   printf '\nNothing was created. Run again with --apply.\n'
   exit 0
@@ -291,7 +303,27 @@ else
   printf 'MANUAL could not list the organization'"'"'s installations: %s\n' "${installations%%$'\n'*}"
 fi
 
-# 7. the check
+# 7. what a private repository does not get by itself: the organization secrets (a failed Gitleaks or
+# Release run otherwise), and immutable releases, which the release workflow needs
+printf '\n== Secrets and releases ==\n'
+for secret in "${org_secrets[@]}"; do
+  if gh api -X PUT "orgs/$owner/actions/secrets/$secret/repositories/$repo_id" >/dev/null 2>&1; then
+    printf 'OK     %s shared\n' "$secret"
+  else
+    manual+=("share the organization secret $secret: gh api -X PUT orgs/$owner/actions/secrets/$secret/repositories/$repo_id")
+    printf 'MANUAL %s: the call was refused\n' "$secret"
+  fi
+done
+if [[ -n "$kind" ]]; then
+  if gh api -X PUT "repos/$owner/$name/immutable-releases" >/dev/null 2>&1; then
+    printf 'OK     immutable releases on\n'
+  else
+    manual+=("turn on immutable releases: gh api -X PUT repos/$owner/$name/immutable-releases")
+    printf 'MANUAL immutable releases: the call was refused\n'
+  fi
+fi
+
+# 8. the check
 printf '\n== apply-repo-baseline.sh --check ==\n'
 rc=0
 "$baseline" "$owner/$name" --check >"$work/check.txt" 2>&1 || rc=$?
@@ -306,6 +338,7 @@ printf '\n== What is left for a person ==\n'
 if [[ "$(jq '.unfilled | length' "$work/result.json")" != 0 ]]; then
   jq -r '.unfilled[] | "  - fill in " + .to' "$work/result.json"
 fi
+jq -r '.todo[]? | "  - " + .' "$work/result.json"
 jq -r '.kept[]? | select(startswith(".github/workflows/") or . == "design/README.md") | "  - review " + . + ": the scaffold wrote it, so it may not match the org template or the required check names"' "$work/result.json"
 if [[ "$(jq '.kept | length' "$work/result.json")" != 0 ]]; then
   printf '  - the scaffold wrote these, so they were kept as they are: %s. Compare them with the org starters\n' "$(jq -r '.kept | join(", ")' "$work/result.json")"

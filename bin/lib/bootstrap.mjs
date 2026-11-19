@@ -28,6 +28,7 @@ const replaceAll = (text, word, value) => text.split(word).join(value);
  *   name: string,
  *   kind?: string,
  *   claude?: boolean,
+ *   private?: boolean,
  *   scaffold?: boolean,
  *   bootstrap: any, projects: any[], designSystem: { version: string }, sync: { templates: Record<string,string> },
  *   read: (path: string) => string,
@@ -36,21 +37,23 @@ const replaceAll = (text, word, value) => text.split(word).join(value);
  *   files: Array<{ to: string, from: string | null, text: string }>,
  *   left: string[],
  *   unfilled: Array<{ to: string, found: string[] }>,
+ *   todo: string[],
  *   project: { site: string, description: string, topics: string[] },
  *   syncEntry: string,
  * }}
  * @throws {Error} on a bad name, an unknown kind, or a project that is not in projects.json
  */
-export function renderBootstrap({ name, kind, claude = false, scaffold = false, bootstrap, projects, designSystem, sync, read }) {
+export function renderBootstrap({ name, kind, claude = false, private: isPrivate = false, scaffold = false, bootstrap, projects, designSystem, sync, read }) {
   if (!NAME_RE.test(name)) throw new Error(`"${name}" is not a repository name`);
   const project = projects.find((entry) => entry.repo === name);
   if (!project) throw new Error(`${name} is not in blueprint/projects.json: add it, and its row in profile/README.md, first`);
   if (kind !== undefined && !bootstrap.kinds.includes(kind)) throw new Error(`"${kind}" is not a kind (use ${bootstrap.kinds.join(", ")})`);
 
-  const active = new Set([...(kind === undefined ? [] : ["kind"]), ...(claude ? ["claude"] : [])]);
+  const active = new Set([...(kind === undefined ? [] : ["kind"]), ...(isPrivate ? [] : ["public"]), ...(claude ? ["claude"] : [])]);
   const wanted = (entry) => entry.requires === undefined || active.has(entry.requires);
   const files = [];
   const left = [];
+  const todo = [];
 
   for (const starter of bootstrap.starters.filter(wanted)) {
     const from = starter.perKind ? starter.from.replaceAll("KIND", kind) : starter.from;
@@ -58,6 +61,7 @@ export function renderBootstrap({ name, kind, claude = false, scaffold = false, 
     for (const [literal, value] of Object.entries(starter.replace ?? {})) text = replaceAll(text, literal, value);
     for (const word of starter.substitute ?? []) text = replaceAll(text, word, name);
     files.push({ to: starter.to, from, text, starter: true });
+    if (starter.todo) todo.push(`${starter.to}: ${starter.todo}`);
   }
 
   for (const template of bootstrap.templates.filter(wanted)) {
@@ -67,6 +71,7 @@ export function renderBootstrap({ name, kind, claude = false, scaffold = false, 
     }
     const text = render(read(`workflow-templates/${template.name}.yml`), { site: project.site, flags: [], defaultBranch: "main" });
     files.push({ to: `.github/workflows/${template.name}.yml`, from: `workflow-templates/${template.name}.yml`, text: text.endsWith("\n") ? text : `${text}\n` });
+    if (template.todo) todo.push(`.github/workflows/${template.name}.yml: ${template.todo}`);
   }
 
   for (const entry of bootstrap.generated) {
@@ -113,6 +118,7 @@ export function renderBootstrap({ name, kind, claude = false, scaffold = false, 
     files,
     left,
     unfilled,
+    todo,
     project: { site: project.site, description: project.description, topics: project.topics },
     syncEntry: `"${name}": { "flags": [] }`,
   };
