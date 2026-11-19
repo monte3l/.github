@@ -18,6 +18,10 @@ name: Freshness (Scheduled)
 #   reviewed for 180 days, a source card no page cites, a citation that points
 #   nowhere (`bin/knowledge-report.mjs`). It never edits a page, and a stale page
 #   never blocks a merge: the build gate is `bin/knowledge-parity.mjs`.
+# - `copies`: compares every consumer repository's copy of each workflow
+#   template with the template (`bin/template-sync.mjs`), and reports a copy that
+#   runs an older version of it. A copy a person changed on purpose is left
+#   alone and never reported. It reads public files and changes nothing.
 #
 # A run fails only when it cannot check; a finding is reported by its issue.
 on:
@@ -158,4 +162,51 @@ jobs:
               bin/lib/upsert-issue.sh "Knowledge wiki needs review" area:docs "$RUNNER_TEMP/body.md"
               ;;
             *) printf 'knowledge-report.mjs failed with exit code %s\n' "$code" >&2; exit "$code" ;;
+          esac
+
+  copies:
+    name: Workflow copies
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write # the tracking issue is the only write
+    steps:
+      # The whole history: the report needs every version the templates have had.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .node-version
+
+      - name: Compare the copies with the templates and update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          code=0
+          node bin/template-sync.mjs --check --findings "$RUNNER_TEMP/findings.txt" >"$RUNNER_TEMP/copies.txt" || code=$?
+          cat "$RUNNER_TEMP/copies.txt" >>"$GITHUB_STEP_SUMMARY"
+          case "$code" in
+            0) bin/lib/upsert-issue.sh "Workflow copies are behind their templates" area:ci "$RUNNER_TEMP/findings.txt" --clean ;;
+            1)
+              {
+                cat <<'TEXT'
+          These need a person to look at them. A copy behind its template runs an older version of it: the template has changed in behaviour since the copy was made. The full comparison is in the job summary of the run that wrote this.
+
+          ```text
+          TEXT
+                cat "$RUNNER_TEMP/findings.txt"
+                cat <<'TEXT'
+          ```
+
+          Refresh a stale copy from `workflow-templates/`. A copy a person changed on purpose is never reported, and neither is one that differs only in comments, blank lines or action pins. A flag that disagrees with a repository's `docs.config.mjs` is fixed in `blueprint/sync.json`.
+          TEXT
+              } >"$RUNNER_TEMP/body.md"
+              bin/lib/upsert-issue.sh "Workflow copies are behind their templates" area:ci "$RUNNER_TEMP/body.md"
+              ;;
+            *) printf 'template-sync.mjs failed with exit code %s\n' "$code" >&2; exit "$code" ;;
           esac

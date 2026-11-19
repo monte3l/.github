@@ -1,8 +1,10 @@
 name: Docs Live Check (Scheduled)
 
 # Adopting: replace PROJECT with the project's subdomain. If docs.config.mjs
-# names a `manifest`, add `--metadata` to the check below to compare it with
-# the GitHub repo.
+# has no `manifest`, delete the block between the `sync:if manifest` and
+# `sync:end` markers below: `--metadata` fails when there is no manifest to
+# compare. The markers are comments, and monte3l/.github's template sync reads
+# them to keep this file current.
 #
 # What this does: once a day, builds the docs site from `main` and compares it
 # with what https://PROJECT.monte3l.com actually serves (design/source/docs-kit/
@@ -47,8 +49,12 @@ jobs:
       # A push to `main` around this hour deploys while this job runs, and
       # `docs.yml` queues behind its own concurrency group, not this one; six
       # minutes of retries let that deploy land before a mismatch is reported.
-      # With `--metadata` (see the note at the top), also pass the token so the
-      # GitHub API call is authenticated and not rate limited on a shared runner:
-      #   env:
-      #     GITHUB_TOKEN: ${{ github.token }}
       - run: node design/source/docs-kit/check-live.mjs --site _site --attempts 12 --delay 30
+
+      # sync:if manifest
+      # The manifest's description and homepage against the GitHub repository's.
+      # The token only raises the API rate limit; the job holds contents: read.
+      - run: node design/source/docs-kit/check-live.mjs --metadata
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      # sync:end

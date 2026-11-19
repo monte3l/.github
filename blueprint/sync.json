@@ -1,0 +1,52 @@
+{
+  "flags": {
+    "manifest": "the repository's docs.config.mjs sets a manifest, so docs-live also runs check-live.mjs --metadata"
+  },
+  "templates": {
+    "claude": "unmanaged",
+    "commit-lint": "managed",
+    "dco": "managed",
+    "dependency-review": "managed",
+    "docs": "managed",
+    "docs-live": "managed",
+    "environments": "managed",
+    "gitleaks": "managed",
+    "labeler": "managed",
+    "release": "unmanaged",
+    "reuse": "managed",
+    "scancode": "managed",
+    "scorecard": "managed",
+    "verify": "unmanaged",
+    "workflow-lint": "managed"
+  },
+  "repos": {
+    "m3l-claude-mentor": {
+      "flags": [
+        "manifest"
+      ]
+    },
+    "m3l-design": {
+      "flags": []
+    },
+    "m3l-groundwork": {
+      "flags": [
+        "manifest"
+      ]
+    },
+    "m3l-output-governor": {
+      "flags": [
+        "manifest"
+      ]
+    },
+    "m3l-plugins": {
+      "flags": [
+        "manifest"
+      ]
+    },
+    "m3l-prompt-optimizer": {
+      "flags": [
+        "manifest"
+      ]
+    }
+  }
+}
