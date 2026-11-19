@@ -30,7 +30,7 @@ bin/apply-repo-baseline.sh monte3l/REPO             # read-only, exit 1 on drift
 bin/org-audit.sh [--repos a,b]                      # the same over every repo, as one report (read-only); --public prints counts only
 bin/apply-repo-baseline.sh monte3l/REPO --dry-run   # also prints the gh api call per drifted item
 bin/apply-repo-baseline.sh monte3l/REPO --apply     # mutates the repository — confirm with the user first
-bin/new-repo.sh NAME [--kind K] [--claude] [--private] [--scaffold] [--apply [--yes]]   # plan by default; --apply creates a repository and changes org settings — confirm first
+bin/new-repo.sh NAME [--kind K] [--claude] [--private] [--docs] [--scaffold] [--apply [--yes]]   # plan by default; --apply creates a repository and changes org settings — confirm first
 ```
 
 Needs `gh` (repo admin) and `jq`. Validate edits with `bash -n bin/apply-repo-baseline.sh`, `jq . <file>` on each blueprint JSON, `shellcheck`/`actionlint` if available (not installed by default), and `node design/source/docs-kit/build.mjs --check` for the site and its parity checks (Node 24, `.node-version`).
