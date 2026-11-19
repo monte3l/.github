@@ -95,7 +95,16 @@ desired="$(jq -c . "$here/repo-settings.json")"
 live_repo="$(gh api "repos/$repo")"
 private="$(jq -r .private <<<"$live_repo")"
 current="$(pick "$desired" <<<"$live_repo")"
-settle "repository settings" "$current" "$desired" PATCH "repos/$repo"
+# GitHub does not return the merge settings to every caller: with no token every
+# key is absent (null), and a read-only token is expected to see the same. That
+# is not drift, the setting could not be seen. An admin token sees all of them.
+# Assigned first, so a jq failure stops the script instead of reading as zero.
+settings_seen="$(jq '[.[] | select(. != null)] | length' <<<"$current")"
+if [[ "$settings_seen" -eq 0 ]]; then
+  skip "repository settings" "the token cannot see them"
+else
+  settle "repository settings" "$current" "$desired" PATCH "repos/$repo"
+fi
 
 # --- Actions policy ----------------------------------------------------------
 desired="$(jq -c .workflow "$here/actions.json")"
@@ -172,7 +181,17 @@ for file in "$here"/rulesets/*.json; do
     settle "ruleset: $name" '{"missing": true}' '{"missing": false}' POST "repos/$repo/rulesets" "$desired"
   else
     current="$(gh api "repos/$repo/rulesets/$id" | normalize_ruleset)"
-    settle "ruleset: $name" "$current" "$desired" PUT "repos/$repo/rulesets/$id"
+    bypass_hidden="$(jq '.bypass_actors == null' <<<"$current")"
+    if [[ "$bypass_hidden" == "true" ]]; then
+      # GitHub does not show the bypass actors to every caller. Compare the rest,
+      # which such a token does see, and say what was not seen. The body stays
+      # the full blueprint ruleset, as for an admin. A PUT needs admin access,
+      # and an admin sees the bypass actors, so --apply never takes this branch.
+      skip "ruleset: $name: bypass actors" "the token cannot see them"
+      settle "ruleset: $name" "$(jq -S 'del(.bypass_actors)' <<<"$current")" "$(jq -S 'del(.bypass_actors)' <<<"$desired")" PUT "repos/$repo/rulesets/$id" "$desired"
+    else
+      settle "ruleset: $name" "$current" "$desired" PUT "repos/$repo/rulesets/$id"
+    fi
   fi
 done
 
