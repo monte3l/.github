@@ -31,6 +31,7 @@ in `m3l-groundwork`.
 | `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependency-review-config.yml`, `SECURITY.md` and `CODEOWNERS` (starting points with placeholders), `policies.yml` and `scancode-config.yml` (the ScanCode license policy and ignored paths), `dependabot.yml`, `labeler.yml`, a `README.md` skeleton, `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
 | `claude/managed-settings.json` | The Claude Code policy for the whole Claude Team organization, pasted into the admin console by an Owner. Never applied by the script. See [Claude Code managed settings](#claude-code-managed-settings) |
+| `../bin/new-repo.sh`, `../bin/bootstrap-render.mjs` | Creates a repository that starts out following this blueprint. See [New repository](#new-repository) |
 | `../.github/workflows/template-sync.yml`, `../bin/template-sync-pr.sh` | Opens the pull requests that refresh stale workflow copies. See [Refreshing stale copies](#refreshing-stale-copies) |
 | `../.github/workflows/org-audit.yml`, `../bin/org-audit.sh` | The weekly read-only run of the script over every repository, reported in one tracking issue. See [Org audit](#org-audit) |
 | `../workflow-templates/environments.yml` | The weekly `env-janitor` cleanup workflow. See [Environment cleanup](#environment-cleanup) |
@@ -62,6 +63,50 @@ does not count them as drift.
 > Applying it to a repository that does not produce those checks, or that
 > uses unpinned actions, blocks merges and fails workflows until that is
 > fixed. Run `--check` first.
+
+## New repository
+
+`bin/new-repo.sh NAME` creates a repository that starts out following the
+blueprint, so the first baseline check has little to report. It is read-only
+until `--apply`: without it, it renders every file into a temporary directory
+and prints what it would do. The repository must be in `projects.json` already
+(and in the profile table), because its description, topics and site come from
+there, and it must not exist: the script never changes an existing repository.
+
+What goes in is `bootstrap.json`: the starters, the workflow templates (rendered
+the way the template sync renders them, so the copies classify as identical and
+stay current) and the design marker. `--kind` adds the release configuration of
+that kind, `--claude` the Claude Code workflow and `--private` makes the
+repository private. `--scaffold` runs the pinned, published `@monte3l/groundwork` first;
+what it writes wins, the script only adds what is missing, and the org `verify`
+workflow is left out because the scaffold's own `ci.yml` already defines that
+check.
+
+With `--apply`, in this order:
+
+| Step | Why this order |
+| --- | --- |
+| One signed-off commit, then create the repository and push `main` | The ruleset does not exist yet, so this is the one direct push the repository ever gets |
+| Set the topics | They come from `projects.json` |
+| `apply-repo-baseline.sh --apply` | Settings, ruleset, labels and the organization's secret access, an org-level write: the confirmation covers it |
+| Add the repository to the four Apps | They are installed on selected repositories, so a new one is not covered until it is added. GitHub documents this call for a classic token, so it may be refused for another kind: that is listed for a person (organization settings, GitHub Apps, Configure, repositories), never a failure |
+| `apply-repo-baseline.sh --check`, then the list of what is left | Placeholders in the starters, the `sync.json` entry to add, the reuse.software and bestpractices.dev registrations |
+
+Exit `0` means done, the check is clean and every App call was accepted, `1` done
+but the check reports drift or an App call needs a person, `2` a refused input,
+`3` a failed call. The placeholders left in the starters are always listed at
+the end and never change the exit code: a person fills them in. After a failure
+past the point where the repository exists, the message says how to finish by
+hand, and if the push was what failed it keeps the rendered files for the retry.
+
+It needs `gh` as an organization owner, with the `repo`, `workflow` (the push
+includes workflow files) and `admin:org` scopes, which it checks before creating
+anything. `--scaffold` runs a **pinned** version of the CLI, recorded in
+`pins.json` like `GITLEAKS_VERSION`, and asks before running it.
+
+Not covered yet: the docs site (it needs the vendored design, a deploy lockfile
+and a `.node-version`) and the environment cleanup. They are set up by hand, see
+[Docs site](#docs-site) and [Environment cleanup](#environment-cleanup).
 
 ## Design system
 
