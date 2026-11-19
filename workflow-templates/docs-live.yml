@@ -12,7 +12,7 @@ name: Docs Live Check (Scheduled)
 # failure shows as a failed run, which GitHub emails to the maintainer.
 on:
   schedule:
-    # 06:30 UTC daily, offset from the security audit's 06:00 run.
+    # 06:30 UTC daily, offset from the 06:00 dependency audit a repository may run.
     - cron: "30 6 * * *"
   workflow_dispatch: {}
 

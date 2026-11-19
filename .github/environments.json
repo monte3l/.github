@@ -12,6 +12,12 @@
       "expect": {
         "branches": ["main"]
       }
+    },
+    "org-audit": {
+      "retain": 0,
+      "expect": {
+        "branches": ["main"]
+      }
     }
   }
 }

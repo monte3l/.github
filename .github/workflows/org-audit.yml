@@ -1,0 +1,102 @@
+name: Org Audit (Scheduled)
+
+# What this does: once a week, runs the read-only baseline check
+# (`bin/apply-repo-baseline.sh`) against every repository in the organization
+# and keeps one tracking issue, "Org baseline drift", up to date: opened or
+# rewritten when the counts change, closed when everything is clean. It never
+# applies anything.
+#
+# This repository is public, so the issue, the job summary, the logs and any
+# artifact are readable by anyone. They carry counts only (`--public`): which
+# repository differs, and in which setting, would tell an outsider where to
+# aim. The detail stays local: `bin/org-audit.sh`, or /org-drift in Claude Code.
+#
+# A drifted repository does not fail the run: the issue is the report. The run
+# fails only when a repository could not be checked, so a broken audit is never
+# read as a clean one.
+#
+# The `monte3l-audit` App has read-only permissions. Its key lives in the
+# `org-audit` environment (main only), and only the step that audits other
+# repositories can see the token it mints. Issues are written with the
+# workflow's own token.
+on:
+  schedule:
+    # Monday 05:45 UTC, after the 05:15 freshness run.
+    - cron: "45 5 * * 1"
+  # No inputs, on purpose: a dispatch input is shown on the public run page and
+  # an `env:` value in the public log, so naming a repository there would
+  # publish it. A single repository is a local job: `bin/org-audit.sh --repos`.
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: org-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Org baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: org-audit
+    permissions:
+      contents: read
+      issues: write # the tracking issue is the only write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # No `repositories:` on purpose: the audit must reach every repository the
+      # App is installed on, and a new repository would otherwise be missed
+      # until someone edited this list. zizmor's github-app audit flags that, so
+      # it is ignored here and only here. Every permission is read, the key sits
+      # in a main-only environment, and no other step sees the token.
+      - name: Mint a read-only token for the organization
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.AUDIT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AUDIT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }} # zizmor: ignore[github-app]
+          permission-actions: read
+          permission-administration: read
+          permission-contents: read
+          permission-metadata: read
+          permission-organization-administration: read
+          permission-organization-secrets: read
+          permission-security-events: read
+
+      - name: Run the baseline over every repository
+        id: audit
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          code=0
+          bin/org-audit.sh --public --owner "$OWNER" --findings "$RUNNER_TEMP/findings.md" >"$RUNNER_TEMP/report.md" || code=$?
+          cat "$RUNNER_TEMP/report.md" >>"$GITHUB_STEP_SUMMARY"
+          echo "code=$code" >>"$GITHUB_OUTPUT"
+
+      - name: Update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CODE: ${{ steps.audit.outputs.code }}
+        run: |
+          if [[ -s "$RUNNER_TEMP/findings.md" ]]; then
+            bin/lib/upsert-issue.sh "Org baseline drift" area:ci "$RUNNER_TEMP/findings.md"
+          elif [[ "$CODE" == "0" ]]; then
+            bin/lib/upsert-issue.sh "Org baseline drift" area:ci "$RUNNER_TEMP/findings.md" --clean
+          fi
+
+      # Drift (1) is reported by the issue. Anything else (2 usage or a missing
+      # tool, 3 a repository could not be checked) means the audit itself broke.
+      - name: Fail if the audit could not run to the end
+        if: steps.audit.outputs.code != '0' && steps.audit.outputs.code != '1'
+        env:
+          CODE: ${{ steps.audit.outputs.code }}
+        run: |
+          echo "The audit did not complete (exit code $CODE). See the job summary." >&2
+          exit 1
