@@ -14,6 +14,10 @@ name: Freshness (Scheduled)
 #   `blueprint/upstream.json`. It never accepts a change: a person reads it,
 #   updates `blueprint/` if the standard should follow, and runs
 #   `bin/upstream-watch.sh --accept`.
+# - `knowledge`: reports what in the `knowledge/` wiki needs a person: a page not
+#   reviewed for 180 days, a source card no page cites, a citation that points
+#   nowhere (`bin/knowledge-report.mjs`). It never edits a page, and a stale page
+#   never blocks a merge: the build gate is `bin/knowledge-parity.mjs`.
 #
 # A run fails only when it cannot check; a finding is reported by its issue.
 on:
@@ -109,4 +113,49 @@ jobs:
               bin/lib/upsert-issue.sh "Upstream policy changed" area:ci "$RUNNER_TEMP/body.md"
               ;;
             *) printf 'upstream-watch.sh failed with exit code %s\n' "$code" >&2; exit "$code" ;;
+          esac
+
+  knowledge:
+    name: Knowledge wiki
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write # the tracking issue is the only write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .node-version
+
+      - name: Report what needs review and update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          code=0
+          node bin/knowledge-report.mjs >"$RUNNER_TEMP/knowledge.txt" || code=$?
+          cat "$RUNNER_TEMP/knowledge.txt" >>"$GITHUB_STEP_SUMMARY"
+          case "$code" in
+            0) bin/lib/upsert-issue.sh "Knowledge wiki needs review" area:docs "$RUNNER_TEMP/knowledge.txt" --clean ;;
+            1)
+              {
+                cat <<'TEXT'
+          These parts of the knowledge base need a person to look at them.
+
+          ```text
+          TEXT
+                cat "$RUNNER_TEMP/knowledge.txt"
+                cat <<'TEXT'
+          ```
+
+          A stale page needs its sources read again, and then a new `reviewed` date. An orphan card needs a page that cites it, or its removal. A dead citation needs the card written or the citation fixed. Run `/knowledge lint` in Claude Code for help. Never change a date to clear this report.
+          TEXT
+              } >"$RUNNER_TEMP/body.md"
+              bin/lib/upsert-issue.sh "Knowledge wiki needs review" area:docs "$RUNNER_TEMP/body.md"
+              ;;
+            *) printf 'knowledge-report.mjs failed with exit code %s\n' "$code" >&2; exit "$code" ;;
           esac

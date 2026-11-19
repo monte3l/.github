@@ -40,6 +40,7 @@ jobs:
         run: |
           bash -n bin/apply-repo-baseline.sh bin/design-resync-pr.sh bin/pin-freshness.sh bin/org-audit.sh bin/upstream-watch.sh bin/lib/upsert-issue.sh
           shellcheck bin/apply-repo-baseline.sh bin/design-resync-pr.sh bin/pin-freshness.sh bin/org-audit.sh bin/upstream-watch.sh bin/lib/upsert-issue.sh
+          node --check bin/knowledge-report.mjs
 
       - name: JSON files parse
         run: |

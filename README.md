@@ -57,7 +57,9 @@ A change here reaches other repositories in one of three ways. GitHub serves an
 **inherited** file to every repository that lacks its own copy. A person copies
 a **template** once. The script **applies** or **checks** a setting against the
 JSON in `blueprint/`. The same repository also builds the org site
-([monte3l.com](https://monte3l.com)), whose home page is `profile/README.md`.
+([monte3l.com](https://monte3l.com)), whose home page is `profile/README.md`. It
+also holds `knowledge/`, a wiki of decisions and research that an LLM maintains
+under review, with a source card behind every claim.
 The [Parity table](#parity-table) gives the delivery of every file.
 
 ## Non-inheritance: the rule
