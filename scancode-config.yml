@@ -10,6 +10,10 @@ ignored_patterns:
   # The REUSE.toml starter that other repositories copy: the same data, kept
   # under blueprint/files/, and it names LicenseRef-MONTE3L-Brand.
   - "blueprint/files/REUSE.toml"
+  # The docs-site dependency-review starter: a comment explains why sharp's
+  # LGPL-3.0-or-later libvips binaries are exempted by package URL. It names the
+  # license and is not licensed under it.
+  - "blueprint/files/dependency-review-config-docs.yml"
   - ".github/workflows/dependency-review.yml"
   - "workflow-templates/dependency-review.yml"
   # m3l-design's brand assets declare LicenseRef-MONTE3L-Brand, a custom
