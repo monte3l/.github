@@ -12,7 +12,15 @@ import { INLINE_ITEMS, parseBaselineScript } from "../lib/baseline-items.mjs";
 
 const esc = (text) => String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const code = (text) => `<code class="code m3l-code-inline">${esc(text)}</code>`;
-const cell = (text) => String(text).replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ");
+// A table cell in Markdown. A backslash is escaped in the same pass as the pipe, so an input that
+// already has `\|` cannot turn into a backslash followed by a bare pipe. A newline would end the row.
+const cell = (text) => String(text).replace(/[\\|]/g, "\\$&").replace(/\s*\n\s*/g, " ");
+// A value as a Markdown code span. Backslashes are literal in a span, so it cannot be escaped: a
+// backtick, backslash, pipe or newline in the value fails the build instead of rendering wrongly.
+const codeSpan = (text) => {
+  if (/[`\\|\n]/.test(String(text))) throw new Error(`cannot put "${text}" in a Markdown code span`);
+  return `\`${text}\``;
+};
 
 export default async function generate({ root }) {
   const items = parseBaselineScript(await readFile(path.join(root, "bin/apply-repo-baseline.sh"), "utf8"));
@@ -39,7 +47,7 @@ Every item ${"`bin/apply-repo-baseline.sh`"} compares a repository against. A re
 
 | Item | Kind |
 | --- | --- |
-${rows.map(([label, kind]) => `| ${"`"}${cell(label)}${"`"} | ${cell(kind)} |`).join("\n")}
+${rows.map(([label, kind]) => `| ${codeSpan(label)} | ${cell(kind)} |`).join("\n")}
 `;
   return [
     {

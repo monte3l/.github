@@ -18,9 +18,15 @@ const rich = (text) =>
     .split(/(`[^`]+`)/)
     .map((part) => (/^`[^`]+`$/.test(part) ? code(part.slice(1, -1)) : esc(part)))
     .join("");
-// A table cell in Markdown: a pipe would end the cell, and a newline the row.
-const cell = (text) => String(text).replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ");
-const mdCode = (text) => `\`${text}\``;
+// A table cell in Markdown. A backslash is escaped in the same pass as the pipe, so an input that
+// already has `\|` cannot turn into a backslash followed by a bare pipe. A newline would end the row.
+const cell = (text) => String(text).replace(/[\\|]/g, "\\$&").replace(/\s*\n\s*/g, " ");
+// A value as a Markdown code span. Backslashes are literal in a span, so it cannot be escaped: a
+// backtick, backslash, pipe or newline in the value fails the build instead of rendering wrongly.
+const codeSpan = (text) => {
+  if (/[`\\|\n]/.test(String(text))) throw new Error(`cannot put "${text}" in a Markdown code span`);
+  return `\`${text}\``;
+};
 
 /**
  * Keys at 2-space indent directly under a top-level `key:` block.
@@ -53,7 +59,7 @@ export default async function generate({ root }) {
     const triggers = blockKeys(yaml, "on");
     const jobs = blockKeys(yaml, "jobs");
     rows += `<tr><td>${code(`${name}.yml`)}</td><td>${esc(props.name)}</td><td>${rich(props.description)}</td><td>${triggers.map(code).join(" ")}</td><td>${jobs.map(code).join(" ")}</td></tr>\n`;
-    markdownRows += `| ${mdCode(`${name}.yml`)} | ${cell(props.name)} | ${cell(props.description)} | ${triggers.map(mdCode).join(" ")} | ${jobs.map(mdCode).join(" ")} |\n`;
+    markdownRows += `| ${codeSpan(`${name}.yml`)} | ${cell(props.name)} | ${cell(props.description)} | ${triggers.map(codeSpan).join(" ")} | ${jobs.map(codeSpan).join(" ")} |\n`;
   }
   const html = `<h1 id="workflow-templates">Workflow templates</h1>
 <p class="body">Copy a template into <code class="code m3l-code-inline">.github/workflows/</code> from <strong>Actions, New workflow</strong> in any monte3l repository. GitHub substitutes the default branch at copy time, and a copy is never updated by a later change here.</p>
@@ -65,7 +71,7 @@ ${rows}</tbody>
 `;
   const markdown = `# Workflow templates
 
-Copy a template into ${mdCode(".github/workflows/")} from **Actions, New workflow** in any monte3l repository. GitHub substitutes the default branch at copy time, and a copy is never updated by a later change here.
+Copy a template into ${codeSpan(".github/workflows/")} from **Actions, New workflow** in any monte3l repository. GitHub substitutes the default branch at copy time, and a copy is never updated by a later change here.
 
 | File | Name | What it does | Triggers | Jobs |
 | --- | --- | --- | --- | --- |
