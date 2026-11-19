@@ -1,10 +1,10 @@
 name: Verify
 
 # Checks what this repository ships: the docs site builds and its docs match
-# the baseline script and the blueprint, the baseline script parses and passes
-# shellcheck, every blueprint and workflow-template JSON file is valid, and
-# every workflow (live and template) passes actionlint. The job name `verify`
-# is what the org `main` ruleset requires.
+# the baseline script and the blueprint, every script parses and passes
+# shellcheck, the tests in tests/ pass, every blueprint and workflow-template
+# JSON file is valid, and every workflow (live and template) passes actionlint.
+# The job name `verify` is what the org `main` ruleset requires.
 on:
   push:
     branches: [main]
@@ -38,11 +38,17 @@ jobs:
 
       - name: Script syntax and shellcheck
         run: |
-          bash -n bin/apply-repo-baseline.sh bin/design-resync-pr.sh bin/pin-freshness.sh bin/org-audit.sh bin/upstream-watch.sh bin/template-sync-pr.sh bin/new-repo.sh bin/lib/upsert-issue.sh
-          shellcheck bin/apply-repo-baseline.sh bin/design-resync-pr.sh bin/pin-freshness.sh bin/org-audit.sh bin/upstream-watch.sh bin/template-sync-pr.sh bin/new-repo.sh bin/lib/upsert-issue.sh
+          bash -n bin/apply-repo-baseline.sh bin/design-resync-pr.sh bin/pin-freshness.sh bin/org-audit.sh bin/upstream-watch.sh bin/template-sync-pr.sh bin/new-repo.sh bin/lib/upsert-issue.sh tests/new-repo.test.sh
+          shellcheck bin/apply-repo-baseline.sh bin/design-resync-pr.sh bin/pin-freshness.sh bin/org-audit.sh bin/upstream-watch.sh bin/template-sync-pr.sh bin/new-repo.sh bin/lib/upsert-issue.sh tests/new-repo.test.sh
           node --check bin/knowledge-report.mjs
           node --check bin/bootstrap-render.mjs
           node --check bin/template-sync.mjs
+
+      # The parity gates, the template classifier (hostile input included) and bin/new-repo.sh, run against
+      # stubs and a local bare repository. They need git, jq and node, and create nothing outside a temporary
+      # directory. Not covered: anything only a real GitHub answers, see the knowledge log.
+      - name: Tests
+        run: node --test "tests/*.test.mjs"
 
       - name: JSON files parse
         run: |

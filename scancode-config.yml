@@ -14,6 +14,12 @@ ignored_patterns:
   # LGPL-3.0-or-later libvips binaries are exempted by package URL. It names the
   # license and is not licensed under it.
   - "blueprint/files/dependency-review-config-docs.yml"
+  # Test fixtures that name licenses and license files (LICENSES/OFL-1.1.txt) as the data
+  # the bootstrap renders. ScanCode reads a list of paths such as
+  # `".../environments.json", "LICENSES/OFL-1.1.txt"` as a license reference and
+  # extracts a `json` license from it. They are not licensed under any of them.
+  - "tests/bootstrap-render.test.mjs"
+  - "tests/new-repo.test.sh"
   - ".github/workflows/dependency-review.yml"
   - "workflow-templates/dependency-review.yml"
   # m3l-design's brand assets declare LicenseRef-MONTE3L-Brand, a custom
