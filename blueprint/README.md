@@ -224,6 +224,7 @@ own admin token now and then: its report has a SKIP column per repository.
 | `release: app installation` | Always. GitHub's `GET /user/installations/{id}/repositories` accepts a user access token only | Never: only an admin token can run it |
 | `labels` | Only if the token lacks **Issues** read (the App has it) | The token has it |
 | `env-janitor: no environment secrets` | Only if the token lacks **Environments** read (the App has it) | The token has it |
+| `security: Dependabot alerts`, `security: Dependabot security updates` | Only if GitHub answers the token with a 403. A 404 is read as off, so a token that GitHub answers with 404 still shows drift | The token can read those settings |
 | Items a plan cannot have (rulesets and fork-PR approval on a private free-plan repository, OpenSSF for `.github`) | On any token | The plan changes |
 
 ## Environment cleanup

@@ -121,12 +121,22 @@ settle "Actions: SHA pinning required" "$current" "$desired" PUT "repos/$repo/ac
 
 # --- security features -------------------------------------------------------
 # Each GET is 404 (or enabled:false) when the feature is off.
+# A 404 is read as "off". GitHub also answers a token without admin access with
+# 404, so such a token still shows drift. A 403 means the token cannot read the
+# setting: say so with SKIP instead of reporting a feature that may well be on
+# as drift. Any other failure is a failed call.
 security_feature() {
   local label="$1" path="$2" body flag
-  if body="$(gh api "repos/$repo/$path" 2>/dev/null)"; then
+  if body="$(gh api "repos/$repo/$path" 2>&1)"; then
     flag="$(jq -r 'if type == "object" and has("enabled") then .enabled else true end' <<<"${body:-null}" 2>/dev/null || echo true)"
-  else
+  elif grep -q 'HTTP 404' <<<"$body"; then
     flag=false
+  elif grep -q 'HTTP 403' <<<"$body"; then
+    skip "$label" "the token cannot read it, HTTP 403"
+    return 0
+  else
+    printf '%s\n' "$body" >&2
+    exit 3
   fi
   settle "$label" "{\"enabled\": $flag}" '{"enabled": true}' PUT "repos/$repo/$path" '{}'
 }
