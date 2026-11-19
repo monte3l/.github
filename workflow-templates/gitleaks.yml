@@ -41,7 +41,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
           # Pinned above the action's own stale built-in default. Dependabot
-          # does not track this value, so bump it by hand periodically.
+          # does not read this value, so bump it by hand periodically. The
+          # org tracks it in monte3l/.github blueprint/pins.json.
           GITLEAKS_VERSION: "8.30.1"
           # Avoids needing pull-requests: write for a PR comment.
           GITLEAKS_ENABLE_COMMENTS: "false"

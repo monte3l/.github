@@ -1,0 +1,62 @@
+name: Freshness (Scheduled)
+
+# What this does: once a week, compares the hand-pinned tool versions in
+# `blueprint/pins.json` (GITLEAKS_VERSION, the actionlint image, zizmor) with
+# the newest upstream release that is at least seven days old, and keeps one
+# tracking issue up to date. Dependabot only reads `uses:`, so nothing else
+# notices these. The run never edits a pin: a person bumps `pins.json` and every
+# copy, and `bin/pin-parity.mjs` (part of `verify`) fails if one copy is missed.
+# The run fails only when it cannot check; a stale pin is reported by the issue.
+on:
+  schedule:
+    # Monday 05:15 UTC, ahead of the other weekly Monday jobs.
+    - cron: "15 5 * * 1"
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: freshness
+  cancel-in-progress: false
+
+jobs:
+  pins:
+    name: Pinned tool versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write # the tracking issue is the only write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Compare pins with upstream and update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          code=0
+          bin/pin-freshness.sh >"$RUNNER_TEMP/pins.txt" || code=$?
+          cat "$RUNNER_TEMP/pins.txt" >>"$GITHUB_STEP_SUMMARY"
+          case "$code" in
+            0) bin/lib/upsert-issue.sh "Pinned tool versions are stale" dependencies "$RUNNER_TEMP/pins.txt" --clean ;;
+            1)
+              {
+                cat <<'TEXT'
+          These hand-pinned versions are behind the newest release that is at least seven days old.
+
+          ```text
+          TEXT
+                cat "$RUNNER_TEMP/pins.txt"
+                cat <<'TEXT'
+          ```
+
+          Bump `blueprint/pins.json` and every file it lists in one pull request. `verify` fails if a copy is missed.
+          TEXT
+              } >"$RUNNER_TEMP/body.md"
+              bin/lib/upsert-issue.sh "Pinned tool versions are stale" dependencies "$RUNNER_TEMP/body.md"
+              ;;
+            *) printf 'pin-freshness.sh failed with exit code %s\n' "$code" >&2; exit "$code" ;;
+          esac

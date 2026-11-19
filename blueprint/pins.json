@@ -1,0 +1,26 @@
+[
+  {
+    "name": "gitleaks",
+    "version": "8.30.1",
+    "upstream": "gitleaks/gitleaks",
+    "tagPrefix": "v",
+    "pattern": "GITLEAKS_VERSION: \"{version}\"",
+    "files": [".github/workflows/gitleaks.yml", "workflow-templates/gitleaks.yml"]
+  },
+  {
+    "name": "actionlint",
+    "version": "1.7.12",
+    "upstream": "rhysd/actionlint",
+    "tagPrefix": "v",
+    "pattern": "rhysd/actionlint:{version} ",
+    "files": [".github/workflows/verify.yml", ".github/workflows/workflow-lint.yml", "workflow-templates/workflow-lint.yml"]
+  },
+  {
+    "name": "zizmor",
+    "version": "1.32.0",
+    "upstream": "zizmorcore/zizmor",
+    "tagPrefix": "v",
+    "pattern": "version: \"{version}\"",
+    "files": [".github/workflows/workflow-lint.yml", "workflow-templates/workflow-lint.yml"]
+  }
+]

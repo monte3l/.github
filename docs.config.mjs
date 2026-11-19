@@ -36,5 +36,5 @@ export default {
     { glob: "docs/research/**", reason: "Claude Code harness refresh tracker, maintainer notes" },
   ],
   generators: ["bin/site/templates.mjs", "bin/site/baseline.mjs"],
-  parity: ["bin/doc-parity.mjs"],
+  parity: ["bin/doc-parity.mjs", "bin/pin-parity.mjs"],
 };
