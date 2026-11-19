@@ -279,9 +279,9 @@ report_file() {
   [[ "$mode" == "check" ]] || printf '         needs a commit in %s: %s\n' "$repo" "$hint"
 }
 
-report_file "CODEOWNERS" "write one; the main ruleset requires a code-owner approval" \
+report_file "CODEOWNERS" "start from blueprint/files/CODEOWNERS; the main ruleset requires a code-owner approval" \
   .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS
-report_file "security policy" "write one with an absolute advisory URL; the org default has no link, so a repository inheriting it scores 4 on Scorecard's Security-Policy" \
+report_file "security policy" "start from blueprint/files/SECURITY.md, with an absolute advisory URL; the org default has no link, so a repository inheriting it scores 4 on Scorecard's Security-Policy" \
   SECURITY.md .github/SECURITY.md docs/SECURITY.md
 report_file "Gitleaks config" "copy blueprint/files/gitleaks.toml" .gitleaks.toml
 report_file "line endings" "copy blueprint/files/gitattributes" .gitattributes

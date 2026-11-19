@@ -52,5 +52,5 @@ export default {
   },
   sitemap: true,
   generators: ["bin/site/templates.mjs", "bin/site/baseline.mjs"],
-  parity: ["bin/doc-parity.mjs", "bin/pin-parity.mjs", "bin/knowledge-parity.mjs", "bin/sync-parity.mjs"],
+  parity: ["bin/doc-parity.mjs", "bin/pin-parity.mjs", "bin/knowledge-parity.mjs", "bin/sync-parity.mjs", "bin/bootstrap-parity.mjs"],
 };

@@ -1,0 +1,161 @@
+{
+  "$comment": "What a new repository starts with. Read by bin/new-repo.sh, checked against blueprint/files/, workflow-templates/ and sync.json by bin/bootstrap-parity.mjs, so a starter or a template cannot be added and forgotten. `from` is a path in this repository, `to` the path in the new one. `substitute` lists the placeholder words replaced by the repository name; any other {placeholder} is left for a person. Templates are rendered as the template sync renders them (site, flags, default branch). `requires` makes an entry conditional: `kind` (--kind, which is needed unless blueprint/release.json exempts the repository, or the release items report drift) or a declared option. A starter with `perKind` has KIND in its `from`, replaced by the kind. A starter or template that is not bootstrapped is in `excluded` with the reason.",
+  "kinds": [
+    "library",
+    "plugin",
+    "simple"
+  ],
+  "options": [
+    "claude"
+  ],
+  "starters": [
+    {
+      "from": "blueprint/files/README.md",
+      "to": "README.md",
+      "substitute": [
+        "{repo}"
+      ]
+    },
+    {
+      "from": "blueprint/files/SECURITY.md",
+      "to": "SECURITY.md",
+      "substitute": [
+        "{repo}"
+      ]
+    },
+    {
+      "from": "blueprint/files/CODEOWNERS",
+      "to": ".github/CODEOWNERS"
+    },
+    {
+      "from": "LICENSE",
+      "to": "LICENSE"
+    },
+    {
+      "from": "LICENSES/MIT.txt",
+      "to": "LICENSES/MIT.txt"
+    },
+    {
+      "from": "blueprint/files/REUSE.toml",
+      "to": "REUSE.toml",
+      "substitute": [
+        "REPOSITORY"
+      ]
+    },
+    {
+      "from": "blueprint/files/gitleaks.toml",
+      "to": ".gitleaks.toml"
+    },
+    {
+      "from": "blueprint/files/gitattributes",
+      "to": ".gitattributes"
+    },
+    {
+      "from": "blueprint/files/editorconfig",
+      "to": ".editorconfig"
+    },
+    {
+      "from": "blueprint/files/dependabot.yml",
+      "to": ".github/dependabot.yml"
+    },
+    {
+      "from": "blueprint/files/dependency-review-config.yml",
+      "to": ".github/dependency-review-config.yml"
+    },
+    {
+      "from": "blueprint/files/labeler.yml",
+      "to": ".github/labeler.yml"
+    },
+    {
+      "from": "blueprint/files/policies.yml",
+      "to": "policies.yml"
+    },
+    {
+      "from": "blueprint/files/scancode-config.yml",
+      "to": "scancode-config.yml"
+    },
+    {
+      "from": "blueprint/files/release-please/KIND.json",
+      "to": "release-please-config.json",
+      "perKind": true,
+      "requires": "kind"
+    },
+    {
+      "from": "blueprint/files/release-please/manifest.json",
+      "to": ".release-please-manifest.json",
+      "requires": "kind"
+    }
+  ],
+  "templates": [
+    {
+      "name": "commit-lint"
+    },
+    {
+      "name": "dco"
+    },
+    {
+      "name": "dependency-review"
+    },
+    {
+      "name": "gitleaks"
+    },
+    {
+      "name": "labeler"
+    },
+    {
+      "name": "reuse"
+    },
+    {
+      "name": "scancode"
+    },
+    {
+      "name": "scorecard"
+    },
+    {
+      "name": "workflow-lint"
+    },
+    {
+      "name": "verify"
+    },
+    {
+      "name": "release",
+      "requires": "kind"
+    },
+    {
+      "name": "claude",
+      "requires": "claude"
+    }
+  ],
+  "generated": [
+    {
+      "to": "design/README.md",
+      "what": "the design marker of the content tier, from blueprint/design-system.json"
+    }
+  ],
+  "excluded": [
+    {
+      "from": "blueprint/files/docs.config.mjs",
+      "reason": "Not bootstrapped yet: a docs site needs the vendored design (design/source/ from sync-design.sh, the vendored-tier marker, OFL-1.1 and brand license texts), PROJECT replaced, and a committed package-lock.json for tools/deploy. Set up by hand, see blueprint/docs-site.md."
+    },
+    {
+      "from": "blueprint/files/deploy-tools/package.json",
+      "reason": "Not bootstrapped yet: a docs site needs the vendored design (design/source/ from sync-design.sh, the vendored-tier marker, OFL-1.1 and brand license texts), PROJECT replaced, and a committed package-lock.json for tools/deploy. Set up by hand, see blueprint/docs-site.md."
+    },
+    {
+      "from": "blueprint/files/deploy-tools/wrangler.jsonc",
+      "reason": "Not bootstrapped yet: a docs site needs the vendored design (design/source/ from sync-design.sh, the vendored-tier marker, OFL-1.1 and brand license texts), PROJECT replaced, and a committed package-lock.json for tools/deploy. Set up by hand, see blueprint/docs-site.md."
+    },
+    {
+      "from": "workflow-templates/docs.yml",
+      "reason": "Not bootstrapped yet: a docs site needs the vendored design (design/source/ from sync-design.sh, the vendored-tier marker, OFL-1.1 and brand license texts), PROJECT replaced, and a committed package-lock.json for tools/deploy. Set up by hand, see blueprint/docs-site.md. It also needs a .node-version."
+    },
+    {
+      "from": "workflow-templates/docs-live.yml",
+      "reason": "Not bootstrapped yet: a docs site needs the vendored design (design/source/ from sync-design.sh, the vendored-tier marker, OFL-1.1 and brand license texts), PROJECT replaced, and a committed package-lock.json for tools/deploy. Set up by hand, see blueprint/docs-site.md. It also needs a .node-version."
+    },
+    {
+      "from": "workflow-templates/environments.yml",
+      "reason": "Not bootstrapped yet: it needs .github/environments.json (the environments the repository really has) and a .node-version. Set up by hand, see Environment cleanup in blueprint/README.md."
+    }
+  ]
+}
