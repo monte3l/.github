@@ -157,9 +157,12 @@ for a repository that already exists.
 2. Copy `files/docs.config.mjs` to the repository root and fill it in. List
    every tracked `*.md` file under `pages` or `exclude`, with a reason for each
    exclusion: the kit fails on any it does not know about.
-3. Copy `files/deploy-tools/` to `tools/deploy/`, rename the Worker and
-   the hostname, and run `npm install --package-lock-only
-   --ignore-scripts --prefix tools/deploy` once to commit the lockfile.
+3. Copy `files/deploy-tools/` to `tools/deploy/` and replace `PROJECT` with the
+   project's subdomain in `package.json`, `package-lock.json` (two places) and
+   `wrangler.jsonc`. The lockfile is part of the starter: it was reviewed here,
+   carries an integrity hash for every package, and Dependabot keeps it current,
+   so do not regenerate it with `npm install`. Check the pair with
+   `npm ci --dry-run --ignore-scripts --prefix tools/deploy`.
 4. Copy `workflow-templates/docs.yml` and `workflow-templates/docs-live.yml`
    into `.github/workflows/`, and set the environment URL.
 5. Add `node design/source/docs-kit/build.mjs --check` to the `verify`

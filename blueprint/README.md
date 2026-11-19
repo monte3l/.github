@@ -112,7 +112,7 @@ A private repository gets neither `scorecard.yml` (it cannot check itself out) n
 
 `--docs` adds a docs site, which is most of the nine steps of
 [Wiring a new site](docs-site.md#wiring-a-new-site): the docs kit config, the
-deploy tools with their committed lockfile, the `docs`, `docs-live` and
+deploy tools with a reviewed, committed lockfile (copied from a starter that Dependabot keeps current, so no `npm install` runs at bootstrap), the `docs`, `docs-live` and
 `environments` workflows, `.node-version`, the environment cleanup policy, the
 `sharp` exemptions in the dependency-review config, a Dependabot entry for
 `tools/deploy`, and the design **vendored** from the pinned m3l-design release by

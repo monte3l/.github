@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-The `monte3l` organization's `.github` repository. It has no package manager and no test suite — it is data GitHub reads directly, one bash script, and the source of the org docs site (monte3l.com), which the vendored m3l-design docs kit builds. Changes here reach other repositories, so think in terms of blast radius:
+The `monte3l` organization's `.github` repository. It has no package manager. It is data GitHub reads directly, the scripts that check and apply it, the tests for those scripts in `tests/`, and the source of the org docs site (monte3l.com), which the vendored m3l-design docs kit builds. Changes here reach other repositories, so think in terms of blast radius:
 
 - **Root community files** (`CODE_OF_CONDUCT.md`, `CONTRIBUTING.md`, `SECURITY.md`, `SUPPORT.md`) and **`.github/ISSUE_TEMPLATE/` + `.github/pull_request_template.md` + `.github/PULL_REQUEST_TEMPLATE/`** are *live defaults* for every org repo lacking its own copy — a merge here changes them everywhere at once. Wording in these files is written for *other* repositories (e.g. "usually `pnpm verify`"), not this one.
 - **`profile/README.md`** is the org's public profile page.
@@ -30,10 +30,11 @@ bin/apply-repo-baseline.sh monte3l/REPO             # read-only, exit 1 on drift
 bin/org-audit.sh [--repos a,b]                      # the same over every repo, as one report (read-only); --public prints counts only
 bin/apply-repo-baseline.sh monte3l/REPO --dry-run   # also prints the gh api call per drifted item
 bin/apply-repo-baseline.sh monte3l/REPO --apply     # mutates the repository — confirm with the user first
+node --test "tests/*.test.mjs"                      # the tests: parity gates, the template classifier, and new-repo.sh against stubs (about a minute)
 bin/new-repo.sh NAME [--kind K] [--claude] [--private] [--docs] [--scaffold] [--apply [--yes]]   # plan by default; --apply creates a repository and changes org settings — confirm first
 ```
 
-Needs `gh` (repo admin) and `jq`. Validate edits with `bash -n bin/apply-repo-baseline.sh`, `jq . <file>` on each blueprint JSON, `shellcheck`/`actionlint` if available (not installed by default), and `node design/source/docs-kit/build.mjs --check` for the site and its parity checks (Node 24, `.node-version`).
+Needs `gh` (repo admin) and `jq`. Validate edits with `bash -n bin/apply-repo-baseline.sh`, `jq . <file>` on each blueprint JSON, `shellcheck`/`actionlint` if available (not installed by default), `node --test "tests/*.test.mjs"` for the tests, and `node design/source/docs-kit/build.mjs --check` for the site and its parity checks (Node 24, `.node-version`). A change to a script under `bin/` or a parity module needs its case in `tests/`: a test that was only ever run by hand is not a test, and the real runs found bugs (a corrupt lockfile, a branch taken over a tag) that stubs cannot, so a bug found that way gets a test for its cause.
 
 ## Blueprint script internals
 
