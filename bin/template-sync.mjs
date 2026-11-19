@@ -15,8 +15,10 @@
  * DIR only, the current template for each STALE managed copy of that one
  * repository, at its path (`DIR/.github/workflows/NAME.yml`). Nothing else is
  * written and nothing is sent: `bin/template-sync-pr.sh` commits what is there.
- * The repository's own action pins are kept (the comparison ignores pins, so a
- * refresh must not move one).
+ * The file is the template with its action pins, not the repository's: a pin can
+ * be tied to an input in the same file (zizmor-action and its `version:`), so a
+ * refreshed file keeps the pins it was written with. The comparison still ignores
+ * pins, which is why a pin alone never makes a copy stale.
  * A copy is left out, and said so on stderr, when the refresh would change the
  * set of job names, because a required check is a job name. The rules of the comparison are in
  * `bin/lib/template-sync.mjs`, and the data (which templates are managed, which
@@ -44,7 +46,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { classify, jobNames, keepPins, render } from "./lib/template-sync.mjs";
+import { classify, jobNames, render } from "./lib/template-sync.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const NAME_RE = /^[A-Za-z0-9._][A-Za-z0-9._-]*$/;
@@ -194,8 +196,7 @@ try {
         }
         const target = path.join(writeDir, ".github", "workflows", `${template}.yml`);
         mkdirSync(path.dirname(target), { recursive: true });
-        const out = keepPins(current, copy);
-        writeFileSync(target, out.endsWith("\n") ? out : `${out}\n`);
+        writeFileSync(target, current.endsWith("\n") ? current : `${current}\n`);
       }
     }
   }

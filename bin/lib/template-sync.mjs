@@ -172,33 +172,3 @@ export function jobNames(text) {
   }
   return names.sort();
 }
-
-const USES_LINE_RE = /^\s*(?:-\s+)?uses:\s*([^\s@]+)@[0-9a-f]{40}\b/;
-
-/**
- * The rendered template with the repository's own pins kept. The classifier
- * ignores pins, so a template that only moved a pin never makes a copy stale:
- * a refresh must not move one either, or it could put back an action version
- * that Dependabot in the repository had already replaced. An action the copy
- * does not use takes the template's line.
- *
- * @param {string} current the template, rendered for the repository
- * @param {string} copy the repository's file
- * @returns {string}
- */
-export function keepPins(current, copy) {
-  const own = new Map();
-  for (const line of copy.replace(/\r\n/g, "\n").split("\n")) {
-    const match = USES_LINE_RE.exec(line);
-    if (match) own.set(match[1], [...(own.get(match[1]) ?? []), line]);
-  }
-  return current
-    .split("\n")
-    .map((line) => {
-      const match = USES_LINE_RE.exec(line);
-      const mine = match && own.get(match[1]);
-      // Taken in order, so two uses of one action each keep their own pin.
-      return mine && mine.length > 0 ? mine.shift() : line;
-    })
-    .join("\n");
-}
