@@ -381,19 +381,31 @@ script confirms both through its `CODEOWNERS` line. No repository has copied
 
 ## Working on this repo
 
-This repository has no tests. The checks are the `verify` job in `verify.yml`,
-and CI runs all four:
+The checks are the `verify` job in `verify.yml`, and CI runs all five. The same
+commands run locally:
 
 ```sh
-# the docs site: links, page coverage, design integrity and parity checks
+# the docs site: links, page coverage, design integrity and every parity check
 node design/source/docs-kit/build.mjs --check
-# the script parses and passes shellcheck
-bash -n bin/apply-repo-baseline.sh && shellcheck bin/apply-repo-baseline.sh
+# every script parses and passes shellcheck, and every Node script parses
+bash -n bin/*.sh bin/lib/*.sh tests/*.sh && shellcheck bin/*.sh bin/lib/*.sh tests/*.sh
+node --check bin/*.mjs
+# the tests
+node --test "tests/*.test.mjs"
 # every blueprint and template JSON file is valid
 find blueprint workflow-templates -name '*.json' -print0 | xargs -0 -n1 jq empty
-# every workflow and template passes actionlint
-docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color .github/workflows/*.yml workflow-templates/*.yml
+# every workflow and template passes actionlint (TAG is the version in blueprint/pins.json)
+docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:TAG -color .github/workflows/*.yml workflow-templates/*.yml
 ```
+
+`tests/` holds the tests: the parity gates, the template classifier (hostile
+input included, because it once took minutes on a large file), and
+`bin/new-repo.sh` run against stubs and a local bare repository, so nothing is
+created anywhere. Run one with `node tests/<name>.test.mjs`, or run the script
+under macOS's bash 3.2 with `BASH_BIN=/bin/bash node --test "tests/*.test.mjs"`.
+They cannot answer what only GitHub answers. A real run of the bootstrap found a
+corrupt lockfile and a branch taken over a tag that stubs could not, so a bug
+found that way gets a test for its cause.
 
 The rules for edits are under [Changing a default](#changing-a-default). See
 [`CONTRIBUTING.md`](CONTRIBUTING.md) for the pull request workflow.
