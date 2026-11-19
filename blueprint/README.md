@@ -323,7 +323,7 @@ template-sync.yml -f dry_run=false -f repositories="m3l-plugins"`) and, with
 | Only a **stale** managed copy is written, with the current template rendered for that repository | A custom copy is someone's work |
 | A copy whose refresh would change the set of job names is left out, and said so in the log | A required check is a job name: renaming one stops merges |
 | Only existing files under `.github/workflows/` are sent, and the script refuses anything else | A sync refreshes, it never adds or removes |
-| The repository's own action pins are kept | The comparison ignores pins, so a refresh must not move one: it could put back a version Dependabot had replaced |
+| The file is the template with the **template's pins** | A pin can be tied to an input in the same file: an older `zizmor-action` cannot install a newer zizmor `version`. Dependabot in the repository moves the pins on afterwards |
 | One branch per set of files (`chore/template-sync-<hash>`): a repeated run finds its own pull request, and one a person closed is not opened again | Closing it was an answer |
 | A newer pull request closes an older one of the bot, if only the bot committed to it | A person's commits are never discarded |
 | The commit goes through the API as the App | GitHub signs it, and the required checks run on the pull request |
