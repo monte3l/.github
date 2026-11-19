@@ -8,6 +8,9 @@
 # project can accept the terms. Never add a license for it to the workflow.
 #
 # Keep at least one key: the action fails on an empty file, and on a missing one.
+# A repository that marks files with inline SPDX headers (no catch-all REUSE
+# annotation) starts this file with its two header lines: REUSE and the license
+# header check both fail on a file without them.
 # A list set in the workflow itself would override this one, so do not set it
 # there. Example:
 #
