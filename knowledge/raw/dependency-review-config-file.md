@@ -16,3 +16,5 @@ accessed: 2026-11-19
 ## Caveats
 
 - Read from the action's source on 2026-11-19 by the author and again by a second reader. It was not run. A list value may also be a comma-separated string.
+
+**Re-read:** 2026-11-19 at the commit pinned in `workflow-templates/dependency-review.yml` (`a1d282b`). `readConfigFile` throws "Unable to fetch or parse config file" when the file cannot be read, so a workflow that sets `config-file` needs the file in every repository. `parseConfigFile` calls `Object.keys` on the parsed YAML, so an empty or comment-only file throws too. The inline values are filtered for `undefined` before the merge, so a key the workflow does not set never hides the file's value.

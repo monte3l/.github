@@ -32,5 +32,8 @@ jobs:
           allow-licenses: MIT, MIT-0, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, CC-BY-4.0, BlueOak-1.0.0, Artistic-2.0, CC-BY-3.0
           # A copyleft or platform-specific package that is acceptable for a
           # tool the project only runs (never ships) is exempted by package
-          # URL, not by adding its license above. Example:
-          # allow-dependencies-licenses: pkg:npm/%40img/sharp-libvips-linux-x64
+          # URL, not by adding its license above. Those exemptions are data
+          # about this repository, so they live in the file below, never in
+          # this one: an allow-list here would make the copy differ from the
+          # template. The file must exist, and must hold at least one key.
+          config-file: ./.github/dependency-review-config.yml

@@ -38,3 +38,6 @@ Measured 76 workflow copies against their templates and rewrote the template-syn
 
 Defer reusable workflows. Refresh only copies that equal an older template version. Open the pull requests from a separate `monte3l-sync` App rather than widening the release App.
 
+## [2026-11-19] decision | Allow-lists move to a config file
+
+The package allow-list left the `dependency-review` workflow for `.github/dependency-review-config.yml`, so the copies stop being custom and the template sync can cover them. The action source showed that the file must exist and hold at least one key, so a starter file with an empty list is part of the standard and a baseline item requires it. Migrating the six consumers is one pull request each, because the workflow and its file must land together or the required check fails.

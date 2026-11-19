@@ -287,6 +287,7 @@ report_file "Gitleaks config" "copy blueprint/files/gitleaks.toml" .gitleaks.tom
 report_file "line endings" "copy blueprint/files/gitattributes" .gitattributes
 report_file "editor config" "copy blueprint/files/editorconfig" .editorconfig
 report_file "REUSE" "start from blueprint/files/REUSE.toml and add LICENSES/" REUSE.toml
+report_file "dependency review config" "copy blueprint/files/dependency-review-config.yml: the Dependency Review workflow reads it, and fails without it" .github/dependency-review-config.yml
 # The checks below look for the control, not a file name: a repository may run
 # it from its own workflow (for example a `reuse lint` step inside `verify.yml`)
 # and a second copy of the template would only duplicate it.

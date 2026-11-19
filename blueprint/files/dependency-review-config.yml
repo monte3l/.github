@@ -1,0 +1,16 @@
+# Starting point for .github/dependency-review-config.yml, read by
+# workflow-templates/dependency-review.yml (the action's `config-file` input).
+#
+# The licenses that are allowed are in the workflow and are the same everywhere.
+# This file holds only what is specific to this repository: packages exempted
+# from the license check by package URL. Do it for a tool the project runs but
+# never ships (a deploy CLI and its platform binaries), after checking that the
+# project can accept the terms. Never add a license for it to the workflow.
+#
+# Keep at least one key: the action fails on an empty file, and on a missing one.
+# A list set in the workflow itself would override this one, so do not set it
+# there. Example:
+#
+#   allow-dependencies-licenses:
+#     - pkg:npm/%40img/sharp-libvips-linux-x64
+allow-dependencies-licenses: []
