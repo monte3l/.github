@@ -24,8 +24,8 @@ import path from "node:path";
 const WHERE = "blueprint/bootstrap.json";
 const TOP_KEYS = new Set(["$comment", "kinds", "options", "starters", "templates", "generated", "excluded"]);
 const ENTRY_KEYS = {
-  starters: new Set(["from", "to", "substitute", "requires", "perKind"]),
-  templates: new Set(["name", "requires"]),
+  starters: new Set(["from", "to", "substitute", "replace", "requires", "perKind"]),
+  templates: new Set(["name", "requires", "unlessScaffold"]),
   generated: new Set(["to", "what"]),
   excluded: new Set(["from", "reason"]),
 };
@@ -153,11 +153,17 @@ export default async function parity({ root }) {
       if (Array.isArray(starter.substitute) && starter.substitute.every((word) => typeof word === "string" && word !== "")) substitute = starter.substitute;
       else problems.push(`${WHERE}: ${by} "substitute" must be an array of non-empty words`);
     }
+    let replace = {};
+    if (starter.replace !== undefined) {
+      if (isObject(starter.replace) && Object.keys(starter.replace).every((text) => text !== "") && Object.values(starter.replace).every((value) => typeof value === "string")) replace = starter.replace;
+      else problems.push(`${WHERE}: ${by} "replace" must map non-empty texts to strings`);
+    }
     for (const from of sources) {
       covered.add(from);
       if (!source(from, by)) continue;
       const text = await readFile(path.join(root, from), "utf8");
       for (const word of substitute) if (!text.includes(word)) problems.push(`${WHERE}: ${by} replaces "${word}", which ${from} does not contain`);
+      for (const literal of Object.keys(replace)) if (!text.includes(literal)) problems.push(`${WHERE}: ${by} replaces ${JSON.stringify(literal)}, which ${from} does not contain`);
     }
   }
 
@@ -168,6 +174,7 @@ export default async function parity({ root }) {
       continue;
     }
     needs(template, by);
+    if (template.unlessScaffold !== undefined && typeof template.unlessScaffold !== "boolean") problems.push(`${WHERE}: ${by} "unlessScaffold" must be true or false`);
     if (named.has(template.name)) problems.push(`${WHERE}: the template "${template.name}" is listed twice`);
     named.add(template.name);
     claim(`.github/workflows/${template.name}.yml`, by);

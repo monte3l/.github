@@ -41,3 +41,7 @@ Defer reusable workflows. Refresh only copies that equal an older template versi
 ## [2026-11-19] decision | Allow-lists move to a config file
 
 The package allow-list left the `dependency-review` workflow for `.github/dependency-review-config.yml`, so the copies stop being custom and the template sync can cover them. The action source showed that the file must exist and hold at least one key, so a starter file with an empty list is part of the standard and a baseline item requires it. Migrating the six consumers is one pull request each, because the workflow and its file must land together or the required check fails.
+
+## [2026-11-19] decision | A repository starts from data, and the Apps are added by the script
+
+New repositories come from `blueprint/bootstrap.json`, which a parity check keeps in step with the starters and templates, and `bin/new-repo.sh` creates one from it. Checking the live Apps showed they are installed on selected repositories and not all, as the audit documentation said, so a new repository is added to them as a step. Groundwork's scaffold wins on every file it writes, and the org `verify` workflow is left out when it runs, because its own `ci.yml` already defines that check. The docs site and the environment cleanup are excluded with the reason until their prerequisites are produced.

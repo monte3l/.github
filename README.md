@@ -31,17 +31,18 @@ baseline with this command. It is read-only and exits `1` on drift:
 bin/apply-repo-baseline.sh monte3l/<repo>
 ```
 
-To start a new repository:
+To start a new repository, add it to `blueprint/projects.json` and the
+profile table first (the description, topics and site come from there), then:
 
-1. Add `design/README.md` with the m3l-design tag from
-   `blueprint/design-system.json`. See [Design system](#design-system).
-2. Copy the README skeleton from `blueprint/files/README.md`. The order it
-   follows is in `blueprint/README.md`, under "README structure".
-3. Copy the workflow templates you need from `workflow-templates/`, and the
-   starting points in `blueprint/files/`.
-4. Run the check above and fix what it reports.
-5. Read [`blueprint/README.md`](blueprint/README.md), then run the script with
-   `--apply` to write the settings GitHub never inherits.
+```sh
+bin/new-repo.sh m3l-example --kind simple            # read-only: shows every file and step
+bin/new-repo.sh m3l-example --kind simple --apply    # creates it, after one confirmation
+```
+
+It writes the starter files and the workflow templates, creates the repository,
+applies the settings GitHub never inherits and adds the repository to the
+organization's Apps. What is left for a person is printed at the end. See
+[New repository](blueprint/README.md#new-repository).
 
 For the whole organization at once, run `/org-drift` in Claude Code from this
 repository. [Parity check](#parity-check) lists what the script cannot see.

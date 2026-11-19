@@ -22,5 +22,13 @@
     "tagPrefix": "v",
     "pattern": "version: \"{version}\"",
     "files": [".github/workflows/workflow-lint.yml", "workflow-templates/workflow-lint.yml"]
+  },
+  {
+    "name": "groundwork scaffold",
+    "version": "1.2.1",
+    "upstream": "monte3l/m3l-groundwork",
+    "tagPrefix": "@monte3l/groundwork@",
+    "pattern": "scaffold_package='@monte3l/groundwork@{version}'",
+    "files": ["bin/new-repo.sh"]
   }
 ]

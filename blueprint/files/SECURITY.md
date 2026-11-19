@@ -1,7 +1,7 @@
 # Security Policy
 
 <!-- Starting point for SECURITY.md. `{repo}` is replaced by `bin/new-repo.sh`;
-     replace every other {placeholder} by hand and delete this comment. The
+     replace every other placeholder in braces by hand and delete this comment. The
      advisory URL must stay absolute: a repository that inherits the org default
      scores 4 on Scorecard's Security-Policy check. -->
 

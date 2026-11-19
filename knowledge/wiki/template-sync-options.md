@@ -48,10 +48,11 @@ The 14 custom managed copies are 6 `dependency-review`, 3 `docs-live`, 1 `docs` 
 
 ## What exists and what is next
 
-Built: the allow-list config file (the template reads `.github/dependency-review-config.yml`, and a baseline item requires it), `template-sync.yml`, which opens the refresh pull requests as the `monte3l-sync` App, `bin/template-sync.mjs`, a read-only classifier that stops with an error, and never reports "nothing", when it cannot read a repository or the template history, `blueprint/sync.json`, a parity gate on that file, and a weekly job that keeps one issue for the stale copies and for a flag that disagrees with a repository. Next: `bin/new-repo.sh`.
+Built: the allow-list config file (the template reads `.github/dependency-review-config.yml`, and a baseline item requires it), `template-sync.yml`, which opens the refresh pull requests as the `monte3l-sync` App, `bin/template-sync.mjs`, a read-only classifier that stops with an error, and never reports "nothing", when it cannot read a repository or the template history, `blueprint/sync.json`, a parity gate on that file, and a weekly job that keeps one issue for the stale copies and for a flag that disagrees with a repository. `bin/new-repo.sh` creates a repository from `blueprint/bootstrap.json` and adds it to the Apps. Not bootstrapped yet: the docs site and the environment cleanup.
 
 ## What is unverified
 
+- **`bin/new-repo.sh --apply` has only run against stubs.** Whether the Apps' `PUT user/installations/ID/repositories/REPO` call is accepted for your token, and whether a repository built from these files passes the baseline, are settled by the first real run on a throwaway private repository.
 - **The config-file behaviour** (a missing or keyless file fails, an empty list is accepted) was read from the action's source at `a1d282b`, not run. The first consumer migration settles it.
 - **Settled by the first real runs on 2026-11-19:** `createCommitOnBranch` committed a workflow file with the Workflows permission, GitHub signed the commit, and a later run closed the older bot pull request. The documented table lists only the REST endpoints, so this was not knowable from it.
 - **That a same-repository pull request's workflows run with the repository's secrets** is general GitHub behaviour that was not re-read for this page. It is the reason the permission is treated as significant.
