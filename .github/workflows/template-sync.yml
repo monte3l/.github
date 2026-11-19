@@ -10,15 +10,20 @@ name: Template sync
 # unmanaged template (`verify`, `release`, `claude`) is never a candidate. See
 # `blueprint/README.md`, "Workflow template sync".
 #
-# It is started by hand, and does nothing but report unless `dry_run` is turned
-# off. A run with `dry_run` on needs no App: it lists what would change. A real
-# run mints a token for one repository at a time from the `monte3l-sync` App, in
+# It runs every Monday at 06:15 UTC, an hour after `freshness.yml` reports the
+# stale copies, and for real: a scheduled run opens the pull requests. Started
+# by hand it does nothing but report unless `dry_run` is turned off. A run with
+# `dry_run` on needs no App: it lists what would change. A real run mints a token for one repository at a time from the `monte3l-sync` App, in
 # the `template-sync` environment (main only), and `bin/template-sync-pr.sh`
 # commits through the API, so GitHub signs the commit and the required checks
-# run on the pull request. A person reviews and merges each one.
+# run on the pull request. A person reviews and merges each one. A run that finds
+# nothing stale opens nothing, one that finds the same files again finds its own
+# pull request, and a pull request a person closed is not opened again.
 #
 #   gh workflow run template-sync.yml -R monte3l/.github -f dry_run=false -f repositories="m3l-plugins"
 on:
+  schedule:
+    - cron: "15 6 * * 1"
   workflow_dispatch:
     inputs:
       repositories:
@@ -67,7 +72,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           INPUT_REPOSITORIES: ${{ inputs.repositories }}
-          DRY_RUN: ${{ inputs.dry_run }}
+          # A scheduled run has no inputs, and it is a real run.
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
         run: |
           set -euo pipefail
           set -f # the names are split on spaces, never expanded as a glob
@@ -91,7 +97,7 @@ jobs:
   open:
     name: Refresh ${{ matrix.repository }}
     needs: [plan]
-    if: ${{ !inputs.dry_run && needs.plan.outputs.repositories != '[]' }}
+    if: ${{ github.repository_owner == 'monte3l' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && needs.plan.outputs.repositories != '[]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: template-sync
