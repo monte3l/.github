@@ -80,7 +80,7 @@ fi
 cell() { local text="$1"; printf '%s' "${text//|/\\|}"; }
 
 summary="" drift_rows="" design_rows="" error_rows=""
-total_drift=0 total_errors=0 total_repos=0 drifted_repos=0
+total_drift=0 total_errors=0 total_repos=0 drifted_repos=0 total_skipped=0
 for name in $names; do
   [[ "$public" -eq 1 ]] || printf 'auditing %s/%s\n' "$owner" "$name" >&2
   total_repos=$((total_repos + 1))
@@ -100,6 +100,7 @@ for name in $names; do
   n_drift="$(grep -c '^DRIFT  ' "$work/$name.out" || true)"
   n_skip="$(grep -c '^SKIP  ' "$work/$name.out" || true)"
   summary+="| $name | $n_ok | $n_drift | $n_skip |"$'\n'
+  total_skipped=$((total_skipped + n_skip))
   total_drift=$((total_drift + n_drift))
   [[ "$n_drift" -eq 0 ]] || drifted_repos=$((drifted_repos + 1))
 
@@ -130,6 +131,9 @@ TEXT
   [[ -z "$findings_file" ]] || cp "$work/findings.md" "$findings_file"
   printf '## Org baseline: %s\n\n' "$owner"
   if [[ -s "$work/findings.md" ]]; then cat "$work/findings.md"; else printf 'No drift.\n'; fi
+  # Only in the summary, never in the findings: a clean organization with a few
+  # legitimate skips must still close the issue. A count is safe to publish.
+  printf '\nSkipped items: **%s**. They do not apply, or the App token cannot read them. "No drift" means none in the items that ran.\n' "$total_skipped"
   [[ "$total_errors" -eq 0 ]] || exit 3
   [[ "$total_drift" -eq 0 ]] || exit 1
   exit 0

@@ -213,9 +213,20 @@ secrets` items print `SKIP`, never a false `OK`. Add them to the App, then to th
 which `zizmor` flags (`github-app`); the workflow ignores that one finding on
 that one line, with the reason beside it.
 
-An installation token cannot list a user's installations, so the script's
-`release: app installation` item prints `SKIP` under it instead of a result. Run
-`bin/apply-repo-baseline.sh` yourself to see it.
+### What "no drift" covers
+
+**No drift** means none in the items that ran. Under the App token the baseline
+prints `SKIP`, which is not drift, for what it cannot read, and the issue shows
+counts only, so a closed issue is not proof that everything was verified. The
+job summary says how many items were skipped. Run `bin/org-audit.sh` with your
+own admin token now and then: its report has a SKIP column per repository.
+
+| Item | Skipped under the App token | Until |
+| --- | --- | --- |
+| `release: app installation` | Always. GitHub's `GET /user/installations/{id}/repositories` accepts a user access token only | Never: only an admin token can run it |
+| `labels` | On a private repository | The App gets **Issues** read |
+| `env-janitor: no environment secrets` | When it cannot read them | The App gets **Environments** read |
+| Items a plan cannot have (rulesets and fork-PR approval on a private free-plan repository, OpenSSF for `.github`) | On any token | The plan changes |
 
 ## Environment cleanup
 
