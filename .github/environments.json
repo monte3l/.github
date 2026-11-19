@@ -18,6 +18,12 @@
       "expect": {
         "branches": ["main"]
       }
+    },
+    "template-sync": {
+      "retain": 0,
+      "expect": {
+        "branches": ["main"]
+      }
     }
   }
 }
