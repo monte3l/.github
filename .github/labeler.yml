@@ -8,7 +8,7 @@
 
 "area:docs":
   - changed-files:
-      - any-glob-to-any-file: ["docs/**", "*.md", "docs.config.mjs"]
+      - any-glob-to-any-file: ["docs/**", "*.md", "docs.config.mjs", "knowledge/**"]
 
 "area:design":
   - changed-files:

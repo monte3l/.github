@@ -19,6 +19,7 @@ The org site (monte3l.com) is built from this repo by the docs kit in `design/so
 - **A new baseline item** is one `report_file`/`report_workflow` line, or an `INLINE_ITEMS` entry in `bin/lib/baseline-items.mjs` if it prints its own OK/DRIFT line, plus a row in the README table with its label in the "Reported as" column. The parity check fails until both exist.
 - **A new project** goes in `blueprint/projects.json` (site, card line, description, topics) and in `profile/README.md`'s table, whose row is the description plus a full stop and the site link. `bin/doc-parity.mjs` enforces the wording standard in `blueprint/README.md` under "Descriptions".
 - **A new `.md` file** must be added to `pages` or `exclude` (with a reason) in `docs.config.mjs`.
+- **`knowledge/` is an LLM-maintained wiki** (Karpathy's pattern): source cards in `knowledge/raw/` (excluded from the site), interpreting pages in `knowledge/wiki/`, an index, an append-only log, and the schema in `knowledge/CLAUDE.md`, which you read before touching it. `bin/knowledge-parity.mjs` (part of `--check`) enforces frontmatter, existing sources, the index, `pages` entries and log order. A new wiki page needs a `pages` entry with `out` `knowledge/<slug>.html`. The repository is public, so nothing private goes in. Run `/knowledge` to ingest, query or lint.
 - The deploy and smoke wiring is `.github/workflows/docs.yml` and `docs-live.yml`, copied from `workflow-templates/`. The Cloudflare setup is `blueprint/docs-site.md`. Pushing to `main` deploys, so the first deploy waits for the `docs-cloudflare` environment to exist.
 
 ## Commands
@@ -64,6 +65,7 @@ What `.claude/` wires up here. Hooks block by exiting 2; a hook script that cann
 | `.claude/hooks/statusline.mjs` | The status line, with `.claude/hooks/statusline-layout.mjs` and `.claude/hooks/subagent-statusline.mjs` for layout and subagent rows |
 | `.claude/agents/template-invariants-reviewer.md` | Read-only reviewer for the cross-file rules no linter checks; run it before a PR touching templates, blueprint, design or workflows |
 | `.claude/skills/org-drift/SKILL.md` | Reports drift between an org repo and the blueprint |
+| `.claude/skills/knowledge/SKILL.md` | Maintains the `knowledge/` wiki: ingest a source into a card and pages, answer from the wiki, or lint it. Read-only for everything outside `knowledge/` |
 | `.claude/skills/writing-commits/SKILL.md` | Conventional Commits with `git commit -s` and the `Co-Authored-By` trailer |
 | `.claude/skills/creating-prs/SKILL.md` | Runs the `verify.yml` commands locally, pushes and opens a PR from the template; never arms auto-merge |
 | `.claude/skills/finishing-work/SKILL.md` | After a merge: pull `main`, delete merged branches, prune refs |
@@ -72,7 +74,7 @@ What `.claude/` wires up here. Hooks block by exiting 2; a hook script that cann
 | `.claude/skills/harness-guidance/SKILL.md` | Refreshes this harness against Anthropic's guidance; its tracker is `docs/research/harness-refresh.md` |
 | `.claude/skills/customize/SKILL.md` | The m3l-groundwork adoption skill; its output is `.groundwork/customization-report.md` |
 
-`.groundwork/` holds the adoption record. Only its two reports are tracked (see `.gitignore`), and `docs.config.mjs` excludes `.groundwork/**` and `docs/research/**` from the docs site.
+`.groundwork/` holds the adoption record. Only its two reports are tracked (see `.gitignore`), and `docs.config.mjs` excludes `.groundwork/**` and `docs/research/**` from the docs site. `docs/research/harness-refresh.md` stays where it is and is not part of the wiki: the `harness-guidance` and `customize` skills read and write that path.
 
 ## Conventions
 
@@ -81,6 +83,7 @@ What `.claude/` wires up here. Hooks block by exiting 2; a hook script that cann
 - `claude.yml` gates every trigger on `author_association` ∈ OWNER/MEMBER/COLLABORATOR — never relax this; on public repos it is the only thing stopping outsiders from triggering a write-scoped job holding the API secret. `use_commit_signing: true` exists because the `main` ruleset requires signed commits.
 - `gitleaks.yml` pins `GITLEAKS_VERSION` by hand — Dependabot doesn't read it. Same for the actionlint image tag and zizmor `version`. `blueprint/pins.json` is the one record of these three: `bin/pin-parity.mjs` (part of `--check`) fails if a listed file carries another version, and `freshness.yml` opens one `Pinned tool versions are stale` issue weekly when a release at least seven days old is newer. Bump `pins.json` and every file it lists in one PR.
 - `blueprint/upstream.json` records the upstream policies (Scorecard checks, OpenSSF Baseline, Best Practices criteria, REUSE spec) as last reviewed by a person. `freshness.yml` opens `Upstream policy changed` when one moves. Update `blueprint/` if the standard should follow, then `bin/upstream-watch.sh --accept NAME` in the same PR. Never accept to silence the report.
+- `freshness.yml` runs three weekly jobs, each with its own tracking issue through `bin/lib/upsert-issue.sh`: `pins`, `upstream` and `knowledge` (`bin/knowledge-report.mjs`: a page not reviewed for 180 days, an orphan source card, a dead citation). A finding never blocks a merge. Never bump a `reviewed` date to clear it.
 - Commits: Conventional Commits, `git commit -s` (DCO sign-off), and signed. Prose style across docs: short, plain sentences explaining **why**, tables for file/option listings, GitHub `> [!WARNING]`-style callouts.
 - **m3l-design** is a standing rule for every `monte3l` repo: markdown uses bold (not italics), GitHub alerts matched to severity (max two in a row), plain sentences and tables for tabular data. Copy-based from a published `monte3l/m3l-design` release (`bin/sync-design.sh vX.Y.Z`), never a live dependency. When `blueprint/design-system.json`'s version changes, re-sync `design/` (`sync-design.sh vX.Y.Z <this repo>`) in the same commit (`design-resync.yml` opens that pull request when `m3l-design` publishes a release, and the matching ones in the repositories listed under `consumers`), which also rewrites the version in `design/README.md`; the parity check compares the two. The org standard (content vs vendored tier) is in `blueprint/README.md`'s "Design system" section.
 - The blueprint's rationale/checklist lives in `m3l-groundwork`'s `docs/github-blueprint.md`; keep `blueprint/README.md`'s file table in sync when changing blueprint JSON.
