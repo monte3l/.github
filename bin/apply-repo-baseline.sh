@@ -170,9 +170,16 @@ done
 # Listing labels needs Issues or Pull requests read, which a read-only App token
 # may not have on a private repository: say so with SKIP instead of stopping.
 labels_source="$here/labels.json"
-if ! have="$(gh label list --repo "$repo" --limit 200 --json name --jq '.[].name' 2>/dev/null)"; then
-  skip "labels" "cannot list labels (the token needs Issues or Pull requests read)"
-  labels_source=/dev/null
+if ! have="$(gh label list --repo "$repo" --limit 200 --json name --jq '.[].name' 2>&1)"; then
+  # Only a 403 means the token lacks the permission. Any other failure (a 5xx,
+  # a rate limit, the network) is a failed call, not a skipped item.
+  if grep -q 'HTTP 403' <<<"$have"; then
+    skip "labels" "cannot list labels (the token needs Issues or Pull requests read)"
+    labels_source=/dev/null
+  else
+    printf '%s\n' "$have" >&2
+    exit 3
+  fi
 fi
 while IFS= read -r label; do
   name="$(jq -r .name <<<"$label")"
@@ -460,7 +467,7 @@ fi
 if [[ -z "$(file_content docs.config.mjs)" ]]; then
   skip "docs site" "no docs.config.mjs"
 else
-  docs_marker="$(file_content "$marker_path")"
+  docs_marker="$(file_content "$marker_path" || true)"
   # shellcheck disable=SC2016 # the backticks are literal markdown in the grep regex
   if grep -Eq '^- \*\*Version copied:\*\* `v[0-9]' <<<"$docs_marker" ||
     { grep -Eq '^- \*\*Version adopted:\*\* `v[0-9]' <<<"$docs_marker" && grep -Eq '^- \*\*Tier:\*\* source' <<<"$docs_marker"; }; then
@@ -795,7 +802,7 @@ else
   # The pinned planner commit. m3l-groundwork itself runs its own bin/. Two
   # tiers: the pin must be on main, and must contain the newest commit that
   # touched the planner's files. Merely trailing main is fine.
-  env_wf="$(file_content .github/workflows/environments.yml)"
+  env_wf="$(file_content .github/workflows/environments.yml || true)"
   if [[ -z "$env_wf" ]]; then
     drift=$((drift + 1))
     printf 'DRIFT  env-janitor: planner pin: no .github/workflows/environments.yml\n'

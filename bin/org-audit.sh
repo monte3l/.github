@@ -37,7 +37,7 @@ set -eEuo pipefail
 trap 'exit 3' ERR
 
 usage() {
-  sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '5,35p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-2}"
 }
 
