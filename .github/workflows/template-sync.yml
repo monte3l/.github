@@ -1,0 +1,149 @@
+name: Template sync
+
+# Opens one pull request per consumer repository that holds a workflow copy
+# running an OLDER version of its template in `workflow-templates/`.
+#
+# What counts as stale is decided by `bin/template-sync.mjs` and nothing else: a
+# managed copy that strictly matches a version the template really had. A copy a
+# person changed on purpose is custom and never touched, a copy whose refresh
+# would rename a job is left out (a required check is a job name), and an
+# unmanaged template (`verify`, `release`, `claude`) is never a candidate. See
+# `blueprint/README.md`, "Workflow template sync".
+#
+# It is started by hand, and does nothing but report unless `dry_run` is turned
+# off. A run with `dry_run` on needs no App: it lists what would change. A real
+# run mints a token for one repository at a time from the `monte3l-sync` App, in
+# the `template-sync` environment (main only), and `bin/template-sync-pr.sh`
+# commits through the API, so GitHub signs the commit and the required checks
+# run on the pull request. A person reviews and merges each one.
+#
+#   gh workflow run template-sync.yml -R monte3l/.github -f dry_run=false -f repositories="m3l-plugins"
+on:
+  workflow_dispatch:
+    inputs:
+      repositories:
+        description: Repository names to refresh, separated by spaces. Empty means every consumer in blueprint/sync.json
+        required: false
+        default: ""
+        type: string
+      dry_run:
+        description: Only list what would change. Turn off to open the pull requests
+        required: false
+        default: true
+        type: boolean
+
+permissions: {}
+
+# One sync at a time, and none cancelled midway: a run that stops between
+# creating a branch and opening its pull request is cleaned up by the next one.
+concurrency:
+  group: template-sync
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      repositories: ${{ steps.plan.outputs.repositories }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The history of the templates is how a stale copy is told from a custom one.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .node-version
+
+      # Public repositories only: the workflow token reads them, and a repository
+      # name that is not a consumer in blueprint/sync.json stops the run.
+      - name: List the repositories with a stale copy
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_REPOSITORIES: ${{ inputs.repositories }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          set -f # the names are split on spaces, never expanded as a glob
+          args=(--json)
+          if [[ -n "${INPUT_REPOSITORIES// /}" ]]; then
+            # shellcheck disable=SC2086 # splitting the space-separated names is the point
+            names="$(printf '%s\n' $INPUT_REPOSITORIES | paste -sd, -)"
+            args+=(--repos "$names")
+          fi
+          node bin/template-sync.mjs "${args[@]}" >plan.json
+          repositories="$(jq -c '[.results[] | select(.managed and .state == "STALE") | .repo] | unique' plan.json)"
+          printf 'repositories=%s\n' "$repositories" >>"$GITHUB_OUTPUT"
+          {
+            echo '### Stale managed copies'
+            echo
+            jq -r '[.results[] | select(.managed and .state == "STALE")] | if length == 0 then "None: every copy is current, or was changed on purpose." else (.[] | "- `\(.repo)`: `\(.template).yml`, \(.back) version(s) behind") end' plan.json
+            echo
+            echo "Dry run: **$DRY_RUN**"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  open:
+    name: Refresh ${{ matrix.repository }}
+    needs: [plan]
+    if: ${{ !inputs.dry_run && needs.plan.outputs.repositories != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: template-sync
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        repository: ${{ fromJSON(needs.plan.outputs.repositories) }}
+    steps:
+      # Scoped to the one repository this leg changes. The App's key could mint a
+      # token for every installed repository, so no other step gets it.
+      - name: Mint a token for this repository only
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ matrix.repository }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+
+      - name: Check out this repository (the tools and the templates)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: tools
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out ${{ matrix.repository }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ github.repository_owner }}/${{ matrix.repository }}
+          token: ${{ steps.app-token.outputs.token }}
+          path: consumer
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: tools/.node-version
+
+      # Reads the repository with the read-only workflow token, never the App's.
+      - name: Write the current template over each stale copy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ matrix.repository }}
+        run: node tools/bin/template-sync.mjs --repos "$REPOSITORY" --write consumer
+
+      - name: Open the pull request
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPOSITORY: ${{ github.repository_owner }}/${{ matrix.repository }}
+        run: bash tools/bin/template-sync-pr.sh "$REPOSITORY" consumer
