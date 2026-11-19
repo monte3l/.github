@@ -40,6 +40,17 @@ literal in a local stylesheet, more than two alerts in a row, a manifest
 `homepage` that is not the site URL, and any message from a parity module.
 `check-live.mjs` then compares the deployed site byte for byte with the build.
 
+### For agents
+
+A site can also publish what an agent reads, with two opt-in keys in
+`docs.config.mjs`: `llms` (a `.md` copy of every page, `llms.txt` and, with
+`full: true`, `llms-full.txt`) and `sitemap: true`. A page may carry a one-line
+`summary`, which `llms.txt` prints after its link. A generated page gets a copy by
+returning its own `markdown` (and may return a `summary`), and without
+`markdown` it is linked to its HTML. `--check` then renders each copy again and fails on a link
+it cannot follow. The kit's README has the full contract. This site uses it, and
+the starter `files/docs.config.mjs` shows the keys.
+
 ## One-time setup
 
 Done by hand, before merging the pull request that adds `docs.yml`.

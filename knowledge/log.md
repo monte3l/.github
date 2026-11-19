@@ -26,3 +26,7 @@ The tracker at `docs/research/harness-refresh.md` is read and written by the `ha
 
 A second reader re-fetched the primary pages behind the cards. Corrected: the Best Practices repository has no versioned releases, only 135 SBOM-artefact releases (the card had said none), its commit list was the eight newest and not all, Allstar's push date had been mixed up with safe-settings', and four sentences overstated what a card said. Added a card for the Baseline releases so that claim has a source. Unchanged: every quote and every version number checked.
 
+## [2026-11-19] decision | monte3l.com opts in to llms.txt
+
+Kit 1.4.0 reached all six consumers, and this site set `llms` and `sitemap` with a one-line summary on every page. The two generated pages, the template catalog and the baseline-check catalog, return their own Markdown, so an agent gets them as tables instead of a link to HTML. The llms.txt page was corrected: it had said the site did not publish the files.
+

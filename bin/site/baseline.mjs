@@ -12,6 +12,7 @@ import { INLINE_ITEMS, parseBaselineScript } from "../lib/baseline-items.mjs";
 
 const esc = (text) => String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const code = (text) => `<code class="code m3l-code-inline">${esc(text)}</code>`;
+const cell = (text) => String(text).replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ");
 
 export default async function generate({ root }) {
   const items = parseBaselineScript(await readFile(path.join(root, "bin/apply-repo-baseline.sh"), "utf8"));
@@ -32,5 +33,22 @@ ${rows.map(([label, kind]) => `<tr><td>${code(label)}</td><td>${esc(kind)}</td><
 </tbody>
 </table>
 `;
-  return [{ out: "baseline.html", group: "Standard", label: "Baseline checks", html }];
+  const markdown = `# Baseline checks
+
+Every item ${"`bin/apply-repo-baseline.sh`"} compares a repository against. A report-only item never changes the repository, because adopting it is a commit.
+
+| Item | Kind |
+| --- | --- |
+${rows.map(([label, kind]) => `| ${"`"}${cell(label)}${"`"} | ${cell(kind)} |`).join("\n")}
+`;
+  return [
+    {
+      out: "baseline.html",
+      group: "Standard",
+      label: "Baseline checks",
+      summary: "Every item the baseline script compares a repository against, and whether it is applied or only reported",
+      html,
+      markdown,
+    },
+  ];
 }

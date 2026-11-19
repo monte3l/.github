@@ -33,7 +33,7 @@ The organization's docs serve agents with two layers. The first is deterministic
 
 The docs kit in `monte3l/m3l-design` writes `llms.txt`, a `.md` copy of every Markdown page, an optional `llms-full.txt` and a `sitemap.xml`, all opt-in. It follows [llmstxt.org](../raw/llmstxt-org.md): an H1, a blockquote summary, then link lists per section, with an Optional section agents may skip.
 
-Observed on the deployed design site (design.monte3l.com) on 2026-11-19: the files answer 200 with content types `text/plain`, `application/xml` and `text/markdown`, none with a declared charset, and the home page advertises them with `rel="describedby"` and `rel="alternate"` links. The organization site (monte3l.com) does not publish them yet: it answered 404 for `/llms.txt` the same day, because it has not adopted the kit release or opted in.
+Observed on the deployed design site (design.monte3l.com) on 2026-11-19: the files answer 200 with content types `text/plain`, `application/xml` and `text/markdown`, none with a declared charset, and the home page advertises them with `rel="describedby"` and `rel="alternate"` links. The organization site (monte3l.com) answered 404 for `/llms.txt` that morning, before it had adopted kit 1.4.0 and opted in. It opted in later the same day, so it publishes them from that deploy (see the [log](../log.md)).
 
 ## Why no retrieval layer
 

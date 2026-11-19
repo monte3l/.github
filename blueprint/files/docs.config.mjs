@@ -20,6 +20,10 @@ export default {
     { glob: "CHANGELOG.md", reason: "release notes live on the GitHub releases page" },
     { glob: ".claude/**", reason: "instructions for coding agents, not reader-facing" },
   ],
+  // For agents (off by default): a .md copy of every page, llms.txt (llmstxt.org) and a sitemap.
+  // A page may carry a one-line `summary`, which llms.txt prints after its link.
+  // llms: { description: "One line on what the project is.", optionalGroups: ["Security"], full: true },
+  // sitemap: true,
   // generators: ["scripts/site/example.mjs"], // pages that cannot come from Markdown
   // parity: ["scripts/doc-parity.mjs"],       // docs-versus-code checks, see lib/parity.mjs
 };
