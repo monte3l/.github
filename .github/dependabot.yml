@@ -35,3 +35,16 @@ updates:
       prefix: ci
     labels:
       - dependencies
+  # The same pin, as a starter: bin/new-repo.sh --docs copies blueprint/files/deploy-tools/ into a new
+  # repository, lockfile included, so a new docs site starts on a reviewed wrangler and no `npm install`
+  # runs at bootstrap. A bump here changes only what a repository created later copies.
+  - package-ecosystem: npm
+    directory: /blueprint/files/deploy-tools
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 1
+    commit-message:
+      prefix: ci
+    labels:
+      - dependencies
