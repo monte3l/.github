@@ -59,7 +59,7 @@ jobs:
           bin/pin-freshness.sh >"$RUNNER_TEMP/pins.txt" || code=$?
           cat "$RUNNER_TEMP/pins.txt" >>"$GITHUB_STEP_SUMMARY"
           case "$code" in
-            0) bin/lib/upsert-issue.sh "Pinned tool versions are stale" dependencies "$RUNNER_TEMP/pins.txt" --clean ;;
+            0) bin/lib/upsert-issue.sh "Pinned tool versions are stale" dependencies,freshness "$RUNNER_TEMP/pins.txt" --clean ;;
             1)
               {
                 cat <<'TEXT'
@@ -74,7 +74,7 @@ jobs:
           Bump `blueprint/pins.json` and every file it lists in one pull request. `verify` fails if a copy is missed.
           TEXT
               } >"$RUNNER_TEMP/body.md"
-              bin/lib/upsert-issue.sh "Pinned tool versions are stale" dependencies "$RUNNER_TEMP/body.md"
+              bin/lib/upsert-issue.sh "Pinned tool versions are stale" dependencies,freshness "$RUNNER_TEMP/body.md"
               ;;
             *) printf 'pin-freshness.sh failed with exit code %s\n' "$code" >&2; exit "$code" ;;
           esac
@@ -100,7 +100,7 @@ jobs:
           bin/upstream-watch.sh >"$RUNNER_TEMP/upstream.txt" || code=$?
           cat "$RUNNER_TEMP/upstream.txt" >>"$GITHUB_STEP_SUMMARY"
           case "$code" in
-            0) bin/lib/upsert-issue.sh "Upstream policy changed" area:ci "$RUNNER_TEMP/upstream.txt" --clean ;;
+            0) bin/lib/upsert-issue.sh "Upstream policy changed" area:ci,freshness "$RUNNER_TEMP/upstream.txt" --clean ;;
             1)
               {
                 cat <<'TEXT'
@@ -115,7 +115,7 @@ jobs:
           Read each change. If the standard should follow, update `blueprint/` (`affects` in `blueprint/upstream.json` says where). Then run `bin/upstream-watch.sh --accept NAME` and commit `blueprint/upstream.json` in the same pull request.
           TEXT
               } >"$RUNNER_TEMP/body.md"
-              bin/lib/upsert-issue.sh "Upstream policy changed" area:ci "$RUNNER_TEMP/body.md"
+              bin/lib/upsert-issue.sh "Upstream policy changed" area:ci,freshness "$RUNNER_TEMP/body.md"
               ;;
             *) printf 'upstream-watch.sh failed with exit code %s\n' "$code" >&2; exit "$code" ;;
           esac
@@ -145,7 +145,7 @@ jobs:
           node bin/knowledge-report.mjs >"$RUNNER_TEMP/knowledge.txt" || code=$?
           cat "$RUNNER_TEMP/knowledge.txt" >>"$GITHUB_STEP_SUMMARY"
           case "$code" in
-            0) bin/lib/upsert-issue.sh "Knowledge wiki needs review" area:docs "$RUNNER_TEMP/knowledge.txt" --clean ;;
+            0) bin/lib/upsert-issue.sh "Knowledge wiki needs review" area:docs,freshness "$RUNNER_TEMP/knowledge.txt" --clean ;;
             1)
               {
                 cat <<'TEXT'
@@ -160,7 +160,7 @@ jobs:
           A stale page needs its sources read again, and then a new `reviewed` date. An orphan card needs a page that cites it, or its removal. A dead citation needs the card written or the citation fixed. Run `/knowledge lint` in Claude Code for help. Never change a date to clear this report.
           TEXT
               } >"$RUNNER_TEMP/body.md"
-              bin/lib/upsert-issue.sh "Knowledge wiki needs review" area:docs "$RUNNER_TEMP/body.md"
+              bin/lib/upsert-issue.sh "Knowledge wiki needs review" area:docs,freshness "$RUNNER_TEMP/body.md"
               ;;
             *) printf 'knowledge-report.mjs failed with exit code %s\n' "$code" >&2; exit "$code" ;;
           esac
@@ -192,7 +192,7 @@ jobs:
           node bin/template-sync.mjs --check --findings "$RUNNER_TEMP/findings.txt" >"$RUNNER_TEMP/copies.txt" || code=$?
           cat "$RUNNER_TEMP/copies.txt" >>"$GITHUB_STEP_SUMMARY"
           case "$code" in
-            0) bin/lib/upsert-issue.sh "Workflow copies are behind their templates" area:ci "$RUNNER_TEMP/findings.txt" --clean ;;
+            0) bin/lib/upsert-issue.sh "Workflow copies are behind their templates" area:ci,freshness "$RUNNER_TEMP/findings.txt" --clean ;;
             1)
               {
                 cat <<'TEXT'
@@ -207,7 +207,7 @@ jobs:
           `template-sync.yml` opens a pull request for each repository at 06:15 UTC the same day, or run it by hand. A copy a person changed on purpose is never reported, and neither is one that differs only in comments, blank lines or action pins. A flag that disagrees with a repository's `docs.config.mjs` is fixed in `blueprint/sync.json`.
           TEXT
               } >"$RUNNER_TEMP/body.md"
-              bin/lib/upsert-issue.sh "Workflow copies are behind their templates" area:ci "$RUNNER_TEMP/body.md"
+              bin/lib/upsert-issue.sh "Workflow copies are behind their templates" area:ci,freshness "$RUNNER_TEMP/body.md"
               ;;
             *) printf 'template-sync.mjs failed with exit code %s\n' "$code" >&2; exit "$code" ;;
           esac

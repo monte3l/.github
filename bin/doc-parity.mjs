@@ -38,7 +38,7 @@ export function baselineProblems(readme, script) {
   if (body === null) return [`blueprint/README.md: no "Repository standard" section`];
   const documented = tableColumn(body, "Reported as").flatMap((cell) => codeSpans(cell));
   const parsed = parseBaselineScript(script);
-  const inScript = [...parsed.reportFile, ...parsed.reportWorkflow, ...INLINE_ITEMS];
+  const inScript = [...parsed.reportFile, ...parsed.reportWorkflow, ...parsed.reportPlaceholders, ...INLINE_ITEMS];
   problems.push(...assertSameSet("baseline items: README 'Reported as' vs the script", documented, inScript));
   for (const label of INLINE_ITEMS) {
     if (!printsInline(script, label)) {

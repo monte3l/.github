@@ -3,6 +3,9 @@ contact_links:
   - name: Report a security vulnerability
     url: https://github.com/monte3l/.github/blob/main/SECURITY.md
     about: Please do not open a public issue for a suspected vulnerability. Use private vulnerability reporting on the repository's Security tab instead.
+  - name: Ask a question or share an idea
+    url: https://github.com/monte3l/.github/discussions/new/choose
+    about: Questions and early ideas belong in Discussions. An idea becomes an issue once someone commits to it.
   - name: Find the right place for your question
     url: https://github.com/monte3l/.github/blob/main/SUPPORT.md
     about: Which route suits a bug, a question, a docs problem or an idea.

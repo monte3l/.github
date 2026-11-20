@@ -28,6 +28,7 @@ export default async function generate({ root }) {
     ...items.settle.map((label) => [label, "Applied with --apply"]),
     ...items.reportFile.map((label) => [label, "Reported only: a file in the repository"]),
     ...items.reportWorkflow.map((label) => [label, "Reported only: a control in a workflow"]),
+    ...items.reportPlaceholders.map((label) => [label, "Reported only: a starter copied and never filled in"]),
     ["ruleset: <name>", "Applied with --apply, one per file in blueprint/rulesets/"],
     ["label: <name>", "Applied with --apply, create-only, one per entry in blueprint/labels.json"],
     ...INLINE_ITEMS.map((label) => [label, "Reported only"]),

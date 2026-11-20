@@ -1,6 +1,7 @@
 name: Bug report
 description: Something is broken, or behaves differently from what the docs say
-labels: ["bug"]
+type: Bug
+projects: ["monte3l/5"]
 body:
   - type: markdown
     attributes:
