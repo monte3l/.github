@@ -24,7 +24,7 @@ in `m3l-groundwork`.
 | `openssf.json`           | The OpenSSF Best Practices level every public repository should reach (`minimum`: a metal level and a Baseline level), and the repositories exempt from it, each with its reason. Checked by the script, never applied |
 | `pins.json`              | The tool versions pinned by hand because Dependabot does not read them (`GITLEAKS_VERSION`, the actionlint image, zizmor): the version, the upstream repository, the text each listed file must contain. `bin/pin-parity.mjs` checks every copy offline, and `.github/workflows/freshness.yml` reports a stale pin weekly. Never applied by the script |
 | `upstream.json`          | The upstream policies the standard follows (the OpenSSF Scorecard checks, the OpenSSF Baseline, the OpenSSF Best Practices criteria, the REUSE specification) and the value of each that a person last reviewed. `bin/upstream-watch.sh` compares them weekly and `.github/workflows/freshness.yml` reports a change in one issue. Never applied by the script. See [Keeping the standard current](#keeping-the-standard-current) |
-| `sync.json`              | How the template sync treats each workflow template (`managed` or `unmanaged`), the optional blocks a repository takes (its flags), and which repositories are consumers. `bin/sync-parity.mjs` checks it against `workflow-templates/` and `projects.json`. Never applied by the script. See [Workflow template sync](#workflow-template-sync) |
+| `sync.json`              | How the template sync treats each workflow template and each verbatim starter (`managed` or `unmanaged`), the paths a starter may be kept at, the optional blocks a repository takes (its flags), and which repositories are consumers, with the paths where one keeps a file elsewhere. `bin/sync-parity.mjs` checks it against `workflow-templates/`, `files/`, `bootstrap.json` and `projects.json`. Never applied by the script. See [Workflow template sync](#workflow-template-sync) |
 | `bootstrap.json`         | What a new repository starts with: the starter files, the workflow templates, the optional parts (`--kind`, docs, Claude, environments) and where each is written. Never applied by the script. `bin/bootstrap-parity.mjs` fails the docs check if a starter or template is neither listed nor excluded with a reason, or if an entry points at a missing file, writes a path twice or outside the repository, or has a key or condition nobody defined |
 | `org.json`               | The organization's display name, description and website. Never applied or checked by the script, because it is an org setting. An Owner sets it, see [Descriptions](#descriptions) |
 | `docs-site.md`           | The docs site standard, the Cloudflare one-time setup and the runbook. See [Docs site](#docs-site) |
@@ -342,7 +342,8 @@ A workflow copied from `workflow-templates/` is never updated by GitHub, so a
 change to a template used to reach no repository. `bin/template-sync.mjs`
 compares each consumer's copy with the template, read-only, and
 `freshness.yml` reports the result every Monday in one issue, **Workflow copies
-are behind their templates**.
+are behind their templates**. Four verbatim starters are compared the same way,
+see [Starters](#starters).
 
 The template is first **rendered** for the repository: `https://PROJECT.monte3l.com`
 becomes its site, and a block between `# sync:if FLAG` and `# sync:end` stays
@@ -375,8 +376,32 @@ is a `sync:if` block, and data belongs in a config file the workflow reads.
 `workflow-templates/docs-live.yml` has the one block today: `--metadata` fails
 when `docs.config.mjs` has no `manifest`, so only a repository with one takes it.
 
-`verify.yml`, `release.yml` and `claude.yml` are `unmanaged`: their lanes and
-inputs belong to each repository.
+`verify.yml` and `release.yml` are `unmanaged`: their lanes and inputs belong to
+each repository, and no `sync:if` flag can say which lanes a repository has.
+`claude.yml` is `managed`: its allow-list is a comment to edit, so a copy that
+someone changed reads as custom and is never touched, and one that is only an
+older version gets the current gate on who may trigger it.
+
+### Starters
+
+Four verbatim files from `files/` are compared the same way: `CODEOWNERS`,
+`editorconfig`, `gitattributes` and `gitleaks.toml`. A repository may keep one at
+a few paths (`CODEOWNERS` at `.github/`, the root or `docs/`). They are listed
+under `starters` in `sync.json`, and the first path is where a new repository
+gets the file, which `bin/sync-parity.mjs` checks against `bootstrap.json`. A
+repository that keeps a file elsewhere says so under `repos.<name>.paths`, which
+is also how `m3l-claude-mentor` and `m3l-groundwork` show their `ci.yml` as the
+`verify` copy.
+
+Most copies are custom on purpose. `m3l-design`'s `.gitattributes` keeps bytes
+exact for its checksums, and `m3l-prompt-optimizer`'s gitleaks config allows its
+fake test keys. A custom copy is never reported and never overwritten. Only a
+copy that strictly equals an older version of the starter is refreshed, and only
+at a path `sync.json` lists: `bin/template-sync-pr.sh` reads that list and
+refuses any other file. A file that holds per-repository content (`SECURITY.md`,
+`REUSE.toml`, `dependency-review-config.yml`) is not a starter here. The
+baseline's placeholder items check the first two for a starter that was never
+filled in.
 
 ### Refreshing stale copies
 
@@ -389,7 +414,7 @@ template-sync.yml -f dry_run=false -f repositories="m3l-plugins"`) and, with
 | --- | --- |
 | Only a **stale** managed copy is written, with the current template rendered for that repository | A custom copy is someone's work |
 | A copy whose refresh would change the set of job names is left out, and said so in the log | A required check is a job name: renaming one stops merges |
-| Only existing files under `.github/workflows/` are sent, and the script refuses anything else | A sync refreshes, it never adds or removes |
+| Only existing files are sent, and only a workflow under `.github/workflows/` or a starter at a path listed in `sync.json`. The script refuses anything else | A sync refreshes, it never adds or removes, and the App cannot be made to write elsewhere |
 | The file is the template with the **template's pins** | A pin can be tied to an input in the same file: an older `zizmor-action` cannot install a newer zizmor `version`. Dependabot in the repository moves the pins on afterwards |
 | One branch per set of files (`chore/template-sync-<hash>`): a repeated run finds its own pull request, and one a person closed is not opened again | Closing it was an answer |
 | A newer pull request closes an older one of the bot, if only the bot committed to it | A person's commits are never discarded |

@@ -11,6 +11,8 @@ const base = () => ({
   sync: { flags: { manifest: "x" }, templates: { a: "managed", b: "unmanaged" }, repos: { "m3l-x": { flags: ["manifest"] } } },
   projects: [{ repo: ".github" }, { repo: "m3l-x" }],
   templates: { "a.yml": "name: a\n", "b.yml": "name: b\n" },
+  files: {}, // blueprint/files/
+  bootstrap: { starters: [] },
 });
 function tree(mut) {
   const c = base(); mut(c);
@@ -19,6 +21,9 @@ function tree(mut) {
   writeFileSync(path.join(root, "blueprint/sync.json"), JSON.stringify(c.sync));
   writeFileSync(path.join(root, "blueprint/projects.json"), JSON.stringify(c.projects));
   for (const [n, t] of Object.entries(c.templates)) writeFileSync(path.join(root, "workflow-templates", n), t);
+  mkdirSync(path.join(root, "blueprint/files"));
+  for (const [n, t] of Object.entries(c.files)) writeFileSync(path.join(root, "blueprint/files", n), t);
+  writeFileSync(path.join(root, "blueprint/bootstrap.json"), JSON.stringify(c.bootstrap));
   return root;
 }
 let failed = 0;
@@ -41,4 +46,31 @@ await expectProblem("a block opened inside a block", (c) => { c.templates["a.yml
 await expectProblem("a well-formed block is fine", (c) => { c.templates["a.yml"] = "# sync:if manifest\nx\n# sync:end\n"; }, null);
 await expectProblem("a marker with a trailing note is rejected, not silently ignored", (c) => { c.templates["a.yml"] = "# sync:if manifest  # note\nx\n# sync:end\n"; }, "looks like a sync marker");
 await expectProblem("a misspelled marker is rejected", (c) => { c.templates["a.yml"] = "# sync:fi manifest\nx\n"; }, "looks like a sync marker");
+
+// Starters: verbatim files in blueprint/files/ that the sync keeps current at the paths a repository has them at.
+const withStarter = (c, entry = { mode: "managed", paths: [".x.toml"] }, to = ".x.toml") => {
+  c.sync.starters = { "x.toml": entry };
+  c.files["x.toml"] = "# x\n";
+  c.bootstrap.starters = [{ from: "blueprint/files/x.toml", to }];
+};
+await expectProblem("a consistent starter is clean", (c) => withStarter(c), null);
+await expectProblem("a starter with several paths is clean when the first is where bootstrap writes it", (c) => withStarter(c, { mode: "managed", paths: [".x.toml", "conf/x.toml"] }), null);
+await expectProblem("a starter that is not in blueprint/files", (c) => { withStarter(c); delete c.files["x.toml"]; }, "is not in blueprint/files/");
+await expectProblem("a starter mode that does not exist", (c) => withStarter(c, { mode: "manage", paths: [".x.toml"] }), 'neither managed nor unmanaged');
+await expectProblem("a starter without paths", (c) => withStarter(c, { mode: "managed" }), 'needs a non-empty "paths" array');
+await expectProblem("a starter with an empty list of paths", (c) => withStarter(c, { mode: "managed", paths: [] }), 'needs a non-empty "paths" array');
+await expectProblem("a starter path that leaves the repository", (c) => withStarter(c, { mode: "managed", paths: ["../x.toml"] }, "../x.toml"), "leaves the repository");
+await expectProblem("a starter path in the middle that leaves the repository", (c) => withStarter(c, { mode: "managed", paths: ["a/../../x.toml"] }, "a/../../x.toml"), "leaves the repository");
+await expectProblem("an absolute starter path", (c) => withStarter(c, { mode: "managed", paths: ["/etc/x.toml"] }, "/etc/x.toml"), "absolute path");
+await expectProblem("a starter path inside .git", (c) => withStarter(c, { mode: "managed", paths: [".git/hooks/x"] }, ".git/hooks/x"), "inside .git");
+await expectProblem("a starter path with a glob", (c) => withStarter(c, { mode: "managed", paths: ["*.toml"] }, "*.toml"), "glob or backslash");
+await expectProblem("a starter path that is not a string", (c) => withStarter(c, { mode: "managed", paths: [7] }, 7), "not a non-empty string");
+await expectProblem("a starter path listed twice", (c) => withStarter(c, { mode: "managed", paths: [".x.toml", ".x.toml"] }), "lists a path twice");
+await expectProblem("a starter that bootstrap does not write", (c) => { withStarter(c); c.bootstrap.starters = []; }, "would not get it");
+await expectProblem("a starter whose first path is not where bootstrap writes it", (c) => withStarter(c, { mode: "managed", paths: ["conf/x.toml", ".x.toml"] }, ".x.toml"), 'has "conf/x.toml" as its first path');
+await expectProblem("a starter with the name of a template", (c) => { c.sync.templates.x = "managed"; c.templates["x.yml"] = "name: x\n"; c.sync.starters = { x: { mode: "managed", paths: [".x"] } }; c.files.x = "x"; c.bootstrap.starters = [{ from: "blueprint/files/x", to: ".x" }]; }, "has the name of a workflow template");
+await expectProblem("a repository path for a template is clean", (c) => { c.sync.repos["m3l-x"].paths = { a: ".github/workflows/ci.yml" }; }, null);
+await expectProblem("a repository path for a starter is clean", (c) => { withStarter(c); c.sync.repos["m3l-x"].paths = { "x.toml": "conf/x.toml" }; }, null);
+await expectProblem("a repository path for something that is neither", (c) => { c.sync.repos["m3l-x"].paths = { nope: "x.yml" }; }, "neither a workflow template nor a starter");
+await expectProblem("a repository path that leaves the repository", (c) => { c.sync.repos["m3l-x"].paths = { a: "../ci.yml" }; }, "leaves the repository");
 console.log(failed ? `\n${failed} FAILED` : "\nALL SYNC-PARITY CASES BEHAVE"); process.exit(failed ? 1 : 0);

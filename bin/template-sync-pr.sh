@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Turns the workflow files that `bin/template-sync.mjs --write` put into a
-# consumer repository's checkout into a pull request, committed through the API
-# as the sync App.
+# Turns the files that `bin/template-sync.mjs --write` put into a consumer
+# repository's checkout into a pull request, committed through the API as the
+# sync App.
 #
 #   template-sync-pr.sh OWNER/REPO CONSUMER-DIR
 #
 # Run by .github/workflows/template-sync.yml, once per repository, after the
-# write step. Nothing here decides what is stale: it commits what is on disk,
-# and only files under .github/workflows/.
+# write step. Nothing here decides what is stale: it commits what is on disk, and
+# only a workflow file under .github/workflows/ or a starter at a path that
+# blueprint/sync.json lists. That file is also what says which starters are
+# managed, so the one list cannot disagree with the other.
 #
 # Environment:
 #   GH_TOKEN   an App installation token for OWNER/REPO (contents, pull requests
@@ -47,6 +49,8 @@ bot='monte3l-sync[bot]'
 signoff="Signed-off-by: $bot <358743682+monte3l-sync[bot]@users.noreply.github.com>"
 prefix='chore/template-sync-'
 title='ci: refresh workflow copies from the org templates'
+title_mixed='chore: refresh copies of the org templates and starters'
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 max_bytes=1000000
 
 die() {
@@ -65,13 +69,27 @@ if git diff --cached --quiet; then
   exit 0
 fi
 
-# The only thing this script may send is a workflow file it was handed. Anything
-# else in the change set means the checkout is not what the workflow made.
-other="$(git diff --cached --name-only --no-renames | grep -Ev '^\.github/workflows/[A-Za-z0-9._-]+\.yml$' || true)"
-[[ -z "$other" ]] || die "these changes are not workflow files, so none is sent: $other"
+# The only things this script may send are a workflow file and a starter it was
+# handed, at a path it knows. Anything else in the change set means the checkout
+# is not what the workflow made.
+starter_paths="$(jq -r '(.starters // {}) | .[] | .paths[]' "$here/../blueprint/sync.json")"
+other=""
+only_workflows=1
+while IFS= read -r changed; do
+  [[ -n "$changed" ]] || continue
+  if [[ "$changed" =~ ^\.github/workflows/[A-Za-z0-9._-]+\.yml$ ]]; then
+    continue
+  elif grep -qxF -- "$changed" <<<"$starter_paths"; then
+    only_workflows=0
+  else
+    other+="$changed "
+  fi
+done < <(git diff --cached --name-only --no-renames)
+[[ -z "$other" ]] || die "these changes are neither a workflow file nor a starter a sync may refresh, so none is sent: $other"
+[[ "$only_workflows" -eq 1 ]] || title="$title_mixed"
 # Only a change to a file the repository already has: a sync refreshes, never adds or removes.
 nonmod="$(git diff --cached --raw --no-renames | awk '$5 != "M" { print $5, $NF }')"
-[[ -z "$nonmod" ]] || die "a sync only modifies existing workflow files, got: $nonmod"
+[[ -z "$nonmod" ]] || die "a sync only modifies existing files, got: $nonmod"
 bad_mode="$(git diff --cached --raw --no-renames | awk '$2 != "100644" { print $2, $NF }')"
 [[ -z "$bad_mode" ]] || die "these files are not plain 100644 files, so the API cannot commit them: $bad_mode"
 
@@ -92,7 +110,7 @@ done < <(git diff --cached --name-only --no-renames -z)
 ((total <= max_bytes)) || die "the change adds $total bytes, over the $max_bytes the API call is kept to"
 # Same files, same content: same branch, so a repeated run finds its own pull request.
 branch="$prefix$(printf '%s' "$fingerprint" | git hash-object --stdin | cut -c1-12)"
-printf '%s: %d workflow file(s), %d bytes: %s\n' "$repo" "${#files[@]}" "$total" "${files[*]}"
+printf '%s: %d file(s), %d bytes: %s\n' "$repo" "${#files[@]}" "$total" "${files[*]}"
 
 if [[ "$dry_run" == 1 ]]; then
   git diff --cached --stat --no-renames
@@ -135,9 +153,9 @@ fi
 
 # shellcheck disable=SC2016 # the backticks are literal Markdown
 body="$(
-  printf 'Refreshes workflow files in this repository that run an **older version** of their template in `monte3l/.github`:\n\n'
+  printf 'Refreshes files in this repository that are an **older version** of their workflow template or starter in `monte3l/.github`:\n\n'
   for path in "${files[@]}"; do printf -- '- `%s`\n' "$path"; done
-  printf '\nA file is refreshed only if it matched, apart from blank lines, the SPDX header and action pins, a version the template really had. A workflow someone changed on purpose is never touched, and neither is one whose refresh would rename a job (a required check is a job name).\n\n'
+  printf '\nA file is refreshed only if it matched, apart from blank lines, the SPDX header and action pins, a version the template or starter really had. A file someone changed on purpose is never touched, and neither is a workflow whose refresh would rename a job (a required check is a job name).\n\n'
   printf 'The files are the current template for this repository, so **their action pins are the template'"'"'s**: a pin can be tied to an input in the same file, so they move together. Dependabot here keeps them current afterwards. Read the diff, as a template change can alter what a workflow does. The required checks run on this pull request as on any other.\n\n'
   printf 'Opened by `template-sync.yml` in `monte3l/.github`. Rules: [Workflow template sync](https://github.com/monte3l/.github/blob/main/blueprint/README.md#workflow-template-sync).\n'
 )"

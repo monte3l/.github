@@ -3,9 +3,10 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Compares every consumer repository's copy of each workflow template with the
- * template, and says which copies are current, which are stale and which a
- * person has changed.
+ * Compares every consumer repository's copy of each workflow template, and of each
+ * verbatim starter in `blueprint/files/` that `sync.json` lists, with the original,
+ * and says which copies are current, which are stale and which a person has
+ * changed.
  *
  *   node bin/template-sync.mjs [--repos a,b] [--owner OWNER] [--json] [--check] [--findings FILE]
  *   node bin/template-sync.mjs --repos NAME --write DIR
@@ -13,16 +14,17 @@
  * READ-ONLY toward every repository: it reads files through `gh api` and the
  * template's git history. With --write it also writes, into the local directory
  * DIR only, the current template for each STALE managed copy of that one
- * repository, at its path (`DIR/.github/workflows/NAME.yml`). Nothing else is
- * written and nothing is sent: `bin/template-sync-pr.sh` commits what is there.
+ * repository, at the path the repository keeps it at (`DIR/.github/workflows/NAME.yml`,
+ * `DIR/.gitleaks.toml`, ...). Nothing else is written and nothing is sent:
+ * `bin/template-sync-pr.sh` commits what is there, and only at a path `sync.json` names.
  * The file is the template with its action pins, not the repository's: a pin can
  * be tied to an input in the same file (zizmor-action and its `version:`), so a
  * refreshed file keeps the pins it was written with. The comparison still ignores
  * pins, which is why a pin alone never makes a copy stale.
  * A copy is left out, and said so on stderr, when the refresh would change the
  * set of job names, because a required check is a job name. The rules of the comparison are in
- * `bin/lib/template-sync.mjs`, and the data (which templates are managed, which
- * repositories take which optional blocks) is `blueprint/sync.json`.
+ * `bin/lib/template-sync.mjs`, and the data (which templates and starters are managed,
+ * which repositories take which optional blocks) is `blueprint/sync.json`.
  *
  * Prints a table (`I` identical, `E` equivalent, `S1` stale by one version, `C`
  * custom, `-` the repository has no such file), then the counts for the managed
@@ -43,10 +45,10 @@
  * 2 usage, a missing tool or a shallow clone, 3 a read failed.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { classify, jobNames, render } from "./lib/template-sync.mjs";
+import { classify, describeStale, jobNames, render, unitsFor } from "./lib/template-sync.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const NAME_RE = /^[A-Za-z0-9._][A-Za-z0-9._-]*$/;
@@ -101,11 +103,22 @@ const templateNames = readdirSync(path.join(root, "workflow-templates"))
 for (const name of templateNames) if (!(name in config.templates)) fail(2, `blueprint/sync.json does not list the template "${name}"`);
 for (const name of Object.keys(config.templates)) if (!templateNames.includes(name)) fail(2, `blueprint/sync.json lists "${name}", which is not a template`);
 for (const name of Object.keys(config.repos)) if (!NAME_RE.test(name)) fail(2, `blueprint/sync.json has the repository name "${name}", which is not a valid name`);
+const starterNames = Object.keys(config.starters ?? {}).sort();
+for (const name of starterNames) {
+  if (!existsSync(path.join(root, "blueprint", "files", name))) fail(2, `blueprint/sync.json lists the starter "${name}", which is not in blueprint/files/`);
+}
+// A path is written into a checkout and sent to a repository: it must stay inside it.
+const safePath = (p) => typeof p === "string" && p !== "" && !p.startsWith("/") && !p.split("/").includes("..");
+for (const [name, entry] of Object.entries(config.starters ?? {})) {
+  for (const p of entry.paths ?? []) if (!safePath(p)) fail(2, `blueprint/sync.json: the starter "${name}" has the path "${p}", which is not a relative path inside the repository`);
+}
+for (const [repo, entry] of Object.entries(config.repos)) {
+  for (const [name, p] of Object.entries(entry.paths ?? {})) if (!safePath(p)) fail(2, `blueprint/sync.json: ${repo} has the path "${p}" for "${name}", which is not a relative path inside the repository`);
+}
 for (const name of only ?? []) if (!(name in config.repos)) fail(2, `${name} is not a consumer in blueprint/sync.json`);
 
-// Every version the template has had, newest first (the working tree is the current one).
-function versionsOf(name) {
-  const file = `workflow-templates/${name}.yml`;
+// Every version a source file has had, newest first (the working tree is the current one).
+function versionsOf(file) {
   const current = readFileSync(path.join(root, file), "utf8");
   const commits = run("git", ["log", "--follow", "--format=%H", "--", file]).split("\n").filter(Boolean);
   const old = [];
@@ -120,7 +133,8 @@ function versionsOf(name) {
   }
   return { current, old };
 }
-const versions = Object.fromEntries(templateNames.map((name) => [name, versionsOf(name)]));
+const sources = [...templateNames.map((name) => `workflow-templates/${name}.yml`), ...starterNames.map((name) => `blueprint/files/${name}`)];
+const versions = Object.fromEntries(sources.map((file) => [file, versionsOf(file)]));
 
 const missing = (error) => /HTTP 404/.test(String(error.stderr ?? error.message));
 const text = (encoded) => Buffer.from(encoded.trim(), "base64").toString("utf8");
@@ -133,6 +147,15 @@ function fetchFile(repo, file) {
     if (missing(error)) return null;
     throw error;
   }
+}
+
+/** The first of `paths` the repository has, as `{ path, text }`, or null. */
+function fetchFirst(repo, paths) {
+  for (const candidate of paths) {
+    const found = fetchFile(repo, candidate);
+    if (found !== null) return { path: candidate, text: found };
+  }
+  return null;
 }
 
 /** A repository this token cannot read in full is an error, not "no files". */
@@ -165,36 +188,36 @@ try {
         mismatches.push(`${repo}: ${flags.includes("manifest") ? 'sets the flag "manifest" but its docs.config.mjs has none' : 'has a manifest in docs.config.mjs but no "manifest" flag'}`);
       }
     }
-    for (const template of templateNames) {
-      const copy = fetchFile(repo, `.github/workflows/${template}.yml`);
-      const managed = config.templates[template] === "managed";
-      if (copy === null) {
-        results.push({ repo, template, managed, state: "MISSING" });
+    for (const unit of unitsFor(config, repo)) {
+      const found = fetchFirst(repo, unit.paths);
+      const row = { repo, template: unit.name, kind: unit.kind, managed: unit.managed };
+      if (found === null) {
+        results.push({ ...row, path: unit.paths[0], state: "MISSING" });
         continue;
       }
       let current;
       try {
-        current = render(versions[template].current, params);
+        current = render(versions[unit.source].current, params);
       } catch (error) {
-        fail(3, `workflow-templates/${template}.yml: ${error.message}`);
+        fail(3, `${unit.source}: ${error.message}`);
       }
       const old = [];
-      for (const version of versions[template].old) {
+      for (const version of versions[unit.source].old) {
         try {
           old.push(render(version, params));
         } catch {
           // An older version with broken markers cannot be rendered, so nothing is called stale against it.
         }
       }
-      const verdict = classify(copy, current, old);
-      results.push({ repo, template, managed, ...verdict });
-      if (writeDir !== null && managed && verdict.state === "STALE") {
-        const before = jobNames(copy).join("\n");
-        if (before !== jobNames(current).join("\n")) {
-          console.error(`template-sync: left out ${repo} ${template}.yml: the refresh would change its job names, which a required check depends on. A person does this one`);
+      const verdict = classify(found.text, current, old);
+      results.push({ ...row, path: found.path, ...verdict });
+      if (writeDir !== null && unit.managed && verdict.state === "STALE") {
+        // Only a workflow has jobs: a starter has no required check to rename.
+        if (unit.kind === "workflow" && jobNames(found.text).join("\n") !== jobNames(current).join("\n")) {
+          console.error(`template-sync: left out ${repo} ${unit.name}.yml: the refresh would change its job names, which a required check depends on. A person does this one`);
           continue;
         }
-        const target = path.join(writeDir, ".github", "workflows", `${template}.yml`);
+        const target = path.join(writeDir, found.path);
         mkdirSync(path.dirname(target), { recursive: true });
         writeFileSync(target, current.endsWith("\n") ? current : `${current}\n`);
       }
@@ -206,7 +229,7 @@ try {
 
 const stale = results.filter((r) => r.managed && r.state === "STALE");
 const findings = [
-  ...stale.map((r) => `${r.repo}: ${r.template}.yml is ${r.back} version${r.back === 1 ? "" : "s"} behind its template`),
+  ...stale.map(describeStale),
   ...mismatches,
 ];
 if (findingsFile) writeFileSync(findingsFile, findings.length === 0 ? "" : `${findings.join("\n")}\n`);
@@ -216,8 +239,8 @@ if (asJson) {
 } else {
   const cell = (r) => (r.state === "MISSING" ? "-" : r.state === "STALE" ? `S${r.back}` : r.state[0]) + (r.managed ? "" : "*");
   console.log(`${"template".padEnd(20)}${repos.map((r) => r.replace("m3l-", "").slice(0, 11).padEnd(12)).join("")}`);
-  for (const template of templateNames) {
-    console.log(template.padEnd(20) + repos.map((repo) => cell(results.find((r) => r.repo === repo && r.template === template)).padEnd(12)).join(""));
+  for (const unit of unitsFor(config, repos[0])) {
+    console.log(unit.name.padEnd(20) + repos.map((repo) => cell(results.find((r) => r.repo === repo && r.template === unit.name)).padEnd(12)).join(""));
   }
   console.log("\n* = unmanaged: shown for information, never changed by a sync");
   const count = (rows) => {

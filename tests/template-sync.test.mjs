@@ -3,7 +3,7 @@
 
 // The template sync classifier: render, lenient and strict comparison, and what may never be called stale.
 // Run with: node --test "tests/*.test.mjs"
-const { classify, render, lenient, strict, jobNames } = await import(new URL("../bin/lib/template-sync.mjs", import.meta.url).href);
+const { classify, render, lenient, strict, jobNames, unitsFor, describeStale } = await import(new URL("../bin/lib/template-sync.mjs", import.meta.url).href);
 let failed = 0;
 const eq = (name, got, want) => { const ok = JSON.stringify(got) === JSON.stringify(want); console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : `\n       got  ${JSON.stringify(got)}\n       want ${JSON.stringify(want)}`}`); if (!ok) failed++; };
 const throws = (name, fn, re) => { let msg = null; try { fn(); } catch (e) { msg = e.message; } const ok = msg !== null && re.test(msg); console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : `\n       got ${msg}`}`); if (!ok) failed++; };
@@ -110,4 +110,36 @@ const hostile = {
 for (const [name, input] of Object.entries(hostile)) {
   eq(`hostile input stays fast (${name}): lenient, strict and classify`, time(() => { lenient(input); strict(input); classify(input, "name: x\n", []); }) < 2000, true);
 }
+// What is compared for one repository: the workflow templates, then the starters, at the paths the repository keeps them at.
+console.log("--- units: templates and starters, and where a repository keeps them");
+const cfg = {
+  templates: { b: "managed", a: "unmanaged" },
+  starters: { "x.toml": { mode: "managed", paths: [".x.toml", "conf/x.toml"] }, "y.cfg": { mode: "unmanaged", paths: [".y"] } },
+  repos: { r: { paths: { a: "ci.yml", "x.toml": "custom/x.toml" } }, s: {} },
+};
+const names = (units) => units.map((u) => `${u.kind}:${u.name}`);
+eq("workflows come first, each group sorted by name", names(unitsFor(cfg, "s")), ["workflow:a", "workflow:b", "starter:x.toml", "starter:y.cfg"]);
+eq("modes become managed flags", unitsFor(cfg, "s").map((u) => u.managed), [false, true, true, false]);
+eq("a workflow is at .github/workflows/NAME.yml and has its template as the source", [unitsFor(cfg, "s")[1].paths, unitsFor(cfg, "s")[1].source], [[".github/workflows/b.yml"], "workflow-templates/b.yml"]);
+eq("a starter has every path it may be at, and blueprint/files as the source", [unitsFor(cfg, "s")[2].paths, unitsFor(cfg, "s")[2].source], [[".x.toml", "conf/x.toml"], "blueprint/files/x.toml"]);
+eq("a repository path replaces a workflow's path", unitsFor(cfg, "r")[0].paths, ["ci.yml"]);
+eq("a repository path replaces a starter's list, not just its first entry", unitsFor(cfg, "r").find((u) => u.name === "x.toml").paths, ["custom/x.toml"]);
+eq("another repository is not affected", unitsFor(cfg, "s")[0].paths, [".github/workflows/a.yml"]);
+eq("an unknown repository gets the defaults", unitsFor(cfg, "nope")[0].paths, [".github/workflows/a.yml"]);
+eq("a config without starters has only workflows", names(unitsFor({ templates: { a: "managed" } }, "s")), ["workflow:a"]);
+
+console.log("--- findings keep their wording");
+eq("a workflow reads as it always did", describeStale({ repo: "m3l-x", template: "dco", kind: "workflow", path: ".github/workflows/dco.yml", back: 1 }), "m3l-x: dco.yml is 1 version behind its template");
+eq("a starter names its path and says starter", describeStale({ repo: "m3l-x", template: "gitleaks.toml", kind: "starter", path: ".gitleaks.toml", back: 2 }), "m3l-x: .gitleaks.toml is 2 versions behind its starter");
+
+console.log("--- a starter is compared like a workflow: only a strict match with an older version is stale");
+const g1 = "# Gitleaks config\n[extend]\nuseDefault = true\n";
+const g2 = `${g1}\n[[rules]]\nid = "x"\n`;
+eq("an untouched older starter is STALE", classify(g1, g2, [g1]), { state: "STALE", back: 1 });
+eq("the current starter is IDENTICAL", classify(g2, g2, [g1]).state, "IDENTICAL");
+eq("an older starter plus a person's allowlist is CUSTOM, never overwritten", classify(`${g1}[[allowlists]]\nregexes = ["fake"]\n`, g2, [g1]).state, "CUSTOM");
+eq("an older starter with an edited comment is CUSTOM", classify(g1.replace("# Gitleaks config", "# ours"), g2, [g1]).state, "CUSTOM");
+eq("only a comment differing from the current starter is EQUIVALENT", classify(g2.replace("# Gitleaks config", "# other words"), g2).state, "EQUIVALENT");
+eq("a starter with no history cannot be stale", classify(g1, g2, []).state, "CUSTOM");
+
 console.log(failed ? `\n${failed} FAILED` : "\nALL CLASSIFIER CASES BEHAVE"); process.exit(failed ? 1 : 0);

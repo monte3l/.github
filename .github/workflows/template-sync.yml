@@ -89,7 +89,7 @@ jobs:
           {
             echo '### Stale managed copies'
             echo
-            jq -r '[.results[] | select(.managed and .state == "STALE")] | if length == 0 then "None: every copy is current, or was changed on purpose." else (.[] | "- `\(.repo)`: `\(.template).yml`, \(.back) version(s) behind") end' plan.json
+            jq -r '[.results[] | select(.managed and .state == "STALE")] | if length == 0 then "None: every copy is current, or was changed on purpose." else (.[] | "- `\(.repo)`: `\(.path)`, \(.back) version(s) behind") end' plan.json
             echo
             echo "Dry run: **$DRY_RUN**"
           } >>"$GITHUB_STEP_SUMMARY"
