@@ -339,17 +339,27 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   } catch {
     process.exit(0);
   }
-  const cwd = input.cwd ?? process.cwd();
-  const tool = input.tool_name ?? "";
+  // Valid JSON that is not an object (`null`, a string, a number) or fields of
+  // the wrong type are not a payload this hook understands. A crash would be
+  // read as a failure and, under `onFailure: block`, block the tool call.
+  if (input === null || typeof input !== "object" || Array.isArray(input))
+    process.exit(0);
+  const str = (value) => (typeof value === "string" ? value : "");
+  const toolInput =
+    input.tool_input !== null && typeof input.tool_input === "object"
+      ? input.tool_input
+      : {};
+  const cwd = str(input.cwd) || process.cwd();
+  const tool = str(input.tool_name);
 
   if (tool === "Write" || tool === "Edit") {
-    const filePath = input.tool_input?.file_path ?? "";
+    const filePath = str(toolInput.file_path);
     if (filePath) {
       const top = mainWorktreeOf(path.resolve(cwd, filePath));
       if (top) block(`\`${filePath}\` is in the main checkout of ${top}.`);
     }
   } else if (tool === "Bash") {
-    const command = input.tool_input?.command ?? "";
+    const command = str(toolInput.command);
     const { commands, seps, grouped } = simpleCommands(command);
     // The directories the next command may run in. A top-level `cd DIR` is only
     // followed when it is certain to have moved the shell: joined to the next
