@@ -172,3 +172,55 @@ export function jobNames(text) {
   }
   return names.sort();
 }
+
+/**
+ * Everything the sync compares for one repository: the workflow templates and
+ * the verbatim starters, each with the paths a repository may keep it at. The
+ * first path is where a new repository gets it (`blueprint/bootstrap.json`), the
+ * others are the places the baseline also accepts. A repository whose file lives
+ * elsewhere says so in `repos.<name>.paths`.
+ *
+ * @param {{
+ *   templates: Record<string, string>,
+ *   starters?: Record<string, { mode: string, paths: string[] }>,
+ *   repos?: Record<string, { paths?: Record<string, string> }>,
+ * }} config blueprint/sync.json
+ * @param {string} repo
+ * @returns {Array<{ name: string, kind: "workflow" | "starter", source: string, managed: boolean, paths: string[] }>}
+ */
+export function unitsFor(config, repo) {
+  const override = config.repos?.[repo]?.paths ?? {};
+  const byName = ([a], [b]) => (a < b ? -1 : a > b ? 1 : 0);
+  const workflows = Object.entries(config.templates)
+    .sort(byName)
+    .map(([name, mode]) => ({
+      name,
+      kind: /** @type {const} */ ("workflow"),
+      source: `workflow-templates/${name}.yml`,
+      managed: mode === "managed",
+      paths: [override[name] ?? `.github/workflows/${name}.yml`],
+    }));
+  const starters = Object.entries(config.starters ?? {})
+    .sort(byName)
+    .map(([name, entry]) => ({
+      name,
+      kind: /** @type {const} */ ("starter"),
+      source: `blueprint/files/${name}`,
+      managed: entry.mode === "managed",
+      paths: override[name] ? [override[name]] : entry.paths,
+    }));
+  return [...workflows, ...starters];
+}
+
+/**
+ * The one line a stale managed copy gets in the findings. A workflow keeps the
+ * wording it always had, so an open issue does not change its text for no reason.
+ *
+ * @param {{ repo: string, template: string, kind: string, path: string, back: number }} row
+ * @returns {string}
+ */
+export function describeStale(row) {
+  const file = row.kind === "workflow" ? `${row.template}.yml` : row.path;
+  const of = row.kind === "workflow" ? "template" : "starter";
+  return `${row.repo}: ${file} is ${row.back} version${row.back === 1 ? "" : "s"} behind its ${of}`;
+}

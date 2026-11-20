@@ -3,7 +3,7 @@
     "manifest": "the repository's docs.config.mjs sets a manifest, so docs-live also runs check-live.mjs --metadata"
   },
   "templates": {
-    "claude": "unmanaged",
+    "claude": "managed",
     "commit-lint": "managed",
     "dco": "managed",
     "dependency-review": "managed",
@@ -19,11 +19,42 @@
     "verify": "unmanaged",
     "workflow-lint": "managed"
   },
+  "starters": {
+    "CODEOWNERS": {
+      "mode": "managed",
+      "paths": [
+        ".github/CODEOWNERS",
+        "CODEOWNERS",
+        "docs/CODEOWNERS"
+      ]
+    },
+    "editorconfig": {
+      "mode": "managed",
+      "paths": [
+        ".editorconfig"
+      ]
+    },
+    "gitattributes": {
+      "mode": "managed",
+      "paths": [
+        ".gitattributes"
+      ]
+    },
+    "gitleaks.toml": {
+      "mode": "managed",
+      "paths": [
+        ".gitleaks.toml"
+      ]
+    }
+  },
   "repos": {
     "m3l-claude-mentor": {
       "flags": [
         "manifest"
-      ]
+      ],
+      "paths": {
+        "verify": ".github/workflows/ci.yml"
+      }
     },
     "m3l-design": {
       "flags": []
@@ -31,7 +62,10 @@
     "m3l-groundwork": {
       "flags": [
         "manifest"
-      ]
+      ],
+      "paths": {
+        "verify": ".github/workflows/ci.yml"
+      }
     },
     "m3l-output-governor": {
       "flags": [
