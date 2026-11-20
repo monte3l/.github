@@ -62,7 +62,11 @@ What `.claude/` wires up here. Hooks block by exiting 2; a hook script that cann
 | `.claude/hooks/require-signoff.sh` | Blocks `git commit` without `-s` (the DCO check and the signed-commits ruleset need both) |
 | `.claude/hooks/guard-git-push-signed.mjs` | Blocks `git push` when an outgoing commit is unsigned, if `commit.gpgsign` is on |
 | `.claude/hooks/guard-double-background.mjs` | Blocks a Bash call that backgrounds a command twice (`run_in_background` plus `&`/`nohup`) |
-| `.claude/hooks/guard-protected-paths.mjs` | Blocks edits to `design/source/**`, `design/tokens.css`, `design/SHA256SUMS` and `_site/`: re-sync the design copy with `sync-design.sh` instead |
+| `.claude/hooks/guard-protected-paths.mjs` | Blocks edits to `design/source/**`, `design/tokens.css`, `design/SHA256SUMS` and `_site/`: re-sync the design copy with `sync-design.sh` instead. It finds the repository from the file's own location, so it also works in a worktree |
+| `.claude/hooks/guard-shared-checkout.mjs` | Blocks edits, `git commit` and new branches in a repository's main checkout: work happens in a worktree off `origin/main` (`EnterWorktree`, or `bin/wt.sh REPO BRANCH` for a sibling repository). `git pull` stays allowed |
+| `.claude/hooks/guard-cross-worktree.mjs` | Asks before editing a file another worktree of the repository has modified and not committed |
+| `.claude/hooks/session-orientation.mjs` | On start, resume and compaction: prints the worktree, branch, ahead/behind `origin/main`, the other worktrees and their open PRs |
+| `.claude/hooks/verify-on-stop.mjs` | At the end of a turn with uncommitted changes under coupled paths, runs the docs-kit `--check` and the mapped `tests/` files; exit 2 sends the failure back |
 | `.claude/hooks/guard-secret-writes.mjs` | Blocks writing `.env*` files and literal tokens or keys; `${{ secrets.X }}` references are fine |
 | `.claude/hooks/verify-edit.sh` | After an edit, runs the matching `verify.yml` check (`jq`, `bash -n` + shellcheck, actionlint) when the tool is installed |
 | `.claude/hooks/statusline.mjs` | The status line, with `.claude/hooks/statusline-layout.mjs` and `.claude/hooks/subagent-statusline.mjs` for layout and subagent rows |
@@ -78,6 +82,8 @@ What `.claude/` wires up here. Hooks block by exiting 2; a hook script that cann
 | `.claude/skills/customize/SKILL.md` | The m3l-groundwork adoption skill; its output is `.groundwork/customization-report.md` |
 
 `.groundwork/` holds the adoption record. Only its two reports are tracked (see `.gitignore`), and `docs.config.mjs` excludes `.groundwork/**` and `docs/research/**` from the docs site. `docs/research/harness-refresh.md` stays where it is and is not part of the wiki: the `harness-guidance` and `customize` skills read and write that path.
+
+Hook scripts read the directory from the hook input's `cwd`, never from `CLAUDE_PROJECT_DIR`: that variable stays at the folder the session started in, even after it enters a worktree. The hook commands in `.claude/settings.json` still start from it, so a hook script edited in a worktree runs from the main checkout's copy until the change is merged. `bin/wt.sh` is the helper for sibling repositories, and `.claude/settings.json` asks before outward actions (`gh workflow run`, `gh pr merge`, `gh api` writes, `gh repo create|delete`, `bin/new-repo.sh --apply`).
 
 ## Conventions
 

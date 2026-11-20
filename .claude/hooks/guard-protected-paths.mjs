@@ -15,6 +15,8 @@
  *
  * Blocks by exiting 2 with a message on stderr.
  */
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
@@ -50,9 +52,41 @@ try {
 const filePath = input.tool_input?.file_path ?? "";
 if (!filePath) process.exit(0);
 
-const root = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+// CLAUDE_PROJECT_DIR stays at the folder the session started in, even after it
+// enters a worktree, so a worktree file would look like
+// `.claude/worktrees/<name>/design/source/...` and match no rule. Use the
+// repository that actually contains the file: its top level, found from the
+// hook input's `cwd`. Fall back to the old root outside a git repository.
+function repoRoot(file) {
+  let dir = path.dirname(file);
+  while (!fs.existsSync(dir)) {
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+  const r = spawnSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], { encoding: "utf8" });
+  return r.status === 0 ? r.stdout.trim() : null;
+}
+
+// realpath of the nearest existing ancestor plus the rest, so a new file in a
+// new directory still resolves (and /tmp vs /private/tmp compare equal).
+function realish(p) {
+  let existing = p;
+  const rest = [];
+  while (!fs.existsSync(existing)) {
+    const parent = path.dirname(existing);
+    if (parent === existing) return p;
+    rest.unshift(path.basename(existing));
+    existing = parent;
+  }
+  return path.join(fs.realpathSync(existing), ...rest);
+}
+
+const cwd = input.cwd ?? process.cwd();
+const absolute = path.resolve(cwd, filePath);
+const root = repoRoot(absolute) ?? process.env.CLAUDE_PROJECT_DIR ?? cwd;
 const relative = path
-  .relative(root, path.resolve(root, filePath))
+  .relative(realish(root), realish(absolute))
   .split(path.sep)
   .join("/");
 
