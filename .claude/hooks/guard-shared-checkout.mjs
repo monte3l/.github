@@ -84,7 +84,11 @@ export function gitWrites(segment, cwd) {
   const sub = words[i];
   if (!sub || !WRITING.some((re) => re.test(sub))) return null;
   const rest = words.slice(i + 1);
-  if (sub === "switch" && !rest.some((w) => /^(-c|-C|--create|--force-create)$/.test(w))) return null;
+  if (
+    sub === "switch" &&
+    !rest.some((w) => /^(-c|-C|--create|--force-create)$/.test(w))
+  )
+    return null;
   if (sub === "checkout" && !rest.some((w) => /^(-b|-B)$/.test(w))) return null;
   return { dir, sub };
 }
@@ -122,7 +126,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       const hit = gitWrites(segment, cwd);
       if (!hit) continue;
       const top = mainWorktreeOf(hit.dir);
-      if (top) block(`\`git ${hit.sub}\` would run in the main checkout of ${top}.`);
+      if (top)
+        block(`\`git ${hit.sub}\` would run in the main checkout of ${top}.`);
     }
   }
   process.exit(0);
