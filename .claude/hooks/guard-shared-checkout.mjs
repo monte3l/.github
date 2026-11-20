@@ -64,16 +64,100 @@ const WRITING = [
   /^checkout$/, // narrowed below to -b/-B
 ];
 
-/** Directory a git command line works in, and whether it writes history. */
-export function gitWrites(segment, cwd) {
-  const words = segment.trim().split(/\s+/);
-  const at = words.findIndex((w) => w === "git" || w.endsWith("/git"));
-  if (at < 0) return null;
+const HEREDOC = /^<<(-?)[ \t]*(?:'([^']*)'|"([^"]*)"|([^\s;&|<>()]+))/;
+
+/**
+ * Splits a command line into simple commands, each a list of words, the way a
+ * shell reads it: quotes group words and are removed, `&&`, `||`, `;`, `|`,
+ * `&`, parentheses and newlines end a command, and the body of a here-document
+ * is skipped. Text inside quotes or a here-document (a commit message that says
+ * "a git commit") is therefore never mistaken for a command.
+ */
+export function simpleCommands(line) {
+  const commands = [];
+  const heredocs = [];
+  let words = [];
+  let word = null;
+  let quote = null;
+  const endWord = () => {
+    if (word !== null) words.push(word);
+    word = null;
+  };
+  const endCommand = () => {
+    endWord();
+    if (words.length > 0) commands.push(words);
+    words = [];
+  };
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      else if (c === "\\" && quote === '"' && i + 1 < line.length)
+        word += line[++i];
+      else word += c;
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      quote = c;
+      word ??= "";
+    } else if (c === "\\" && i + 1 < line.length) {
+      word = (word ?? "") + line[++i];
+    } else if (c === " " || c === "\t") {
+      endWord();
+    } else if (c === "\n") {
+      endCommand();
+      for (const { delimiter, indented } of heredocs.splice(0)) {
+        for (;;) {
+          const end = line.indexOf("\n", i + 1);
+          const text = line.slice(i + 1, end === -1 ? line.length : end);
+          i = end === -1 ? line.length : end;
+          const same =
+            (indented ? text.replace(/^\t+/, "") : text) === delimiter;
+          if (same || end === -1) break;
+        }
+      }
+    } else if (c === "<" && line[i + 1] === "<" && line[i + 2] !== "<") {
+      const m = HEREDOC.exec(line.slice(i));
+      if (m) {
+        heredocs.push({
+          delimiter: m[2] ?? m[3] ?? m[4],
+          indented: m[1] === "-",
+        });
+        endWord();
+        i += m[0].length - 1;
+      }
+    } else if ("&|;()`".includes(c)) {
+      endCommand();
+    } else {
+      word = (word ?? "") + c;
+    }
+  }
+  endCommand();
+  return commands;
+}
+
+/** The command name of a word list, past env assignments and wrappers. */
+function commandIndex(words) {
+  let i = 0;
+  while (
+    i < words.length &&
+    (/^[A-Za-z_]\w*=/.test(words[i]) ||
+      ["env", "command", "exec"].includes(words[i]))
+  )
+    i++;
+  return i;
+}
+
+/** Directory one simple git command works in, and whether it writes history. */
+export function gitWrites(words, cwd) {
+  const at = commandIndex(words);
+  const name = words[at];
+  if (name !== "git" && !name?.endsWith("/git")) return null;
   let dir = cwd;
   let i = at + 1;
   while (i < words.length && words[i].startsWith("-")) {
     if (words[i] === "-C" && words[i + 1]) {
-      dir = path.resolve(dir, words[i + 1].replace(/^["']|["']$/g, ""));
+      dir = path.resolve(dir, words[i + 1]);
       i += 2;
     } else if (words[i] === "-c") {
       i += 2;
@@ -122,8 +206,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
   } else if (tool === "Bash") {
     const command = input.tool_input?.command ?? "";
-    for (const segment of command.split(/&&|\|\||;|\n|\|/)) {
-      const hit = gitWrites(segment, cwd);
+    for (const words of simpleCommands(command)) {
+      const hit = gitWrites(words, cwd);
       if (!hit) continue;
       const top = mainWorktreeOf(hit.dir);
       if (top)

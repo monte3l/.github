@@ -102,6 +102,38 @@ describe("guard-shared-checkout", () => {
     assert.equal(r.status, 0);
   });
 
+  it("does not mistake prose for a command: a heredoc body, a quoted string or an argument", () => {
+    const heredoc = (target) =>
+      `git -C ${target} commit -s -q -F - <<'EOF'\nmessage: it blocks a git commit or a new branch,\nand git switch -c too\nEOF`;
+    // The body names git commit, but the real command commits in a linked worktree.
+    assert.equal(run({ tool_name: "Bash", cwd: main, tool_input: { command: heredoc(linked) } }).status, 0);
+    for (const command of [
+      'echo "git commit -m x"',
+      "echo 'git switch -c topic'",
+      'git log --grep="git commit" --oneline',
+      "grep -rn 'git checkout -b' docs",
+      "cat <<'EOF'\ngit commit -m x\nEOF",
+    ]) {
+      assert.equal(run({ tool_name: "Bash", cwd: main, tool_input: { command } }).status, 0, command);
+    }
+  });
+
+  it("still blocks a real commit however it is written", () => {
+    for (const command of [
+      'git commit -m "feat: x"',
+      "git commit -s -F - <<'EOF'\nmessage\nEOF",
+      `git -C "${main}" commit -m x`,
+      "GIT_AUTHOR_NAME=x git commit -m x",
+      "env git commit -m x",
+      'git add a && git commit -m "a; b"',
+      "(git commit -m x)",
+      "true || git switch -c topic",
+      "git checkout -b topic\ngit status",
+    ]) {
+      assert.equal(run({ tool_name: "Bash", cwd: main, tool_input: { command } }).status, 2, command);
+    }
+  });
+
   it("allows tools it does not handle, and fails open on bad input", () => {
     assert.equal(run({ tool_name: "Read", cwd: main, tool_input: { file_path: "a" } }).status, 0);
     const r = spawnSync("node", [guard], { input: "not json", encoding: "utf8" });
