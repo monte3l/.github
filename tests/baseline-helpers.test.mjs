@@ -48,10 +48,11 @@ const NEWEST = "3".repeat(40);
 
 /**
  * Runs release-pin-age.sh against a stub gh.
- * @param {{ pins: string[], compare?: Record<string, string>, history?: boolean }} options
- *   `compare` maps a pin to the status GitHub returns, or "error"; `history: false` makes the commit listing fail.
+ * @param {{ pins: string[], compare?: Record<string, string>, history?: "ok" | "error" | "empty" }} options
+ *   `compare` maps a pin to the status GitHub returns, or "error"; `history` is what the commit listing does:
+ *   answer, fail like an API error, or answer with nothing.
  */
-function pinAge({ pins, compare = {}, history = true }) {
+function pinAge({ pins, compare = {}, history = "ok" }) {
   const dir = mkdtempSync(path.join(tmpdir(), "pin-age-"));
   const stub = path.join(dir, "gh");
   const statuses = Object.entries(compare)
@@ -62,8 +63,9 @@ function pinAge({ pins, compare = {}, history = true }) {
     `#!/usr/bin/env bash
 case "$2" in
   *"/commits?"*)
-    ${history ? "" : "exit 1"}
+    ${history === "error" ? "exit 1" : ""}
     case "$2" in
+      ${history === "empty" ? "*) ;;" : ""}
       *"path=${FILE_A}"*) printf '%s\n' '2026-11-01T00:00:00Z ${MID}' ;;
       *"path=${FILE_B}"*) printf '%s\n' '2026-11-10T00:00:00Z ${NEWEST}' ;;
     esac ;;
@@ -101,13 +103,17 @@ test("release-pin-age: the first pin that is behind is the one reported", () => 
   assert.equal(out, `${OLD} ${NEWEST}`);
 });
 
-test("release-pin-age: a pin GitHub cannot compare is not called behind", () => {
+test("release-pin-age: a compare that fails is a failed call (3), never a pin reported as current", () => {
   const { status } = pinAge({ pins: [OLD], compare: { [OLD]: "error" } });
-  assert.equal(status, 0, "the `release: workflow pin` item reports a pin that is not a commit");
+  assert.equal(status, 3);
 });
 
-test("release-pin-age: unreadable history is exit 4, never a pass", () => {
-  assert.equal(pinAge({ pins: [OLD], history: false }).status, 4);
+test("release-pin-age: a commit listing that fails is a failed call (3), not a skip", () => {
+  assert.equal(pinAge({ pins: [OLD], history: "error" }).status, 3);
+});
+
+test("release-pin-age: a history that was read and is empty is exit 4", () => {
+  assert.equal(pinAge({ pins: [OLD], history: "empty" }).status, 4);
 });
 
 test("release-pin-age: too few arguments is a usage error", () => {

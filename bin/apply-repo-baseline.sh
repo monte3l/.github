@@ -297,8 +297,10 @@ report_file "dependency review config" "copy blueprint/files/dependency-review-c
 report_placeholders() {
   local label="$1" starter="$2" hint="$3" path text="" left rc=0
   shift 3
+  # `|| true`: file_content fails on a missing file, and an assignment that fails
+  # would trip this script's ERR trap (exit 3, "could not be checked").
   for path in "$@"; do
-    text="$(file_content "$path")"
+    text="$(file_content "$path" || true)"
     [[ -n "$text" ]] && break
   done
   if [[ -z "$text" ]]; then
@@ -529,7 +531,7 @@ fi
 # docs.config.mjs is the docs kit's config, so its presence is what makes a
 # repository a docs-site repository. Everything here is a commit, never an API
 # call, except the homepage, which `gh repo edit --homepage` can set.
-docs_config="$(file_content docs.config.mjs)"
+docs_config="$(file_content docs.config.mjs || true)"
 if [[ -z "$docs_config" ]]; then
   skip "docs site" "no docs.config.mjs"
 else

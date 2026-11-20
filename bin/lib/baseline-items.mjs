@@ -62,10 +62,16 @@ export function parseBaselineScript(script) {
 }
 
 /**
+ * The label has to end where the printf's own text ends: at a colon, at the end
+ * of the string (`\n` or the closing quote), or before a `%s` or a parenthesis.
+ * A plain prefix test would let `release: workflow pin age` stand in for
+ * `release: workflow pin`, so deleting the shorter item would pass unnoticed.
+ *
  * @param {string} script
  * @param {string} label
  * @returns {boolean} whether the script prints `label` as an OK or DRIFT line
  */
 export function printsInline(script, label) {
-  return script.includes(`'OK     ${label}`) || script.includes(`'DRIFT  ${label}`);
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`'(?:OK     |DRIFT  )${escaped}(?=:|\\\\n|'| %| \\()`).test(script);
 }

@@ -14,9 +14,13 @@
 # each pin with the newest commit that touched either file.
 #
 # Prints the newest commit. Exit codes: 0 every pin has it, 1 a pin is behind it
-# (the line is `PIN NEWEST`, for the first pin that is), 2 usage, 4 the history of
-# the files cannot be read. A pin GitHub cannot compare is not called behind: the
-# `release: workflow pin` item reports a pin that is not a commit of the repository.
+# (the line is `PIN NEWEST`, for the first pin that is), 2 usage, 3 a GitHub call
+# failed, 4 the history of the files was read and is empty.
+#
+# A failed call is never an answer. The caller has already compared every pin with
+# the default branch (`release: workflow pin`), so a compare that fails here is a
+# rate limit, a network error or a token problem, and calling it "not behind" would
+# report a pin as current that was never looked at.
 set -euo pipefail
 
 [[ $# -ge 4 ]] || {
@@ -27,16 +31,20 @@ repo="$1"
 files=("$2" "$3")
 shift 3
 
-# The newest commit that touched either file, by committer date.
-newest="$(for file in "${files[@]}"; do
-  gh api "repos/$repo/commits?sha=main&path=$file&per_page=1" \
-    --jq '.[0] | select(. != null) | "\(.commit.committer.date) \(.sha)"' 2>/dev/null || true
-done | sort | tail -n 1 | cut -d' ' -f2)"
-[[ -n "$newest" ]] || exit 4
+# The newest commit that touched either file, by committer date. `gh` writes its
+# own error to stderr, which is left visible.
+lines=""
+for file in "${files[@]}"; do
+  line="$(gh api "repos/$repo/commits?sha=main&path=$file&per_page=1" \
+    --jq '.[0] | select(. != null) | "\(.commit.committer.date) \(.sha)"')" || exit 3
+  [[ -z "$line" ]] || lines+="$line"$'\n'
+done
+[[ -n "$lines" ]] || exit 4
+newest="$(sort <<<"$lines" | tail -n 1 | cut -d' ' -f2)"
 
 for pin in "$@"; do
-  if status="$(gh api "repos/$repo/compare/$newest...$pin" --jq .status 2>/dev/null)" &&
-    [[ "$status" != "identical" && "$status" != "ahead" ]]; then
+  status="$(gh api "repos/$repo/compare/$newest...$pin" --jq .status)" || exit 3
+  if [[ "$status" != "identical" && "$status" != "ahead" ]]; then
     printf '%s %s\n' "$pin" "$newest"
     exit 1
   fi

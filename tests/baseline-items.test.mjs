@@ -52,6 +52,24 @@ test("an inline item the script never prints is a problem", () => {
   assert.equal(printsInline(SCRIPT, "release: workflow pin age"), false);
 });
 
+test("a label that only extends another one does not stand in for it", () => {
+  const onlyLonger = "printf 'OK     release: workflow pin age %s\\n' \"$x\"\n";
+  assert.equal(printsInline(onlyLonger, "release: workflow pin age"), true);
+  assert.equal(printsInline(onlyLonger, "release: workflow pin"), false, "the shorter item's own printf is gone");
+  const both = `${onlyLonger}printf 'OK     release: workflow pin %s\\n' "$y"\n`;
+  assert.equal(printsInline(both, "release: workflow pin"), true);
+});
+
+test("every way the real script ends an inline label is recognised", () => {
+  for (const [text, label] of [
+    ["'OK     docs site: tier\\n'", "docs site: tier"],
+    ["'DRIFT  docs site: tier: %s needs'", "docs site: tier"],
+    ["'OK     docs site: daily check (%s)\\n'", "docs site: daily check"],
+    ["'OK     docs site: homepage %s\\n'", "docs site: homepage"],
+    ["'OK     Node pin'", "Node pin"],
+  ]) assert.equal(printsInline(text, label), true, text);
+});
+
 test("every report_placeholders call in the real script names a starter that exists", () => {
   const script = read("bin/apply-repo-baseline.sh");
   const starters = [...script.matchAll(/^report_placeholders "[^"]+" (\S+) /gm)].map((m) => m[1]);
