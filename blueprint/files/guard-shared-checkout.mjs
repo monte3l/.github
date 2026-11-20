@@ -23,7 +23,7 @@ import path from "node:path";
 import process from "node:process";
 
 const HINT =
-  "Work in a worktree off origin/main: EnterWorktree, or `bin/wt.sh REPO BRANCH` for a sibling repository.";
+  "Work in a worktree off origin/main: EnterWorktree, or `git worktree add ../<repo>.wt/<branch> -b <branch> origin/main`.";
 
 function git(dir, args) {
   const r = spawnSync("git", ["-C", dir, ...args], { encoding: "utf8" });
