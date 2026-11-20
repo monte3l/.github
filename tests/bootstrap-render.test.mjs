@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { renderBootstrap } from "../bin/lib/bootstrap.mjs";
+import { roadmapProblems } from "../bin/lib/roadmap.mjs";
 import { classify, render } from "../bin/lib/template-sync.mjs";
 const root = path.resolve(import.meta.dirname, "..");
 const json = (rel) => JSON.parse(readFileSync(path.join(root, rel), "utf8"));
@@ -71,7 +72,10 @@ assert.ok(priv.files.some((f) => f.to === ".github/dependency-review-config.yml"
 assert.ok(go({ kind: "simple" }).files.some((f) => f.to === ".github/workflows/scorecard.yml"), "public keeps scorecard");
 // todo
 assert.ok(go({ kind: "simple" }).todo.some((t) => t.startsWith(".github/workflows/verify.yml: replace the placeholder step")));
-assert.deepEqual(go({ kind: "simple", scaffold: true }).todo, [], "the scaffold defines verify, so there is no todo for it");
+// The scaffold defines verify, so there is no todo for it. It ships no ROADMAP, so the one todo left is to write the sections.
+const scaffolded = go({ kind: "simple", scaffold: true }).todo;
+assert.equal(scaffolded.length, 1, `only the roadmap todo is left, got ${JSON.stringify(scaffolded)}`);
+assert.ok(scaffolded[0].startsWith("ROADMAP.md:"), "and it is the roadmap one");
 // docs option
 const docs = go({ kind: "simple", docs: true, today: "2026-12-24" });
 const text = (rendered, to) => rendered.files.find((f) => f.to === to)?.text;
@@ -88,6 +92,18 @@ assert.ok(text(docs, "docs.config.mjs").includes('repo: "https://github.com/mont
 assert.ok(text(docs, "docs.config.mjs").includes('title: "m3l-plugins"'));
 assert.ok(!docs.files.filter((f) => !f.to.startsWith(".github/workflows/")).some((f) => /\bPROJECT\b/.test(f.text)), "no PROJECT is left in any starter (a workflow template keeps its own Adopting comment)");
 assert.deepEqual(docs.unfilled.filter((u) => u.found.some((x) => /PROJECT|REPOSITORY/.test(x))), []);
+// tracking starters: a new repository starts with the roadmap and the decision records, with the name and today's date filled in
+const dated = go({ kind: "simple", today: "2026-12-24" });
+const roadmap = text(dated, "ROADMAP.md");
+assert.ok(roadmap !== undefined, "ROADMAP.md is written, with or without --docs");
+assert.ok(text(docs, "ROADMAP.md") !== undefined && text(go({}), "ROADMAP.md") !== undefined);
+assert.match(roadmap, /^reviewed: 2026-12-24$/m, "{date} is today's date");
+assert.match(roadmap, /What m3l-plugins intends to do/, "{repo} is the name");
+assert.ok(!/\{(repo|date)\}/.test(roadmap), "no token is left");
+assert.deepEqual(roadmapProblems(roadmap, { today: "2026-12-24" }), [], "the starter passes the check the baseline runs, so a new repository starts without drift");
+assert.ok(text(dated, "docs/decisions/README.md") !== undefined && text(dated, "docs/decisions/0000-template.md") !== undefined, "the decision records are written");
+assert.ok(dated.todo.some((t) => t.startsWith("ROADMAP.md:") && t.includes("five sections")), "a person is told to write the sections");
+assert.ok(!dated.unfilled.some((u) => u.to === "ROADMAP.md" || u.to.startsWith("docs/decisions/")), "no placeholder of ours is left in a tracking starter");
 // The deploy lockfile is a reviewed starter, copied and never generated at bootstrap. It must still be the pair
 // npm ci accepts: the same wrangler, a lock whose root names the repository, and an integrity hash everywhere.
 const pkg = JSON.parse(text(docs, "tools/deploy/package.json"));

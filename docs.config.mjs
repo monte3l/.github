@@ -19,6 +19,7 @@ export default {
   pages: [
     { src: "profile/README.md", out: "index.html", group: "Start", label: "Overview", summary: "The organization's projects, each with its own docs site" },
     { src: "blueprint/README.md", out: "standard.html", group: "Standard", label: "Engineering standard", summary: "What every repository must have: settings, files, workflows and checks, and how each is applied or only reported" },
+    { src: "blueprint/tracking.md", out: "tracking.html", group: "Standard", label: "Tracking work", summary: "Where a project records bugs, gaps, known limits, unverified claims, decisions and planned work, and with which tool" },
     { src: "blueprint/docs-site.md", out: "docs-site.html", group: "Standard", label: "Docs site runbook", summary: "How the organization docs sites are built and deployed to Cloudflare, and the one-time setup" },
     { src: "design/README.md", out: "design.html", group: "Standard", label: "Design system", summary: "Which version of the m3l-design system this repository follows, and how it is kept current" },
     { src: "knowledge/README.md", out: "knowledge.html", group: "Knowledge", label: "Knowledge base", summary: "The index of decisions and research, with the status and sources of each page" },
@@ -38,6 +39,8 @@ export default {
     { glob: ".claude/**", reason: "Claude Code agents, skills and hooks for working in this repository" },
     { glob: "blueprint/files/README.md", reason: "README skeleton with placeholders, copied rather than read" },
     { glob: "blueprint/files/SECURITY.md", reason: "SECURITY.md skeleton with placeholders, copied rather than read" },
+    { glob: "blueprint/files/ROADMAP.md", reason: "ROADMAP.md skeleton with placeholders, copied rather than read" },
+    { glob: "blueprint/files/decisions/**", reason: "decision-record skeletons with placeholders, copied rather than read" },
     { glob: ".github/pull_request_template.md", reason: "GitHub pull request template" },
     { glob: ".github/PULL_REQUEST_TEMPLATE/**", reason: "GitHub pull request template variants, chosen with ?template=" },
     { glob: ".groundwork/**", reason: "m3l-groundwork adoption and customization reports, a record for maintainers" },

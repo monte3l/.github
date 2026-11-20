@@ -1,0 +1,11 @@
+{
+  "$comment": "The organization's issue types, as created in Organization settings, Planning, Issue types (REST: /orgs/monte3l/issue-types, which needs admin:org to write). A record of what the policy in tracking.md expects, not applied by any script: bin/apply-repo-baseline.sh works on one repository, and issue types belong to the organization. The issue forms in .github/ISSUE_TEMPLATE name three of them (Bug, Feature, Task) in `type:`, so a rename here needs the forms to change in the same commit. GitHub allows 25.",
+  "types": [
+    { "name": "Bug", "color": "red", "description": "Something is broken, or behaves differently from what the docs say." },
+    { "name": "Feature", "color": "blue", "description": "A new capability or a committed change to what the project does." },
+    { "name": "Task", "color": "gray", "description": "Other actionable work that is neither a defect nor a new capability." },
+    { "name": "Gap", "color": "yellow", "description": "Drift or inconsistency between the docs, the code and the standard." },
+    { "name": "Debt", "color": "orange", "description": "A known shortcut to pay down, or a feature scheduled for removal." },
+    { "name": "Verify", "color": "purple", "description": "A claim someone intends to check before it can be relied on." }
+  ]
+}
