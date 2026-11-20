@@ -365,10 +365,10 @@ One row per file or group of files. **Delivery** is one of:
 | Contributing guide | `CONTRIBUTING.md` | **Inherited** | Nothing, or its own copy. Wording is written for other repositories | Not verified |
 | Security policy | `SECURITY.md` | **Inherited**, but every repository needs its own copy to score above 4 on Scorecard. Private vulnerability reporting must be on | Its own copy with an absolute advisory URL and an accepted-findings table | Script: `security policy`, `security: private vulnerability reporting` |
 | Support | `SUPPORT.md` | **Inherited** | Nothing, or its own copy | Not verified |
-| Bug report form | `.github/ISSUE_TEMPLATE/bug_report.yml` | **Inherited** (all or nothing, see above) | Nothing, or its own `ISSUE_TEMPLATE/` folder | Not verified |
-| Feature request form | `.github/ISSUE_TEMPLATE/feature_request.yml` | **Inherited** (same) | Same | Not verified |
-| Docs problem form | `.github/ISSUE_TEMPLATE/docs_problem.yml` | **Inherited** (same) | Same | Not verified |
-| Issue chooser, blank issues off | `.github/ISSUE_TEMPLATE/config.yml` | **Inherited** (same) | Same | Not verified |
+| Bug report form | `.github/ISSUE_TEMPLATE/bug_report.yml` | **Inherited** (all or nothing, see above) | Nothing, or its own `ISSUE_TEMPLATE/` folder | Script: `issue forms: org defaults` reports a local `ISSUE_TEMPLATE/` that hides them. The form text is not verified |
+| Feature request form | `.github/ISSUE_TEMPLATE/feature_request.yml` | **Inherited** (same) | Same | Script: `issue forms: org defaults` reports a local `ISSUE_TEMPLATE/` that hides them. The form text is not verified |
+| Docs problem form | `.github/ISSUE_TEMPLATE/docs_problem.yml` | **Inherited** (same) | Same | Script: `issue forms: org defaults` reports a local `ISSUE_TEMPLATE/` that hides them. The form text is not verified |
+| Issue chooser, blank issues off | `.github/ISSUE_TEMPLATE/config.yml` | **Inherited** (same) | Same | Script: `issue forms: org defaults` reports a local `ISSUE_TEMPLATE/` that hides them. The form text is not verified |
 | Pull request template | `.github/pull_request_template.md` | **Inherited** | Nothing, or its own copy | Not verified |
 | Pull request template variants | `.github/PULL_REQUEST_TEMPLATE/` (`docs.md`, `design-sync.md`, `dependencies-release.md`) | **Inherited**. Chosen with `?template=` | Nothing, or its own folder | Not verified |
 | Organization profile | `profile/README.md` | **Inherited** (shown on the organization page only) | Nothing | Not verified |

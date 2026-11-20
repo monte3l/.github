@@ -38,8 +38,8 @@ jobs:
 
       - name: Script syntax and shellcheck
         run: |
-          bash -n bin/apply-repo-baseline.sh bin/design-resync-pr.sh bin/pin-freshness.sh bin/org-audit.sh bin/upstream-watch.sh bin/template-sync-pr.sh bin/new-repo.sh bin/wt.sh bin/lib/upsert-issue.sh bin/lib/leftover-placeholders.sh bin/lib/docs-config-parity.sh bin/lib/release-pin-age.sh tests/new-repo.test.sh
-          shellcheck bin/apply-repo-baseline.sh bin/design-resync-pr.sh bin/pin-freshness.sh bin/org-audit.sh bin/upstream-watch.sh bin/template-sync-pr.sh bin/new-repo.sh bin/wt.sh bin/lib/upsert-issue.sh bin/lib/leftover-placeholders.sh bin/lib/docs-config-parity.sh bin/lib/release-pin-age.sh tests/new-repo.test.sh
+          bash -n bin/apply-repo-baseline.sh bin/design-resync-pr.sh bin/pin-freshness.sh bin/org-audit.sh bin/upstream-watch.sh bin/template-sync-pr.sh bin/new-repo.sh bin/wt.sh bin/lib/upsert-issue.sh bin/project-backfill.sh bin/lib/leftover-placeholders.sh bin/lib/docs-config-parity.sh bin/lib/release-pin-age.sh tests/new-repo.test.sh
+          shellcheck bin/apply-repo-baseline.sh bin/design-resync-pr.sh bin/pin-freshness.sh bin/org-audit.sh bin/upstream-watch.sh bin/template-sync-pr.sh bin/new-repo.sh bin/wt.sh bin/lib/upsert-issue.sh bin/project-backfill.sh bin/lib/leftover-placeholders.sh bin/lib/docs-config-parity.sh bin/lib/release-pin-age.sh tests/new-repo.test.sh
           node --check bin/knowledge-report.mjs
           node --check bin/bootstrap-render.mjs
           node --check bin/template-sync.mjs

@@ -325,6 +325,53 @@ report_placeholders() {
 report_placeholders "security policy: placeholders" SECURITY.md "fill in every {...} prompt and delete the starter comment: blueprint/files/SECURITY.md says what each one asks for" \
   SECURITY.md .github/SECURITY.md docs/SECURITY.md
 report_placeholders "README: placeholders" README.md "fill in every {...} prompt: blueprint/files/README.md says what each one asks for" README.md
+
+# --- tracking (blueprint/tracking.md) -----------------------------------------
+report_file "roadmap" "start from blueprint/files/ROADMAP.md; blueprint/tracking.md says what each section holds" \
+  ROADMAP.md docs/ROADMAP.md
+report_file "decision records" "start from blueprint/files/decisions/; .github keeps its decisions in knowledge/" \
+  docs/decisions/README.md knowledge/README.md
+
+# The sections and the `reviewed:` date are read by bin/lib/roadmap.mjs, the one
+# parser the tests cover. With no ROADMAP the `roadmap` item above already says
+# so, and this one is skipped rather than counted twice. Age is not judged here:
+# the docs kit reports a page that has not been reviewed for 180 days.
+roadmap_text="$(file_content ROADMAP.md || true)"
+[[ -n "$roadmap_text" ]] || roadmap_text="$(file_content docs/ROADMAP.md || true)"
+if [[ -z "$roadmap_text" ]]; then
+  skip "roadmap: sections" "no ROADMAP.md to read"
+elif ! command -v node >/dev/null 2>&1; then
+  skip "roadmap: sections" "node is not installed"
+else
+  roadmap_code=0
+  roadmap_problems="$(node "$here/../bin/lib/roadmap.mjs" --today "$(date -u +%Y-%m-%d)" <<<"$roadmap_text")" || roadmap_code=$?
+  if [[ "$roadmap_code" -eq 0 ]]; then
+    printf 'OK     roadmap: sections\n'
+    ok=$((ok + 1))
+  elif [[ "$roadmap_code" -eq 1 ]]; then
+    drift=$((drift + 1))
+    printf 'DRIFT  roadmap: sections: %s\n' "$(paste -sd';' - <<<"$roadmap_problems" | sed 's/;/; /g')"
+    [[ "$mode" == "check" ]] || printf '         needs a commit in %s: see blueprint/tracking.md for the five sections and the reviewed date\n' "$repo"
+  else
+    printf 'roadmap: sections: the parser failed (exit %s)\n' "$roadmap_code" >&2
+    exit 3
+  fi
+fi
+
+# A repository with any file in .github/ISSUE_TEMPLATE gets none of the org's
+# forms, not even the ones it has no copy of. .github is where the defaults
+# live, so it is the one repository that has the folder.
+if [[ "${repo#*/}" == ".github" ]]; then
+  skip "issue forms: org defaults" "this repository holds the org defaults"
+elif gh api "repos/$repo/contents/.github/ISSUE_TEMPLATE" >/dev/null 2>&1; then
+  drift=$((drift + 1))
+  printf 'DRIFT  issue forms: org defaults: .github/ISSUE_TEMPLATE hides every org issue form\n'
+  [[ "$mode" == "check" ]] || printf '         needs a commit in %s: delete .github/ISSUE_TEMPLATE so the org forms apply (Bug, Feature and Task types, and the Project)\n' "$repo"
+else
+  printf 'OK     issue forms: org defaults\n'
+  ok=$((ok + 1))
+fi
+
 # The checks below look for the control, not a file name: a repository may run
 # it from its own workflow (for example a `reuse lint` step inside `verify.yml`)
 # and a second copy of the template would only duplicate it.

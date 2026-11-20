@@ -30,6 +30,8 @@ export const INLINE_ITEMS = [
   "Node pin",
   "Scorecard alerts",
   "REUSE API",
+  "roadmap: sections",
+  "issue forms: org defaults",
   "OpenSSF Best Practices",
   "Dependabot",
   "env-janitor: branch policy",

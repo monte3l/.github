@@ -30,7 +30,7 @@ const ENTRY_KEYS = {
   excluded: new Set(["from", "reason"]),
   todos: new Set(["text", "requires"]),
 };
-const TOKENS = new Set(["repo", "site", "host", "subdomain"]);
+const TOKENS = new Set(["repo", "site", "host", "subdomain", "date"]);
 const WORD_RE = /^[a-z][a-z0-9-]*$/;
 
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);

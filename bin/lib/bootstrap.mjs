@@ -57,7 +57,7 @@ export function renderBootstrap({ name, kind, claude = false, private: isPrivate
   // `requires` is a condition, or `!condition` for the opposite.
   const wanted = (entry) => entry.requires === undefined || (entry.requires.startsWith("!") ? !active.has(entry.requires.slice(1)) : active.has(entry.requires));
   const host = new URL(project.site).host;
-  const tokens = { repo: name, site: project.site, host, subdomain: host.split(".")[0] };
+  const tokens = { repo: name, site: project.site, host, subdomain: host.split(".")[0], date: today };
   const expand = (text) => text.replace(/\{([a-z][a-z-]*)\}/g, (whole, token) => (Object.hasOwn(tokens, token) ? tokens[token] : whole));
   const files = [];
   const left = [];
