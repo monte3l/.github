@@ -14,6 +14,12 @@ Second sweep: 2026-10-22, run from `/customize` (m3l-groundwork 1.1.0 re-run, sa
 
 ## Outstanding drift
 
+Applied on 2026-11-20 (harness automations H1, from the org-automation, docs-freshness and org-tracking-policy sessions):
+
+- New hooks: `guard-shared-checkout.mjs` (PreToolUse, `onFailure: "block"`; the Bash entry is pre-filtered with `"if": "Bash(git *)"`, best effort), `guard-cross-worktree.mjs` (PreToolUse, `ask`), `session-orientation.mjs` (SessionStart `startup|resume|compact`) and `verify-on-stop.mjs` (Stop). `settings.json` sets `worktree.baseRef: "fresh"` and extends `permissions.ask` with the outward `gh` and `bin/` actions.
+- `guard-protected-paths.mjs` resolved paths against `CLAUDE_PROJECT_DIR`, which stays at the starting folder after a session enters a worktree, so it let `design/source/**` through there. It now finds the repository from the file's location. `tests/harness-hooks.test.mjs` runs it from a linked worktree.
+- Not verified: whether `"if": "Bash(git *)"` matches `env git commit`. The script's own regex stays authoritative.
+
 Applied on 2026-10-22:
 
 - `.claude/settings.json`: the five `enabledPlugins` entries on `@anthropic-plugin-directory` (context7, skill-creator, github, claude-md-management, security-guidance) now use `@claude-plugins-official`. On this machine the org's `strictKnownMarketplaces` blocks the built-in Anthropic Directory, so those five failed to load (`claude plugin list`), and `claude-plugins-official` is the docs' own official name. Each exists in that marketplace. Collaborators still run `claude plugin install <name>@claude-plugins-official --scope project` once, and project-scope plugins wait for workspace trust.

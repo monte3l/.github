@@ -7,10 +7,51 @@
       "Read(./secrets/**)"
     ],
     "ask": [
-      "Bash(bin/apply-repo-baseline.sh * --apply*)"
+      "Bash(bin/apply-repo-baseline.sh * --apply*)",
+      "Bash(bin/new-repo.sh * --apply*)",
+      "Bash(bin/upstream-watch.sh --accept*)",
+      "Bash(gh repo create *)",
+      "Bash(gh repo delete *)",
+      "Bash(gh workflow run *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh issue create *)",
+      "Bash(gh project *)",
+      "Bash(gh api -X *)",
+      "Bash(gh api * -X *)",
+      "Bash(gh api --method *)",
+      "Bash(gh api * --method *)",
+      "Bash(gh api * --input *)",
+      "Bash(gh api * -f *)",
+      "Bash(gh api * -F *)"
     ]
   },
+  "worktree": {
+    "baseRef": "fresh"
+  },
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-orientation.mjs\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/verify-on-stop.mjs\"",
+            "timeout": 300
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
@@ -41,6 +82,13 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-double-background.mjs\"",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "if": "Bash(git *)",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-shared-checkout.mjs\"",
+            "timeout": 30,
+            "onFailure": "block"
           }
         ]
       },
@@ -58,6 +106,17 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-secret-writes.mjs\"",
             "timeout": 30,
             "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-shared-checkout.mjs\"",
+            "timeout": 30,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-cross-worktree.mjs\"",
+            "timeout": 30
           }
         ]
       }
