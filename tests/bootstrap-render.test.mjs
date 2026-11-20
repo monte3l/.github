@@ -72,10 +72,12 @@ assert.ok(priv.files.some((f) => f.to === ".github/dependency-review-config.yml"
 assert.ok(go({ kind: "simple" }).files.some((f) => f.to === ".github/workflows/scorecard.yml"), "public keeps scorecard");
 // todo
 assert.ok(go({ kind: "simple" }).todo.some((t) => t.startsWith(".github/workflows/verify.yml: replace the placeholder step")));
-// The scaffold defines verify, so there is no todo for it. It ships no ROADMAP, so the one todo left is to write the sections.
+// The scaffold defines verify, so there is no todo for it. It ships no ROADMAP and no worktree guard, so
+// two todos are left: write the sections, and wire the guard into settings.json.
 const scaffolded = go({ kind: "simple", scaffold: true }).todo;
-assert.equal(scaffolded.length, 1, `only the roadmap todo is left, got ${JSON.stringify(scaffolded)}`);
-assert.ok(scaffolded[0].startsWith("ROADMAP.md:"), "and it is the roadmap one");
+assert.equal(scaffolded.length, 2, `only the roadmap and worktree guard todos are left, got ${JSON.stringify(scaffolded)}`);
+assert.ok(scaffolded.some((t) => t.startsWith("ROADMAP.md:")), "one is the roadmap");
+assert.ok(scaffolded.some((t) => t.startsWith(".claude/hooks/guard-shared-checkout.mjs: wire")), "the other is wiring the worktree guard");
 // docs option
 const docs = go({ kind: "simple", docs: true, today: "2026-12-24" });
 const text = (rendered, to) => rendered.files.find((f) => f.to === to)?.text;

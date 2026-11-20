@@ -45,6 +45,12 @@
       "paths": [
         ".gitleaks.toml"
       ]
+    },
+    "guard-shared-checkout.mjs": {
+      "mode": "managed",
+      "paths": [
+        ".claude/hooks/guard-shared-checkout.mjs"
+      ]
     }
   },
   "repos": {
