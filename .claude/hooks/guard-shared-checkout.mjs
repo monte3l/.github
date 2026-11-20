@@ -33,6 +33,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 const HINT =
   "Work in a worktree off origin/main: EnterWorktree, or `git worktree add ../<repo>.wt/<branch> -b <branch> origin/main`.";
@@ -332,24 +333,37 @@ function block(message) {
   process.exit(2);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
   let input;
   try {
     input = JSON.parse(await readStdin());
   } catch {
     process.exit(0);
   }
-  const cwd = input.cwd ?? process.cwd();
-  const tool = input.tool_name ?? "";
+  // Valid JSON that is not an object (`null`, a string, a number) or fields of
+  // the wrong type are not a payload this hook understands. A crash would be
+  // read as a failure and, under `onFailure: block`, block the tool call.
+  if (input === null || typeof input !== "object" || Array.isArray(input))
+    process.exit(0);
+  const str = (value) => (typeof value === "string" ? value : "");
+  const toolInput =
+    input.tool_input !== null && typeof input.tool_input === "object"
+      ? input.tool_input
+      : {};
+  const cwd = str(input.cwd) || process.cwd();
+  const tool = str(input.tool_name);
 
   if (tool === "Write" || tool === "Edit") {
-    const filePath = input.tool_input?.file_path ?? "";
+    const filePath = str(toolInput.file_path);
     if (filePath) {
       const top = mainWorktreeOf(path.resolve(cwd, filePath));
       if (top) block(`\`${filePath}\` is in the main checkout of ${top}.`);
     }
   } else if (tool === "Bash") {
-    const command = input.tool_input?.command ?? "";
+    const command = str(toolInput.command);
     const { commands, seps, grouped } = simpleCommands(command);
     // The directories the next command may run in. A top-level `cd DIR` is only
     // followed when it is certain to have moved the shell: joined to the next

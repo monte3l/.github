@@ -202,6 +202,36 @@ describe("guard-shared-checkout", () => {
     assert.equal(run({ tool_name: "Bash", cwd: main, tool_input: { command: "echo $((1<<2)) done" } }).status, 0);
   });
 
+  it("still runs when started through a symlink or a path with a space (else it fails open)", () => {
+    const dir = path.join(tmp, "with space");
+    fs.mkdirSync(dir);
+    const copy = path.join(dir, "guard.mjs");
+    fs.copyFileSync(guard, copy);
+    const link = path.join(tmp, "guard-link.mjs");
+    fs.symlinkSync(copy, link);
+    const payload = JSON.stringify({ tool_name: "Edit", cwd: main, tool_input: { file_path: "a.txt" } });
+    for (const script of [copy, link]) {
+      const r = spawnSync("node", [script], { input: payload, encoding: "utf8" });
+      assert.equal(r.status, 2, `${script}: ${r.stderr}`);
+    }
+  });
+
+  it("does not crash on a payload of the wrong shape (a crash would block every tool call)", () => {
+    for (const payload of [
+      "", "not json", "null", "[]", "{}", '"str"', "42", "true",
+      '{"tool_input":null}', '{"tool_input":"x"}',
+      '{"tool_name":"Bash","tool_input":null}',
+      '{"tool_name":"Edit","tool_input":{"file_path":42}}',
+      '{"tool_name":"Bash","tool_input":{"command":7}}',
+      '{"tool_name":"Write","tool_input":{"file_path":{},"content":{},"new_string":[]}}',
+      '{"tool_name":"Bash","cwd":42,"tool_input":{"command":"ls"}}',
+      '{"tool_name":42,"tool_input":{"command":"git commit"}}',
+    ]) {
+      const r = spawnSync("node", [guard], { input: payload, encoding: "utf8" });
+      assert.equal(r.status, 0, `${payload}: ${r.stderr}`);
+    }
+  });
+
   it("allows tools it does not handle, and fails open on bad input", () => {
     assert.equal(run({ tool_name: "Read", cwd: main, tool_input: { file_path: "a" } }).status, 0);
     const r = spawnSync("node", [guard], { input: "not json", encoding: "utf8" });
