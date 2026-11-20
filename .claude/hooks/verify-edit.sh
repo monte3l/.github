@@ -12,6 +12,16 @@ case "$file" in
   */blueprint/*.json | */workflow-templates/*.json)
     out="$(jq empty "$file" 2>&1)" || fail "Invalid JSON in $file: $out"
     ;;
+  */blueprint/files/*) ;; # starters hold placeholders on purpose, such as `{date}` in ROADMAP.md
+  */ROADMAP.md)
+    # The one parser behind the `roadmap: sections` baseline item: five headings in
+    # order and a valid `reviewed:` date. Only this repository has it; a sibling that
+    # copied this hook skips the check.
+    top="$(git -C "$(dirname "$file")" rev-parse --show-toplevel 2>/dev/null)" || top=""
+    if command -v node >/dev/null && [[ -n "$top" && -f "$top/bin/lib/roadmap.mjs" ]]; then
+      out="$(node "$top/bin/lib/roadmap.mjs" <"$file" 2>&1)" || fail "ROADMAP.md does not follow blueprint/tracking.md: $out"
+    fi
+    ;;
   */bin/*.sh)
     out="$(bash -n "$file" 2>&1)" || fail "Syntax error in $file: $out"
     if command -v shellcheck >/dev/null; then

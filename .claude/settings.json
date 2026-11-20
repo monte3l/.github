@@ -89,6 +89,12 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-shared-checkout.mjs\"",
             "timeout": 30,
             "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "if": "Bash(gh *)",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-public-issues.mjs\"",
+            "timeout": 30
           }
         ]
       },
