@@ -1,6 +1,7 @@
 [
   { "name": "dependencies", "color": "166eb9", "description": "Dependency updates" },
   { "name": "security", "color": "9e2d28", "description": "Security-related issues and audit failures" },
+  { "name": "freshness", "color": "b77610", "description": "A scheduled check found something to update" },
   { "name": "area:ci", "color": "692746", "description": "CI, workflows and repository automation" },
   { "name": "area:docs", "color": "692746", "description": "Documentation and the docs site" },
   { "name": "area:design", "color": "692746", "description": "Vendored m3l-design copy and local divergence" },

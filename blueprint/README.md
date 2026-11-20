@@ -17,7 +17,7 @@ in `m3l-groundwork`.
 | `rulesets/tags.json`     | Tags cannot be moved or deleted; creating one stays allowed so releases can tag                            |
 | `repo-settings.json`     | Merge settings: merge commit and squash allowed, rebase off, delete head branches after merge             |
 | `actions.json`           | Read-only workflow token, workflows cannot approve PRs, approve fork PR runs for all outside contributors, SHA pinning required |
-| `labels.json`            | Labels that Dependabot, the baseline's scheduled audit and the PR labeler apply, coloured with m3l-design's primitives: status colours for `dependencies` and `security`, the brand colour for the four shared `area:*` labels. Labels are create-only, so existing repositories keep their old colours |
+| `labels.json`            | Labels that Dependabot, the baseline's scheduled audit and the PR labeler apply, coloured with m3l-design's primitives: status colours for `dependencies`, `security` and `freshness`, the brand colour for the four shared `area:*` labels. `freshness` marks every issue a scheduled check opens, so one search (`gh search issues --owner monte3l --state open --label freshness`) lists what is waiting across the organization; `org-audit.yml` prints only the counts, because this repository is public. Labels are create-only, so existing repositories keep their old colours |
 | `design-system.json`     | The m3l-design release tag (`vX.Y.Z`) every repository should record in `design/README.md`, and `consumers`, the repositories `design-resync.yml` opens re-sync pull requests in. The tag is checked by the script, never applied. See [Design system](#design-system) |
 | `release.json`           | The shared release workflow the script looks for in each repository's workflows, and the repositories exempt from releasing, each with its reason. Checked by the script, never applied. See [Releases](#releases) |
 | `projects.json`          | Every monte3l repository: its docs-site URL, card line, description and topics. The org site's project cards, `profile/README.md`'s table and each repository's GitHub description and topics are checked against it. See [Descriptions](#descriptions) |
@@ -234,7 +234,7 @@ and the social card never drift apart.
 `.github/workflows/org-audit.yml` runs `bin/apply-repo-baseline.sh` in its
 default, read-only mode against every repository every Monday, through
 `bin/org-audit.sh --public`. It keeps one issue in this repository, **Org
-baseline drift**, labelled `area:ci`: opened or rewritten when the counts
+baseline drift**, labelled `area:ci` and `freshness`: opened or rewritten when the counts
 change, closed when the organization is clean. It is the scheduled form of the
 `/org-drift` skill.
 
