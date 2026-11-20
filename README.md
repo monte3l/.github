@@ -405,6 +405,8 @@ One row per file or group of files. **Delivery** is one of:
 | Docs deploy card | `workflow-templates/docs.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
 | Docs live check workflow | `workflow-templates/docs-live.yml` | **Template** | Copy it beside `docs.yml` | Script: `docs site: daily check` |
 | Docs live check card | `workflow-templates/docs-live.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
+| Docs freshness workflow | `workflow-templates/docs-freshness.yml` | **Template** | Copy it beside `docs.yml`. Weekly, it opens one issue for pages not touched or reviewed for 180 days | Not checked: a missing copy is only a missing report |
+| Docs freshness card | `workflow-templates/docs-freshness.properties.json` | **Template** | Nothing | `jq empty` in `verify.yml` |
 | Repository settings | `blueprint/repo-settings.json` | **Applied** | Nothing after `--apply` | Script: `repository settings` |
 | Actions token and PR approval | `blueprint/actions.json` (`workflow`) | **Applied** | Nothing after `--apply` | Script: `Actions: workflow token and PR approval` |
 | Fork PR approval | `blueprint/actions.json` (`fork_pr_approval`) | **Applied**. **Skipped** for private repositories | Nothing | Script: `Actions: fork PR approval` |

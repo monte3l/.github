@@ -255,6 +255,10 @@
       "requires": "docs"
     },
     {
+      "name": "docs-freshness",
+      "requires": "docs"
+    },
+    {
       "name": "environments",
       "requires": "docs"
     }

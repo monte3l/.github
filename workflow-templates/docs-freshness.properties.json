@@ -1,0 +1,6 @@
+{
+  "name": "Docs pages freshness",
+  "description": "Once a week, open one issue listing the documentation pages nobody has touched or reviewed for 180 days.",
+  "iconName": "octicon book",
+  "categories": ["Deployment"]
+}

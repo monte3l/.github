@@ -22,7 +22,7 @@ deploy wiring.
 | Config | `docs.config.mjs` at the repository root. Skeleton: `files/docs.config.mjs` |
 | Hostname | `<project>.monte3l.com`. One Worker and one Custom Domain per project, never path-based routing on a shared host |
 | Deploy tools | `tools/deploy/` holds `package.json`, a committed `package-lock.json` and `wrangler.jsonc`. Skeleton: `files/deploy-tools/`. Never under the root `.github/`: Dependabot cannot open pull requests there (see "Tool pins" in `README.md`) |
-| Workflows | `docs.yml` (build, deploy, smoke) and `docs-live.yml` (daily). Templates: `workflow-templates/docs.yml`, `workflow-templates/docs-live.yml` |
+| Workflows | `docs.yml` (build, deploy, smoke), `docs-live.yml` (daily) and `docs-freshness.yml` (weekly). Templates: `workflow-templates/docs.yml`, `workflow-templates/docs-live.yml`, `workflow-templates/docs-freshness.yml` |
 | Gate | The repository's `verify` workflow runs `node design/source/docs-kit/build.mjs --check` on every pull request |
 | Homepage | The GitHub repository `homepage`, and the manifest `homepage` if there is one, equal the site URL |
 | Parity | Anything the docs state that code defines is checked by a module listed in `parity`. The kit's `lib/parity.mjs` has the helpers |
@@ -163,8 +163,8 @@ for a repository that already exists.
    carries an integrity hash for every package, and Dependabot keeps it current,
    so do not regenerate it with `npm install`. Check the pair with
    `npm ci --dry-run --ignore-scripts --prefix tools/deploy`.
-4. Copy `workflow-templates/docs.yml` and `workflow-templates/docs-live.yml`
-   into `.github/workflows/`, and set the environment URL.
+4. Copy `workflow-templates/docs.yml`, `workflow-templates/docs-live.yml` and
+   `workflow-templates/docs-freshness.yml` into `.github/workflows/`, and set the environment URL.
 5. Add `node design/source/docs-kit/build.mjs --check` to the `verify`
    workflow, with `actions/setup-node` reading `.node-version`.
 6. Add an `npm` entry for `/tools/deploy` to `dependabot.yml`, with a

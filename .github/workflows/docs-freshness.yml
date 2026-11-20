@@ -1,0 +1,86 @@
+name: Docs Freshness (Scheduled)
+
+# Adopting: copy this file as it is. It has no placeholder and no optional
+# block, on purpose. A copy that stays word for word is one that
+# monte3l/.github's template sync can keep current; a copy whose comments were
+# edited reads as custom there, and is never refreshed.
+#
+# What this does: once a week, reports the documentation pages that nobody has
+# touched or reviewed lately (design/source/docs-kit/freshness.mjs), as one
+# issue. That is a chore and not a fault, so a stale page never fails the run:
+# the job opens, updates or closes the issue "Docs pages need review", labelled
+# `area:docs` and `freshness`. A report that could not be made at all (no
+# history, a bad config) does fail the run, because a broken check must not read
+# as a clean one.
+#
+# A page's age is the newer of the date of the last commit that changed its
+# file and the `reviewed: YYYY-MM-DD` line in its frontmatter. The limit is 180
+# days; `freshness` in docs.config.mjs changes it or skips a page.
+on:
+  schedule:
+    # Monday 07:00 UTC, after the weekly freshness and template-sync runs of monte3l/.github.
+    - cron: "0 7 * * 1"
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: docs-freshness
+  cancel-in-progress: false
+
+jobs:
+  freshness:
+    name: Docs pages freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write # the one issue below, and the two labels it needs
+    steps:
+      # The full history, because a page's date is the date of the last commit
+      # that changed it: a shallow clone would date every page wrongly, and
+      # freshness.mjs refuses one (exit 3). Always the default branch, whatever
+      # ref a manual dispatch picked.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .node-version
+
+      - name: Report the pages nobody has touched or reviewed lately
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Docs pages need review"
+          code=0
+          node design/source/docs-kit/freshness.mjs >"$RUNNER_TEMP/report.md" || code=$?
+          cat "$RUNNER_TEMP/report.md" >>"$GITHUB_STEP_SUMMARY"
+          # 0 every page is fresh, 1 some need a look. Anything else (2 usage or
+          # config, 3 no history) means no report was made: fail the run, and
+          # leave the issue alone, so a broken check never reads as a clean one.
+          if [ "$code" -gt 1 ]; then
+            exit "$code"
+          fi
+          existing="$(gh issue list --state open --label freshness --search "\"$title\" in:title" --json number,title --jq "[.[] | select(.title == \"$title\")][0].number // empty")"
+          if [ "$code" -eq 0 ]; then
+            if [ -n "$existing" ]; then
+              gh issue close "$existing" --comment "Every page was committed or reviewed within the limit again."
+            fi
+            exit 0
+          fi
+          # `gh` refuses a label the repository does not have, and labels only
+          # arrive with the baseline, so create them here. An existing one is fine.
+          gh label create freshness --color b77610 --description "A scheduled check found something to update" 2>/dev/null || true
+          gh label create area:docs --color 692746 --description "Documentation and the docs site" 2>/dev/null || true
+          if [ -n "$existing" ]; then
+            # Only when the report changed, so a week with the same findings is quiet.
+            if [ "$(gh issue view "$existing" --json body --jq .body)" != "$(cat "$RUNNER_TEMP/report.md")" ]; then
+              gh issue edit "$existing" --body-file "$RUNNER_TEMP/report.md" --add-label freshness --add-label area:docs
+            fi
+          else
+            gh issue create --title "$title" --label area:docs --label freshness --body-file "$RUNNER_TEMP/report.md"
+          fi
