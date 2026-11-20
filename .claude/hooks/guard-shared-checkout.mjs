@@ -5,14 +5,23 @@
  *
  *  - Write|Edit: blocks when the file belongs to a main worktree.
  *  - Bash: blocks `git commit`, `git switch -c|-C|--create` and
- *    `git checkout -b|-B` when the target (`git -C DIR`, else the hook's `cwd`)
- *    is a main worktree. `git pull`, `git fetch` and `git worktree add` stay
- *    allowed: finishing-work pulls main, and worktrees are made from it.
+ *    `git checkout -b|-B` when the target (`git -C DIR`, a `cd DIR` before it,
+ *    else the hook's `cwd`) is a main worktree. `git pull`, `git fetch` and
+ *    `git worktree add` stay allowed: finishing-work pulls main, and worktrees
+ *    are made from it.
  *
  * A path outside any git repository (plans, memory, scratchpad) passes. The
  * hook reads the directory from the input's `cwd`, never CLAUDE_PROJECT_DIR,
  * which stays at the starting root after a session enters a worktree. No path
  * is hardcoded, so the same script works in any repository.
+ *
+ * It reads a command line the way a shell does, so text that only names a
+ * command (a commit message saying "a git commit") is not a command. It looks
+ * through `bash -c '...'`, `eval`, `$(...)` and backticks, and it takes any
+ * `git` word of a simple command as the command, so a prefix such as `sudo`,
+ * `time`, `if ...; then` or `xargs` does not hide it. Where it cannot tell, it
+ * errs towards blocking: a path built from a shell variable is judged from the
+ * hook's own `cwd`.
  *
  * Blocks by exiting 2 with a message on stderr. It fails open on input it
  * cannot read; settings.json marks it `onFailure: block` for a crash.
@@ -65,17 +74,33 @@ const WRITING = [
 ];
 
 const HEREDOC = /^<<(-?)[ \t]*(?:'([^']*)'|"([^"]*)"|([^\s;&|<>()]+))/;
+const SHELL = /(^|\/)(sh|bash|zsh|dash|ksh)$/;
+
+/** Index of the parenthesis closing the one at `open`, or the last index. */
+function closingParen(line, open) {
+  let depth = 0;
+  for (let i = open; i < line.length; i++) {
+    if (line[i] === "(") depth++;
+    else if (line[i] === ")" && --depth === 0) return i;
+  }
+  return line.length - 1;
+}
 
 /**
  * Splits a command line into simple commands, each a list of words, the way a
  * shell reads it: quotes group words and are removed, `&&`, `||`, `;`, `|`,
- * `&`, parentheses and newlines end a command, and the body of a here-document
- * is skipped. Text inside quotes or a here-document (a commit message that says
- * "a git commit") is therefore never mistaken for a command.
+ * `&`, parentheses, backticks and newlines end a command, and the body of a
+ * here-document is skipped. A `$(...)` or backtick inside double quotes runs, so
+ * its body is read as commands too. `grouped` is true when the line has any
+ * subshell or substitution, which makes a `cd` in it unreliable.
+ *
+ * @returns {{ commands: string[][], grouped: boolean }}
  */
 export function simpleCommands(line) {
   const commands = [];
   const heredocs = [];
+  const nested = [];
+  let grouped = false;
   let words = [];
   let word = null;
   let quote = null;
@@ -91,10 +116,24 @@ export function simpleCommands(line) {
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
     if (quote) {
-      if (c === quote) quote = null;
-      else if (c === "\\" && quote === '"' && i + 1 < line.length)
+      if (c === quote) {
+        quote = null;
+      } else if (quote === '"' && c === "$" && line[i + 1] === "(") {
+        const end = closingParen(line, i + 1);
+        nested.push(line.slice(i + 2, end));
+        word += line.slice(i, end + 1);
+        i = end;
+      } else if (quote === '"' && c === "`") {
+        const close = line.indexOf("`", i + 1);
+        const end = close === -1 ? line.length : close;
+        nested.push(line.slice(i + 1, end));
+        word += line.slice(i, end + 1);
+        i = end;
+      } else if (c === "\\" && quote === '"' && i + 1 < line.length) {
         word += line[++i];
-      else word += c;
+      } else {
+        word += c;
+      }
       continue;
     }
     if (c === "'" || c === '"') {
@@ -116,6 +155,10 @@ export function simpleCommands(line) {
           if (same || end === -1) break;
         }
       }
+    } else if (c === "$" && line.startsWith("((", i + 1)) {
+      // Arithmetic: a `<<` in it is a shift, not a here-document.
+      word = (word ?? "") + "0";
+      i = closingParen(line, i + 1);
     } else if (c === "<" && line[i + 1] === "<" && line[i + 2] !== "<") {
       const m = HEREDOC.exec(line.slice(i));
       if (m) {
@@ -127,32 +170,59 @@ export function simpleCommands(line) {
         i += m[0].length - 1;
       }
     } else if ("&|;()`".includes(c)) {
+      if ("()`".includes(c)) grouped = true;
       endCommand();
     } else {
       word = (word ?? "") + c;
     }
   }
   endCommand();
-  return commands;
+  for (const body of nested) {
+    commands.push(...simpleCommands(body).commands);
+    grouped = true;
+  }
+  return { commands, grouped };
 }
 
-/** The command name of a word list, past env assignments and wrappers. */
-function commandIndex(words) {
-  let i = 0;
-  while (
-    i < words.length &&
-    (/^[A-Za-z_]\w*=/.test(words[i]) ||
-      ["env", "command", "exec"].includes(words[i]))
-  )
-    i++;
-  return i;
+/**
+ * The simple commands to judge: each one, plus what a shell wrapper runs
+ * (`bash -c '...'`, `eval ...`), read as commands in turn. `top` is false for
+ * a nested one.
+ *
+ * @returns {{ words: string[], top: boolean }[]}
+ */
+export function expandCommands(commands, top = true) {
+  const out = [];
+  for (const words of commands) {
+    out.push({ words, top });
+    const shell = words.findIndex((w) => SHELL.test(w));
+    if (shell >= 0) {
+      const flag = words.findIndex(
+        (w, i) => i > shell && /^-[a-z]*c[a-z]*$/.test(w),
+      );
+      if (flag >= 0 && words[flag + 1] !== undefined)
+        out.push(
+          ...expandCommands(simpleCommands(words[flag + 1]).commands, false),
+        );
+    }
+    const evalAt = words.indexOf("eval");
+    if (evalAt >= 0)
+      out.push(
+        ...expandCommands(
+          simpleCommands(words.slice(evalAt + 1).join(" ")).commands,
+          false,
+        ),
+      );
+  }
+  return out;
 }
+
+const isGit = (w) => w === "git" || w.endsWith("/git");
 
 /** Directory one simple git command works in, and whether it writes history. */
 export function gitWrites(words, cwd) {
-  const at = commandIndex(words);
-  const name = words[at];
-  if (name !== "git" && !name?.endsWith("/git")) return null;
+  const at = words.findIndex(isGit);
+  if (at < 0) return null;
   let dir = cwd;
   let i = at + 1;
   while (i < words.length && words[i].startsWith("-")) {
@@ -206,8 +276,23 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
   } else if (tool === "Bash") {
     const command = input.tool_input?.command ?? "";
-    for (const words of simpleCommands(command)) {
-      const hit = gitWrites(words, cwd);
+    const { commands, grouped } = simpleCommands(command);
+    // A top-level `cd DIR` moves the commands after it. With a subshell or a
+    // substitution anywhere in the line, or a path built from a variable, it
+    // is ignored and the hook's own cwd is used.
+    let dir = cwd;
+    for (const { words, top: topLevel } of expandCommands(commands)) {
+      if (
+        topLevel &&
+        !grouped &&
+        words[0] === "cd" &&
+        words[1] &&
+        !/[$~*?]/.test(words[1])
+      ) {
+        dir = path.resolve(dir, words[1]);
+        continue;
+      }
+      const hit = gitWrites(words, dir);
       if (!hit) continue;
       const top = mainWorktreeOf(hit.dir);
       if (top)

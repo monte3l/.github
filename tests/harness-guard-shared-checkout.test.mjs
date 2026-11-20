@@ -134,6 +134,43 @@ describe("guard-shared-checkout", () => {
     }
   });
 
+  it("blocks a commit behind a reserved word, a wrapper, a shell or a substitution", () => {
+    for (const command of [
+      "if true; then git commit -m x; fi",
+      "{ git commit -m x; }",
+      "! git commit -m x",
+      "time git commit -m x",
+      "sudo git commit -m x",
+      "nohup git commit -m x",
+      "xargs git commit",
+      "bash -c 'git commit -m x'",
+      'sh -c "git switch -c topic"',
+      "bash -lc 'git checkout -b topic'",
+      'eval "git commit -m x"',
+      'echo "$(git commit -m x)"',
+      'echo "`git commit -m x`"',
+      "echo $(git commit -m x)",
+    ]) {
+      assert.equal(run({ tool_name: "Bash", cwd: main, tool_input: { command } }).status, 2, command);
+    }
+  });
+
+  it("does not let arithmetic hide a command as a here-document", () => {
+    // `<<` in $(( )) is a shift. Read as a here-document it would swallow the commit line.
+    const command = "echo $((1<<2))\ngit commit -m x\n2";
+    assert.equal(run({ tool_name: "Bash", cwd: main, tool_input: { command } }).status, 2);
+  });
+
+  it("follows a top-level cd, and ignores one it cannot trust", () => {
+    const at = (command, cwd = main) => run({ tool_name: "Bash", cwd, tool_input: { command } }).status;
+    assert.equal(at(`cd ${linked} && git commit -m x`), 0, "cd into a worktree, then commit");
+    assert.equal(at(`cd ${linked}\ngit commit -m x`), 0);
+    assert.equal(at(`cd ${main} && git commit -m x`, linked), 2, "cd into the main checkout, then commit");
+    assert.equal(at("cd $WT && git commit -m x"), 2, "a path built from a variable is judged from cwd");
+    assert.equal(at(`(cd ${linked} && true); git commit -m x`), 2, "a subshell cd does not move later commands");
+    assert.equal(at(`bash -c 'cd ${linked} && git commit -m x'`), 2, "a nested cd is not trusted");
+  });
+
   it("allows tools it does not handle, and fails open on bad input", () => {
     assert.equal(run({ tool_name: "Read", cwd: main, tool_input: { file_path: "a" } }).status, 0);
     const r = spawnSync("node", [guard], { input: "not json", encoding: "utf8" });
