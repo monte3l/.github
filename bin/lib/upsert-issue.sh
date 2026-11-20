@@ -23,6 +23,10 @@
 #   GH_TOKEN             a token with issues write on the repository
 #   GITHUB_REPOSITORY    OWNER/REPO. Falls back to the current checkout's remote.
 #   DRY_RUN=1            print what would happen and change nothing
+#   ISSUE_TYPE           the org issue type a new issue gets. Default Gap: a scheduled
+#                        finding is drift or staleness. Empty sets none. If the type
+#                        cannot be set (the org lacks it, or an older gh has no --type),
+#                        the issue is opened without it, so no finding is lost.
 #
 # Exit codes: 0 done or nothing to do, 2 usage, 3 a gh call failed.
 set -eEuo pipefail
@@ -44,6 +48,7 @@ clean=0
 repo_args=()
 [[ -n "${GITHUB_REPOSITORY:-}" ]] && repo_args=(-R "$GITHUB_REPOSITORY")
 dry="${DRY_RUN:-}"
+issue_type="${ISSUE_TYPE-Gap}"
 
 run() {
   if [[ -n "$dry" ]]; then
@@ -132,7 +137,19 @@ if [[ -z "$number" ]]; then
   for one in "${label_list[@]}"; do
     [[ -n "$one" ]] && label_args+=(--label "$one")
   done
-  run issue create "${repo_args[@]}" --title "$title" "${label_args[@]}" --body-file "$full_body"
+  created=0
+  if [[ -n "$issue_type" ]]; then
+    if run issue create "${repo_args[@]}" --title "$title" "${label_args[@]}" --type "$issue_type" --body-file "$full_body"; then
+      created=1
+    else
+      printf 'could not open the issue with type %s: checking, then opening it without a type\n' "$issue_type" >&2
+      # A failure after the issue was created would make a second one on retry.
+      again="$(gh issue list "${repo_args[@]}" --state open --label "$label" --limit 100 --json title \
+        | jq -r --arg t "$title" '[.[] | select(.title == $t)] | length')"
+      [[ "$again" -eq 0 ]] || created=1
+    fi
+  fi
+  [[ "$created" -eq 1 ]] || run issue create "${repo_args[@]}" --title "$title" "${label_args[@]}" --body-file "$full_body"
   printf 'opened "%s"\n' "$title"
 elif [[ "$old_fp" == "$fingerprint" ]]; then
   add_missing_labels
