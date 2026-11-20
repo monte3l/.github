@@ -161,14 +161,45 @@ describe("guard-shared-checkout", () => {
     assert.equal(run({ tool_name: "Bash", cwd: main, tool_input: { command } }).status, 2);
   });
 
-  it("follows a top-level cd, and ignores one it cannot trust", () => {
+  it("follows a cd only where it is certain to have moved the shell", () => {
     const at = (command, cwd = main) => run({ tool_name: "Bash", cwd, tool_input: { command } }).status;
-    assert.equal(at(`cd ${linked} && git commit -m x`), 0, "cd into a worktree, then commit");
-    assert.equal(at(`cd ${linked}\ngit commit -m x`), 0);
+    assert.equal(at(`cd ${linked} && git commit -m x`), 0, "cd into a worktree, then commit, joined by &&");
+    assert.equal(at(`cd ${linked} && cd . && git commit -m x`), 0, "a chain of &&");
     assert.equal(at(`cd ${main} && git commit -m x`, linked), 2, "cd into the main checkout, then commit");
+    // After ; a newline or a pipe the cd may have failed, so the old directory counts too.
+    assert.equal(at(`cd ${linked}; git commit -m x`), 2, "after ; both places are checked");
+    assert.equal(at(`cd ${linked}\ngit commit -m x`), 2, "after a newline both places are checked");
+    assert.equal(at(`cd ${linked} || git commit -m x`), 2, "after || the commit runs only if the cd failed");
+    assert.equal(at(`cd ${linked}/missing && git commit -m x`), 2, "a target that does not exist moves nothing");
     assert.equal(at("cd $WT && git commit -m x"), 2, "a path built from a variable is judged from cwd");
     assert.equal(at(`(cd ${linked} && true); git commit -m x`), 2, "a subshell cd does not move later commands");
     assert.equal(at(`bash -c 'cd ${linked} && git commit -m x'`), 2, "a nested cd is not trusted");
+  });
+
+  it("checks every git word of a command, and reads a shell fed a here-document", () => {
+    for (const command of [
+      "git status && git log | xargs git commit -m x",
+      "echo done; sudo -u me git commit -m x",
+      "bash <<'EOF'\ngit commit -m x\nEOF",
+      "cat <<'EOF' | sh\ngit switch -c topic\nEOF",
+      "bash -s <<EOF\ngit checkout -b topic\nEOF",
+    ]) {
+      assert.equal(run({ tool_name: "Bash", cwd: main, tool_input: { command } }).status, 2, command);
+    }
+    // A here-document that only feeds text to cat is not a script.
+    assert.equal(run({ tool_name: "Bash", cwd: main, tool_input: { command: "cat <<'EOF'\ngit commit -m x\nEOF" } }).status, 0);
+  });
+
+  it("reads $(( as arithmetic only when it closes with )), and matches parentheses past quotes", () => {
+    for (const command of [
+      "echo $((echo a); git commit -m x)",
+      "echo $((1<<2)); git commit -m x",
+      `echo "$(echo ')'; git commit -m x)"`,
+      `echo "$(echo "(" ; git switch -c topic)"`,
+    ]) {
+      assert.equal(run({ tool_name: "Bash", cwd: main, tool_input: { command } }).status, 2, command);
+    }
+    assert.equal(run({ tool_name: "Bash", cwd: main, tool_input: { command: "echo $((1<<2)) done" } }).status, 0);
   });
 
   it("allows tools it does not handle, and fails open on bad input", () => {
