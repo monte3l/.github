@@ -1,6 +1,7 @@
 name: Feature request
 description: Suggest a change or an addition
-labels: ["enhancement"]
+type: Feature
+projects: ["monte3l/5"]
 body:
   - type: markdown
     attributes:
