@@ -14,6 +14,8 @@ Second sweep: 2026-10-22, run from `/customize` (m3l-groundwork 1.1.0 re-run, sa
 
 ## Outstanding drift
 
+Applied on 2026-11-20 (harness automations H3): `guard-public-issues.mjs` (PreToolUse, pre-filtered with `"if": "Bash(gh *)"`: deny for a `DRIFT` line naming an org repository in `monte3l/.github`, `ask` for vulnerability wording) and a `ROADMAP.md` case in `verify-edit.sh`. The vulnerability rule asks instead of denying, because a documentation change can mention the word legitimately. Dropped by the owner: the `tracking` skill (4a), and the `roadmap-classifier` subagent (4b) was skipped because the migration sweep is already running by hand. Not verified: whether `"if": "Bash(gh *)"` matches `env gh issue create`; the script's own regex stays authoritative.
+
 Applied on 2026-11-20 (harness automations H2): `guard-review-dates.mjs` (PreToolUse, `ask`) and four more invariants (9 to 12) in `template-invariants-reviewer`.
 
 Dropped on 2026-11-20: two skills planned for H2, `verifying-after-merge` (map a merged PR's paths to the scheduled workflow that reads them) and `org-prs` (one table of the user's open PRs across the org). Both were built through `/skill-creator` and beat a no-skill baseline in a first eval round (100% against 61% and 57% of assertions, one run each, graded by the author). They were dropped by the owner's decision, not for a defect. The description optimizer was unusable here: with the real skill installed, its temporary copy never registered, and from a scratch project recall stayed at 0 to 17% whatever the wording. A plain `claude -p` run did call the real `org-prs` skill on its own query.

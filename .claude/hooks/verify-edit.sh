@@ -12,6 +12,18 @@ case "$file" in
   */blueprint/*.json | */workflow-templates/*.json)
     out="$(jq empty "$file" 2>&1)" || fail "Invalid JSON in $file: $out"
     ;;
+  */blueprint/files/*) ;; # starters hold placeholders on purpose, such as `{date}` in ROADMAP.md
+  */ROADMAP.md)
+    # The one parser behind the `roadmap: sections` baseline item: five headings in
+    # order and a valid `reviewed:` date. It runs from the repository this hook belongs
+    # to, never from the repository of the edited file: a checkout Claude was only asked
+    # to edit could ship its own bin/lib/roadmap.mjs, and this hook would run it. A
+    # sibling that copied this hook has no such parser and skips the check.
+    own="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    if command -v node >/dev/null && [[ -f "$own/bin/lib/roadmap.mjs" ]]; then
+      out="$(node "$own/bin/lib/roadmap.mjs" <"$file" 2>&1)" || fail "ROADMAP.md does not follow blueprint/tracking.md: $out"
+    fi
+    ;;
   */bin/*.sh)
     out="$(bash -n "$file" 2>&1)" || fail "Syntax error in $file: $out"
     if command -v shellcheck >/dev/null; then
