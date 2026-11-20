@@ -367,7 +367,6 @@ One row per file or group of files. **Delivery** is one of:
 | Support | `SUPPORT.md` | **Inherited** | Nothing, or its own copy | Not verified |
 | Bug report form | `.github/ISSUE_TEMPLATE/bug_report.yml` | **Inherited** (all or nothing, see above) | Nothing, or its own `ISSUE_TEMPLATE/` folder | Not verified |
 | Feature request form | `.github/ISSUE_TEMPLATE/feature_request.yml` | **Inherited** (same) | Same | Not verified |
-| Question form | `.github/ISSUE_TEMPLATE/question.yml` | **Inherited** (same) | Same | Not verified |
 | Docs problem form | `.github/ISSUE_TEMPLATE/docs_problem.yml` | **Inherited** (same) | Same | Not verified |
 | Issue chooser, blank issues off | `.github/ISSUE_TEMPLATE/config.yml` | **Inherited** (same) | Same | Not verified |
 | Pull request template | `.github/pull_request_template.md` | **Inherited** | Nothing, or its own copy | Not verified |

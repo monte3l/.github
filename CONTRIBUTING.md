@@ -7,12 +7,16 @@ read that one first if it exists.
 ## Before you start
 
 - **Open an issue first** for anything beyond a small fix, so the direction
-  is agreed before you spend time on it.
+  is agreed before you spend time on it. An idea that nobody has committed to
+  yet starts as a Discussion in **Ideas** instead, and becomes an issue when
+  someone takes it on.
 - Some repositories accept pull requests from collaborators only. If you
   can't open a pull request, the issue is the contribution: a maintainer
   will pick it up.
 - Report a suspected security vulnerability privately. See
   [`SECURITY.md`](SECURITY.md). Never in a public issue.
+- Where a bug, a gap, a known limit or a plan is recorded is in the
+  [tracking policy](https://github.com/monte3l/.github/blob/main/blueprint/tracking.md).
 
 ## Commits
 

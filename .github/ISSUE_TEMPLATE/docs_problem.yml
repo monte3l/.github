@@ -1,6 +1,8 @@
 name: Docs problem
 description: A page is wrong, unclear or missing
-labels: ["documentation"]
+type: Task
+labels: ["area:docs"]
+projects: ["monte3l/5"]
 body:
   - type: markdown
     attributes:
