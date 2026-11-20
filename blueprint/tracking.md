@@ -62,14 +62,17 @@ sections, in this order. A heading may carry a qualifier after the name, such as
 | **Now** | What is under way or released next, each item linked to its issue or milestone |
 | **Next 12 months** | What the project means to do, and what would change the plan |
 | **Known limits** | What it does not do, or does only partly, and has chosen to accept |
-| **Unverified** | Claims it relies on but has not checked, as a table of claim, source and date |
+| **Unverified** | Claims it relies on but has not checked: a table of claim, source and date, or a link to a ledger file (for example `UNVERIFIED.md`) that holds each claim, its result and when it was last looked at. Do not copy a ledger into the roadmap |
 | **What this project will not do** | What a reader might expect and should not, with the reason |
 
 The file starts with `reviewed: YYYY-MM-DD` in its frontmatter. Set it when you
-re-read the file and found it true. **Never change it to clear a report.** The
-docs kit reports a page that has gone 180 days without a commit or a newer
-`reviewed:` date, and a ROADMAP is a docs page like any other. Keep the heading
-`Next 12 months`: the OpenSSF Best Practices answer for a roadmap links to it.
+re-read the file and found it true, and re-read it at each release. **Never
+change it to clear a report.** The docs kit's page-freshness report (m3l-design
+1.5.0 and later) flags a page that has gone 180 days without a commit or a newer
+`reviewed:` date, and a ROADMAP is a docs page like any other. A repository
+gets that report with its design re-sync, so until it has synced, the release
+re-read is the only check. Keep the heading `Next 12 months`: the OpenSSF Best
+Practices answer for a roadmap links to it.
 
 A limit says what it is, who it affects and what would change it. An unverified
 claim names who said it and when. Neither is an issue until someone means to act.
