@@ -202,6 +202,20 @@ describe("guard-shared-checkout", () => {
     assert.equal(run({ tool_name: "Bash", cwd: main, tool_input: { command: "echo $((1<<2)) done" } }).status, 0);
   });
 
+  it("still runs when started through a symlink or a path with a space (else it fails open)", () => {
+    const dir = path.join(tmp, "with space");
+    fs.mkdirSync(dir);
+    const copy = path.join(dir, "guard.mjs");
+    fs.copyFileSync(guard, copy);
+    const link = path.join(tmp, "guard-link.mjs");
+    fs.symlinkSync(copy, link);
+    const payload = JSON.stringify({ tool_name: "Edit", cwd: main, tool_input: { file_path: "a.txt" } });
+    for (const script of [copy, link]) {
+      const r = spawnSync("node", [script], { input: payload, encoding: "utf8" });
+      assert.equal(r.status, 2, `${script}: ${r.stderr}`);
+    }
+  });
+
   it("does not crash on a payload of the wrong shape (a crash would block every tool call)", () => {
     for (const payload of [
       "", "not json", "null", "[]", "{}", '"str"', "42", "true",
