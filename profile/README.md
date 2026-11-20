@@ -48,6 +48,19 @@ and labels. It also holds a
 [README skeleton](https://github.com/monte3l/.github/blob/main/blueprint/files/README.md)
 that every repository's README follows.
 
+One command, `bin/new-repo.sh`, creates a repository from the blueprint: it
+writes the starter files and the workflow templates, applies the settings,
+shares the organization secrets and adds the repository to the organization's
+Apps. It can add a release configuration or a docs site, and it shows every file
+and step before it changes anything. A weekly sync then opens a pull request when
+a repository's copy of a workflow falls behind its template, and a weekly audit
+counts drift across the organization.
+
+## For agents
+
+Each docs site publishes `llms.txt`, `llms-full.txt`, a sitemap and a Markdown
+copy of every page, for example [monte3l.com/llms.txt](https://monte3l.com/llms.txt).
+
 ## Design system
 
 Every repository follows **m3l-design**, the organization's design system.
