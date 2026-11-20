@@ -209,7 +209,10 @@ try {
           // An older version with broken markers cannot be rendered, so nothing is called stale against it.
         }
       }
-      const verdict = classify(found.text, current, old);
+      let verdict = classify(found.text, current, old);
+      // A starter has no SPDX header and the comparison ignores that line, so a copy that carries its
+      // own would be refreshed without it, which can fail a REUSE check there. A person does that one.
+      if (unit.kind === "starter" && verdict.state === "STALE" && /SPDX-/.test(found.text) && !/SPDX-/.test(current)) verdict = { state: "CUSTOM" };
       results.push({ ...row, path: found.path, ...verdict });
       if (writeDir !== null && unit.managed && verdict.state === "STALE") {
         // Only a workflow has jobs: a starter has no required check to rename.

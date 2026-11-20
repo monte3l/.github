@@ -6,7 +6,7 @@
 // any call to GitHub. The allowed starter paths are read from the real blueprint/sync.json.
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -23,10 +23,13 @@ const git = (cwd, ...args) =>
 /**
  * A consumer checkout with `before` committed, then `after` written over it (a string writes a file,
  * null leaves it as committed). Returns the script's result in DRY_RUN mode.
+ * With `config`, the script runs from a copy that has that sync.json (a string is written as is), so the
+ * allowed paths can be varied; `repo` is the repository name it is asked about.
  * @param {Record<string, string>} before
  * @param {Record<string, string | { text: string, mode?: number }>} after
+ * @param {{ config?: object | string, repo?: string }} [options]
  */
-function sync_(before, after) {
+function sync_(before, after, { config, repo = "m3l-x" } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), "consumer-"));
   git(dir, "init", "-q");
   const write = (rel, text, mode) => {
@@ -38,7 +41,16 @@ function sync_(before, after) {
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", "base");
   for (const [rel, value] of Object.entries(after)) typeof value === "string" ? write(rel, value) : write(rel, value.text, value.mode);
-  const result = spawnSync("bash", [script, "monte3l/m3l-x", dir], { encoding: "utf8", env: { ...process.env, DRY_RUN: "1" } });
+  let run = script;
+  if (config !== undefined) {
+    const tree = mkdtempSync(path.join(tmpdir(), "tool-"));
+    mkdirSync(path.join(tree, "bin"));
+    mkdirSync(path.join(tree, "blueprint"));
+    cpSync(script, path.join(tree, "bin", "template-sync-pr.sh"));
+    writeFileSync(path.join(tree, "blueprint", "sync.json"), typeof config === "string" ? config : JSON.stringify(config));
+    run = path.join(tree, "bin", "template-sync-pr.sh");
+  }
+  const result = spawnSync("bash", [run, `monte3l/${repo}`, dir], { encoding: "utf8", env: { ...process.env, DRY_RUN: "1" } });
   return { status: result.status, out: result.stdout, err: result.stderr };
 }
 
@@ -108,4 +120,31 @@ test("no change is nothing to do", () => {
   const { status, out } = sync_(BASE, {});
   assert.equal(status, 0);
   assert.match(out, /every copy is current: nothing to do/);
+});
+
+// A repository that keeps a starter somewhere of its own says so in `repos.<name>.paths`, and the CLI writes there.
+const OWN = { starters: { x: { mode: "managed", paths: [".x"] } }, repos: { "m3l-x": { paths: { x: "conf/x" } } } };
+const OWN_BASE = { ...BASE, "conf/x": "a\n", ".x": "a\n" };
+
+test("a path a repository names for itself is sent for that repository", () => {
+  const { status, out, err } = sync_(OWN_BASE, { "conf/x": "b\n" }, { config: OWN });
+  assert.equal(status, 0, err);
+  assert.match(out, /1 file\(s\)/);
+});
+
+test("the same path is refused for a repository that did not name it", () => {
+  const { status, err } = sync_(OWN_BASE, { "conf/x": "b\n" }, { config: OWN, repo: "m3l-y" });
+  assert.equal(status, 1);
+  assert.match(err, /conf\/x/);
+});
+
+test("a starter's own paths are still sent when the repository has an override elsewhere", () => {
+  const { status, err } = sync_(OWN_BASE, { ".x": "b\n" }, { config: OWN });
+  assert.equal(status, 0, err);
+});
+
+test("a sync.json that cannot be read stops the script with its own message", () => {
+  const { status, err } = sync_(BASE, { ".gitleaks.toml": "# new\n" }, { config: "not json" });
+  assert.equal(status, 1);
+  assert.match(err, /cannot read the allowed paths from blueprint\/sync\.json/);
 });

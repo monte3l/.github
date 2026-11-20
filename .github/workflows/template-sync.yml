@@ -1,13 +1,14 @@
 name: Template sync
 
-# Opens one pull request per consumer repository that holds a workflow copy
-# running an OLDER version of its template in `workflow-templates/`.
+# Opens one pull request per consumer repository that holds a workflow copy, or a
+# verbatim starter, that is an OLDER version of its original in
+# `workflow-templates/` or `blueprint/files/`.
 #
 # What counts as stale is decided by `bin/template-sync.mjs` and nothing else: a
 # managed copy that strictly matches a version the template really had. A copy a
 # person changed on purpose is custom and never touched, a copy whose refresh
 # would rename a job is left out (a required check is a job name), and an
-# unmanaged template (`verify`, `release`, `claude`) is never a candidate. See
+# unmanaged template (`verify`, `release`) is never a candidate. See
 # `blueprint/README.md`, "Workflow template sync".
 #
 # It runs every Monday at 06:15 UTC, an hour after `freshness.yml` reports the

@@ -19,8 +19,9 @@ name: Freshness (Scheduled)
 #   nowhere (`bin/knowledge-report.mjs`). It never edits a page, and a stale page
 #   never blocks a merge: the build gate is `bin/knowledge-parity.mjs`.
 # - `copies`: compares every consumer repository's copy of each workflow
-#   template with the template (`bin/template-sync.mjs`), and reports a copy that
-#   runs an older version of it. A copy a person changed on purpose is left
+#   template, and of each verbatim starter (`.gitleaks.toml`, `.editorconfig` and
+#   so on), with the original (`bin/template-sync.mjs`), and reports a copy that
+#   is an older version of it. A copy a person changed on purpose is left
 #   alone and never reported. It reads public files and changes nothing.
 #
 # A run fails only when it cannot check; a finding is reported by its issue.
@@ -195,7 +196,7 @@ jobs:
             1)
               {
                 cat <<'TEXT'
-          These need a person to look at them. A copy behind its template runs an older version of it: the template has changed in behaviour since the copy was made. The full comparison is in the job summary of the run that wrote this.
+          These need a person to look at them. A copy behind its template runs an older version of it: the template has changed in behaviour since the copy was made. A starter file, such as .gitleaks.toml or .editorconfig, is behind in the same way. The full comparison is in the job summary of the run that wrote this.
 
           ```text
           TEXT

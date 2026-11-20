@@ -148,3 +148,12 @@ test("a starter listed in sync.json but missing from blueprint/files stops the r
   assert.equal(r.status, 2);
   assert.match(r.err, /not in blueprint\/files/);
 });
+
+test("a stale starter that carries its own SPDX header is left alone, because a refresh would drop it", () => {
+  const withHeader = `# SPDX-FileCopyrightText: 2026 someone\n${V1}`;
+  const env = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW, "conf/x.toml": withHeader } });
+  const r = runSync(env, "--write", "OUT");
+  assert.equal(r.status, 0, r.err);
+  assert.equal(r.written("conf/x.toml"), null);
+  assert.equal(r.findings, "");
+});

@@ -7,9 +7,11 @@
 #
 # Run by .github/workflows/template-sync.yml, once per repository, after the
 # write step. Nothing here decides what is stale: it commits what is on disk, and
-# only a workflow file under .github/workflows/ or a starter at a path that
-# blueprint/sync.json lists. That file is also what says which starters are
-# managed, so the one list cannot disagree with the other.
+# only a workflow file under .github/workflows/ or a file at a path that
+# blueprint/sync.json lists: the paths of a starter, or a path that this
+# repository names for a file of its own (`repos.<name>.paths`). That file is also
+# what says which starters are managed, and the CLI writes where it says, so the
+# two cannot disagree.
 #
 # Environment:
 #   GH_TOKEN   an App installation token for OWNER/REPO (contents, pull requests
@@ -72,14 +74,15 @@ fi
 # The only things this script may send are a workflow file and a starter it was
 # handed, at a path it knows. Anything else in the change set means the checkout
 # is not what the workflow made.
-starter_paths="$(jq -r '(.starters // {}) | .[] | .paths[]' "$here/../blueprint/sync.json")"
+allowed_paths="$(jq -r --arg r "${repo#*/}" '((.starters // {}) | .[] | .paths[]), ((.repos[$r].paths // {}) | .[])' "$here/../blueprint/sync.json")" ||
+  die "cannot read the allowed paths from blueprint/sync.json"
 other=""
 only_workflows=1
 while IFS= read -r changed; do
   [[ -n "$changed" ]] || continue
   if [[ "$changed" =~ ^\.github/workflows/[A-Za-z0-9._-]+\.yml$ ]]; then
     continue
-  elif grep -qxF -- "$changed" <<<"$starter_paths"; then
+  elif grep -qxF -- "$changed" <<<"$allowed_paths"; then
     only_workflows=0
   else
     other+="$changed "
@@ -156,7 +159,7 @@ body="$(
   printf 'Refreshes files in this repository that are an **older version** of their workflow template or starter in `monte3l/.github`:\n\n'
   for path in "${files[@]}"; do printf -- '- `%s`\n' "$path"; done
   printf '\nA file is refreshed only if it matched, apart from blank lines, the SPDX header and action pins, a version the template or starter really had. A file someone changed on purpose is never touched, and neither is a workflow whose refresh would rename a job (a required check is a job name).\n\n'
-  printf 'The files are the current template for this repository, so **their action pins are the template'"'"'s**: a pin can be tied to an input in the same file, so they move together. Dependabot here keeps them current afterwards. Read the diff, as a template change can alter what a workflow does. The required checks run on this pull request as on any other.\n\n'
+  printf 'Each file is the current template or starter for this repository. For a workflow, **the action pins are the template'"'"'s**: a pin can be tied to an input in the same file, so they move together. Dependabot here keeps them current afterwards. Read the diff, as a template change can alter what a workflow does. The required checks run on this pull request as on any other.\n\n'
   printf 'Opened by `template-sync.yml` in `monte3l/.github`. Rules: [Workflow template sync](https://github.com/monte3l/.github/blob/main/blueprint/README.md#workflow-template-sync).\n'
 )"
 url="$(gh pr create -R "$repo" --head "$branch" --base "$default" --title "$title" --body "$body")"
