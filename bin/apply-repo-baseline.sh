@@ -288,6 +288,43 @@ report_file "line endings" "copy blueprint/files/gitattributes" .gitattributes
 report_file "editor config" "copy blueprint/files/editorconfig" .editorconfig
 report_file "REUSE" "start from blueprint/files/REUSE.toml and add LICENSES/" REUSE.toml
 report_file "dependency review config" "copy blueprint/files/dependency-review-config.yml: the Dependency Review workflow reads it, and fails without it" .github/dependency-review-config.yml
+
+# report_placeholders LABEL STARTER HINT PATH...: DRIFT when the first PATH that
+# exists still carries a prompt from blueprint/files/STARTER, which means the
+# starter was copied and never filled in. SKIP when no PATH exists, because
+# report_file already says so. The phrases come from the starter itself, see
+# bin/lib/leftover-placeholders.sh.
+report_placeholders() {
+  local label="$1" starter="$2" hint="$3" path text="" left rc=0
+  shift 3
+  # `|| true`: file_content fails on a missing file, and an assignment that fails
+  # would trip this script's ERR trap (exit 3, "could not be checked").
+  for path in "$@"; do
+    text="$(file_content "$path" || true)"
+    [[ -n "$text" ]] && break
+  done
+  if [[ -z "$text" ]]; then
+    skip "$label" "no $*"
+    return
+  fi
+  left="$("$here/../bin/lib/leftover-placeholders.sh" "$here/files/$starter" <<<"$text")" || rc=$?
+  [[ "$rc" -le 1 ]] || {
+    printf 'error: leftover-placeholders.sh failed for %s (exit %s)\n' "$starter" "$rc" >&2
+    exit 3
+  }
+  if [[ "$rc" -eq 0 ]]; then
+    printf 'OK     %s: %s\n' "$label" "$path"
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  %s: %s still has %s unfilled prompt(s), the first is "%s"\n' "$label" "$path" "$(grep -c . <<<"$left")" "${left%%$'\n'*}"
+    [[ "$mode" == "check" ]] || printf '         needs a commit in %s: %s\n' "$repo" "$hint"
+  fi
+}
+
+report_placeholders "security policy: placeholders" SECURITY.md "fill in every {...} prompt and delete the starter comment: blueprint/files/SECURITY.md says what each one asks for" \
+  SECURITY.md .github/SECURITY.md docs/SECURITY.md
+report_placeholders "README: placeholders" README.md "fill in every {...} prompt: blueprint/files/README.md says what each one asks for" README.md
 # The checks below look for the control, not a file name: a repository may run
 # it from its own workflow (for example a `reuse lint` step inside `verify.yml`)
 # and a second copy of the template would only duplicate it.
@@ -494,7 +531,8 @@ fi
 # docs.config.mjs is the docs kit's config, so its presence is what makes a
 # repository a docs-site repository. Everything here is a commit, never an API
 # call, except the homepage, which `gh repo edit --homepage` can set.
-if [[ -z "$(file_content docs.config.mjs)" ]]; then
+docs_config="$(file_content docs.config.mjs || true)"
+if [[ -z "$docs_config" ]]; then
   skip "docs site" "no docs.config.mjs"
 else
   docs_marker="$(file_content "$marker_path" || true)"
@@ -510,6 +548,16 @@ else
   fi
   report_workflow "docs site: gate" "run node design/source/docs-kit/build.mjs --check from verify.yml, see blueprint/docs-site.md" \
     'docs-kit/build\.mjs --check'
+  # The gate only proves the docs are well formed. A parity module is what proves
+  # they still say what the code does, so a repository without one is reported.
+  if "$here/../bin/lib/docs-config-parity.sh" <<<"$docs_config"; then
+    printf 'OK     docs site: parity\n'
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  docs site: parity: docs.config.mjs lists no parity module, so nothing checks the docs against the code\n'
+    [[ "$mode" == "check" ]] || printf '         needs a commit in %s: add scripts/doc-parity.mjs and list it under parity: (design/source/docs-kit/lib/parity.mjs has the helpers)\n' "$repo"
+  fi
   report_workflow "docs site: deploy" "copy workflow-templates/docs.yml" \
     'docs-kit/build\.mjs --out' 'wrangler deploy' 'docs-kit/check-live\.mjs --site'
   # The daily check must sit in the same workflow as its schedule, not merely
@@ -683,6 +731,31 @@ else
       drift=$((drift + 1))
       printf 'DRIFT  release: workflow pin: %s\n' "$pin_problem"
       [[ "$mode" == "check" ]] || printf '         move the pin in %s to a commit of %s main\n' "$repo" "$shared_repo"
+    fi
+    # A pin that is on main can still miss a later change to the shared workflows,
+    # and nothing moves it: this repository has no tags for Dependabot to follow.
+    # bin/lib/release-pin-age.sh compares each pin with the newest commit that
+    # touched either shared file. Skipped when a pin itself is wrong, which the
+    # item above reports.
+    if [[ -z "$pin_problem" ]]; then
+      pin_list=()
+      while IFS= read -r pin; do pin_list+=("$pin"); done <<<"$release_pins"
+      age_rc=0
+      age_out="$("$here/../bin/lib/release-pin-age.sh" "$shared_repo" "${release_prepare#"$shared_repo"/}" "${release_finalize#"$shared_repo"/}" "${pin_list[@]}")" || age_rc=$?
+      if [[ "$age_rc" -eq 0 ]]; then
+        printf 'OK     release: workflow pin age %s\n' "${age_out:0:7}"
+        ok=$((ok + 1))
+      elif [[ "$age_rc" -eq 1 ]]; then
+        drift=$((drift + 1))
+        age_newest="${age_out##* }"
+        printf 'DRIFT  release: workflow pin age: %s predates the change %s to the shared release workflows\n' "${age_out:0:7}" "${age_newest:0:7}"
+        [[ "$mode" == "check" ]] || printf '         review https://github.com/%s/compare/%s...main, then move the pin in %s\n' "$shared_repo" "${age_out:0:7}" "$repo"
+      elif [[ "$age_rc" -eq 4 ]]; then
+        skip "release: workflow pin age" "cannot read the history of the shared release workflows"
+      else
+        printf 'error: release-pin-age.sh failed (exit %s)\n' "$age_rc" >&2
+        exit 3
+      fi
     fi
   fi
   report_release_app
