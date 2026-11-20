@@ -74,6 +74,7 @@ What `.claude/` wires up here. Hooks block by exiting 2; a hook script that cann
 | `.claude/hooks/statusline.mjs` | The status line, with `.claude/hooks/statusline-layout.mjs` and `.claude/hooks/subagent-statusline.mjs` for layout and subagent rows |
 | `.claude/agents/template-invariants-reviewer.md` | Read-only reviewer for the cross-file rules no linter checks; run it before a PR touching templates, blueprint, design or workflows |
 | `.claude/skills/org-drift/SKILL.md` | Reports drift between an org repo and the blueprint |
+| `.claude/skills/creating-projects/SKILL.md` | `/creating-projects NAME`: sets up a new project end to end: the registration PR, `bin/new-repo.sh`, the `sync.json` follow-up and the local clone, worktree and guard. Slash command only; confirms every mutating step on its own |
 | `.claude/skills/knowledge/SKILL.md` | Maintains the `knowledge/` wiki: ingest a source into a card and pages, answer from the wiki, or lint it. Read-only for everything outside `knowledge/` |
 | `.claude/skills/writing-commits/SKILL.md` | Conventional Commits with `git commit -s` and the `Co-Authored-By` trailer |
 | `.claude/skills/creating-prs/SKILL.md` | Runs the `verify.yml` commands locally, pushes and opens a PR from the template; never arms auto-merge |
