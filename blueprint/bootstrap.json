@@ -41,6 +41,11 @@
       "to": ".github/CODEOWNERS"
     },
     {
+      "from": "blueprint/files/guard-shared-checkout.mjs",
+      "to": ".claude/hooks/guard-shared-checkout.mjs",
+      "todo": "wire .claude/hooks/guard-shared-checkout.mjs into .claude/settings.json (blueprint/README.md, \"Worktree guard\" gives the two entries); until then it does nothing"
+    },
+    {
       "from": "blueprint/files/ROADMAP.md",
       "to": "ROADMAP.md",
       "substitute": [
