@@ -115,6 +115,25 @@ describe("verify-edit.sh on ROADMAP.md", () => {
     }
   });
 
+  it("never runs a parser that ships with the edited file's own repository", () => {
+    // A foreign checkout with its own bin/lib/roadmap.mjs: if the hook ran it, it would leave a marker.
+    const foreign = fs.mkdtempSync(path.join(os.tmpdir(), "foreign-"));
+    try {
+      sh(foreign, "init", "-q", "-b", "main");
+      fs.mkdirSync(path.join(foreign, "bin/lib"), { recursive: true });
+      const marker = path.join(foreign, "RAN");
+      fs.writeFileSync(
+        path.join(foreign, "bin/lib/roadmap.mjs"),
+        `import fs from "node:fs"; fs.writeFileSync(${JSON.stringify(marker)}, "x"); process.exit(1);\n`,
+      );
+      fs.writeFileSync(path.join(foreign, "ROADMAP.md"), "not a roadmap\n");
+      edit(path.join(foreign, "ROADMAP.md"));
+      assert.equal(fs.existsSync(marker), false, "the foreign parser must not run");
+    } finally {
+      fs.rmSync(foreign, { recursive: true, force: true });
+    }
+  });
+
   it("leaves the starter in blueprint/files alone, placeholders included", () => {
     const starter = path.join(root, "blueprint/files/ROADMAP.md");
     assert.ok(fs.existsSync(starter));
