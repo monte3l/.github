@@ -81,6 +81,17 @@ jobs:
           cat "$RUNNER_TEMP/report.md" >>"$GITHUB_STEP_SUMMARY"
           echo "code=$code" >>"$GITHUB_OUTPUT"
 
+          # Counts only, like everything here: the repository is public, so no
+          # repository name or title is printed. Not fatal, and in this step because
+          # no other step may see the token. The search returns at most 1000 issues.
+          if rows="$(gh search issues --owner "$OWNER" --state open --label freshness --limit 1000 --json repository --jq '.[].repository.nameWithOwner')"; then
+            issues="$(grep -c . <<<"$rows" || true)"
+            repos="$(sort -u <<<"$rows" | grep -c . || true)"
+            printf '\n**Open freshness issues:** %s in %s repositories\n' "$issues" "$repos" >>"$GITHUB_STEP_SUMMARY"
+          else
+            printf '\n**Open freshness issues:** the search failed, see the run log\n' >>"$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Update the tracking issue
         env:
           GH_TOKEN: ${{ github.token }}
@@ -88,9 +99,9 @@ jobs:
           CODE: ${{ steps.audit.outputs.code }}
         run: |
           if [[ -s "$RUNNER_TEMP/findings.md" ]]; then
-            bin/lib/upsert-issue.sh "Org baseline drift" area:ci "$RUNNER_TEMP/findings.md"
+            bin/lib/upsert-issue.sh "Org baseline drift" area:ci,freshness "$RUNNER_TEMP/findings.md"
           elif [[ "$CODE" == "0" ]]; then
-            bin/lib/upsert-issue.sh "Org baseline drift" area:ci "$RUNNER_TEMP/findings.md" --clean
+            bin/lib/upsert-issue.sh "Org baseline drift" area:ci,freshness "$RUNNER_TEMP/findings.md" --clean
           fi
 
       # Drift (1) is reported by the issue. Anything else (2 usage or a missing

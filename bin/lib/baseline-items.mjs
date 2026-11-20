@@ -17,11 +17,13 @@
 export const INLINE_ITEMS = [
   "design system",
   "docs site: tier",
+  "docs site: parity",
   "docs site: daily check",
   "docs site: homepage",
   "repository description",
   "repository topics",
   "release: workflow pin",
+  "release: workflow pin age",
   "release: app installation",
   "release: app secrets",
   "release: immutable releases",
@@ -40,7 +42,7 @@ export const INLINE_ITEMS = [
 
 /**
  * @param {string} script the text of apply-repo-baseline.sh
- * @returns {{ settle: string[], reportFile: string[], reportWorkflow: string[], skip: string[] }}
+ * @returns {{ settle: string[], reportFile: string[], reportWorkflow: string[], reportPlaceholders: string[], skip: string[] }}
  */
 export function parseBaselineScript(script) {
   // A label built from a shell variable (`ruleset: $name`) is one item per
@@ -54,15 +56,22 @@ export function parseBaselineScript(script) {
     settle: labels("settle"),
     reportFile: labels("report_file"),
     reportWorkflow: labels("report_workflow"),
+    reportPlaceholders: labels("report_placeholders"),
     skip: labels("skip"),
   };
 }
 
 /**
+ * The label has to end where the printf's own text ends: at a colon, at the end
+ * of the string (`\n` or the closing quote), or before a `%s` or a parenthesis.
+ * A plain prefix test would let `release: workflow pin age` stand in for
+ * `release: workflow pin`, so deleting the shorter item would pass unnoticed.
+ *
  * @param {string} script
  * @param {string} label
  * @returns {boolean} whether the script prints `label` as an OK or DRIFT line
  */
 export function printsInline(script, label) {
-  return script.includes(`'OK     ${label}`) || script.includes(`'DRIFT  ${label}`);
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`'(?:OK     |DRIFT  )${escaped}(?=:|\\\\n|'| %| \\()`).test(script);
 }
