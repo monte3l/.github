@@ -21,4 +21,9 @@ Check each rule below against the current tree. Start from `git diff main...HEAD
 7. `blueprint/README.md`'s file table lists every file in `blueprint/`, and `design/README.md` records the same version as `blueprint/design-system.json`.
 8. Markdown follows the m3l-design rules: bold instead of italics, no more than two GitHub alerts in a row, `[!CAUTION]` only for data loss or irreversible actions.
 
+9. Workflows that write issues or comments use the job's own `GITHUB_TOKEN` with `issues: write` granted on that job only. An App token (`create-github-app-token`) is minted with explicit `permission-*: read` inputs and never carries a write scope for `org-audit` or other audits.
+10. Every GitHub App environment that a workflow names (`environment:`) is listed in `.github/environments.json`.
+11. This repository is public: the output of `org-audit`, `freshness` and any backfill (issue bodies, step summaries, logs, artifacts) carries counts only, never a repository name, an issue URL or a per-repository DRIFT line.
+12. `workflow-templates/*.yml` carry no per-repository data (a URL, an allow-list, a repository name). Variation uses the `PROJECT` placeholder, a `# sync:if FLAG` block or a config file. A renamed `name:` job in a template is a required-check rename and FAILs unless `blueprint/rulesets/main-branch.json` changed with it.
+
 Report a table with one row per rule: PASS or FAIL. For each FAIL, give the file, the line and the exact fix. If everything passes, say so in one line.

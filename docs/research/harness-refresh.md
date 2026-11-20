@@ -14,6 +14,10 @@ Second sweep: 2026-10-22, run from `/customize` (m3l-groundwork 1.1.0 re-run, sa
 
 ## Outstanding drift
 
+Applied on 2026-11-20 (harness automations H2): `guard-review-dates.mjs` (PreToolUse, `ask`) and four more invariants (9 to 12) in `template-invariants-reviewer`.
+
+Dropped on 2026-11-20: two skills planned for H2, `verifying-after-merge` (map a merged PR's paths to the scheduled workflow that reads them) and `org-prs` (one table of the user's open PRs across the org). Both were built through `/skill-creator` and beat a no-skill baseline in a first eval round (100% against 61% and 57% of assertions, one run each, graded by the author). They were dropped by the owner's decision, not for a defect. The description optimizer was unusable here: with the real skill installed, its temporary copy never registered, and from a scratch project recall stayed at 0 to 17% whatever the wording. A plain `claude -p` run did call the real `org-prs` skill on its own query.
+
 Applied on 2026-11-20 (harness automations H1, from the org-automation, docs-freshness and org-tracking-policy sessions):
 
 - New hooks: `guard-shared-checkout.mjs` (PreToolUse, `onFailure: "block"`; the Bash entry is pre-filtered with `"if": "Bash(git *)"`, best effort), `guard-cross-worktree.mjs` (PreToolUse, `ask`), `session-orientation.mjs` (SessionStart `startup|resume|compact`) and `verify-on-stop.mjs` (Stop). `settings.json` sets `worktree.baseRef: "fresh"` and extends `permissions.ask` with the outward `gh` and `bin/` actions.
