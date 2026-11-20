@@ -67,6 +67,7 @@ What `.claude/` wires up here. Hooks block by exiting 2; a hook script that cann
 | `.claude/hooks/guard-cross-worktree.mjs` | Asks before editing a file another worktree of the repository has modified and not committed |
 | `.claude/hooks/session-orientation.mjs` | On start, resume and compaction: prints the worktree, branch, ahead/behind `origin/main`, the other worktrees and their open PRs |
 | `.claude/hooks/verify-on-stop.mjs` | At the end of a turn with uncommitted changes under coupled paths, runs the docs-kit `--check` and the mapped `tests/` files; exit 2 sends the failure back |
+| `.claude/hooks/guard-review-dates.mjs` | Asks before a change whose only effect is to move a review marker (`reviewed:` frontmatter, `**Reviewed:**`, or an entry's `reviewed` in `blueprint/upstream.json`): a report is not cleared by bumping a date |
 | `.claude/hooks/guard-secret-writes.mjs` | Blocks writing `.env*` files and literal tokens or keys; `${{ secrets.X }}` references are fine |
 | `.claude/hooks/verify-edit.sh` | After an edit, runs the matching `verify.yml` check (`jq`, `bash -n` + shellcheck, actionlint) when the tool is installed |
 | `.claude/hooks/statusline.mjs` | The status line, with `.claude/hooks/statusline-layout.mjs` and `.claude/hooks/subagent-statusline.mjs` for layout and subagent rows |
