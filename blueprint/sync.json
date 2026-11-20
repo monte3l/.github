@@ -8,6 +8,7 @@
     "dco": "managed",
     "dependency-review": "managed",
     "docs": "managed",
+    "docs-freshness": "managed",
     "docs-live": "managed",
     "environments": "managed",
     "gitleaks": "managed",
