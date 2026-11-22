@@ -55,9 +55,6 @@
     }
   },
   "repos": {
-    "m3l-blueprinter": {
-      "flags": []
-    },
     "m3l-claude-mentor": {
       "flags": [
         "manifest"
