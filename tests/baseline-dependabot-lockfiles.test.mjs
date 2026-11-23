@@ -105,12 +105,17 @@ test("no lockfile is clean", () => {
   assert.match(out, /OK     Dependabot: lockfile folders: no lockfile/);
 });
 
-test("a truncated or unreadable file list is skipped, never read as clean", () => {
-  assert.match(run(["package-lock.json"], ACTIONS, { truncated: true }).out, /SKIP   Dependabot: lockfile folders/);
+test("a truncated file list is skipped, never read as clean", () => {
+  const truncated = run(["package-lock.json"], ACTIONS, { truncated: true });
+  assert.equal(truncated.status, 0, truncated.err);
+  assert.match(truncated.out, /SKIP   Dependabot: lockfile folders/);
+  assert.match(truncated.out, /skipped=1/);
+});
+
+test("a failed call is not swallowed: it exits 3, so the audit reads it as could not be checked", () => {
   const failed = run(["package-lock.json"], ACTIONS, { fail: true });
-  assert.equal(failed.status, 0, failed.err);
-  assert.match(failed.out, /SKIP   Dependabot: lockfile folders/);
-  assert.match(failed.out, /skipped=1/);
+  assert.equal(failed.status, 3);
+  assert.doesNotMatch(failed.out, /SKIP|OK|DRIFT/);
 });
 
 test("the shipped exemptions name a reason for each folder", () => {
@@ -121,4 +126,10 @@ test("the shipped exemptions name a reason for each folder", () => {
       assert.ok(typeof reason === "string" && reason.length > 20, `${repo}: ${folder} needs a reason`);
     }
   }
+});
+
+test("every exemption names a repository in projects.json", () => {
+  const exemptions = JSON.parse(readFileSync(path.join(root, "blueprint", "dependabot-exemptions.json"), "utf8"));
+  const projects = new Set(JSON.parse(readFileSync(path.join(root, "blueprint", "projects.json"), "utf8")).map((p) => p.repo));
+  for (const repo of Object.keys(exemptions)) assert.ok(projects.has(repo), `${repo} is not in blueprint/projects.json`);
 });

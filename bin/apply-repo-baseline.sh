@@ -706,7 +706,8 @@ fi
 # repository and in the starter.
 check_dependabot_lockfiles() {
   local tree path name dir pattern covered entries missing="" exempt="" reason lock_dirs=""
-  tree="$(gh api "repos/$repo/git/trees/HEAD?recursive=1" --jq 'if .truncated then "TRUNCATED" else (.tree[] | select(.type == "blob") | .path) end' 2>/dev/null)" || tree=""
+  tree="$(gh api "repos/$repo/git/trees/HEAD?recursive=1" --jq 'if .truncated then "TRUNCATED" else (.tree[] | select(.type == "blob") | .path) end')"
+  # A failed call is not swallowed: it reaches the ERR trap (exit 3, "could not be checked").
   if [[ -z "$tree" || "$tree" == "TRUNCATED" ]]; then
     skip "Dependabot: lockfile folders" "the file list of the repository is empty or too large to read"
     return
