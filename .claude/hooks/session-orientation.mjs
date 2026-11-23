@@ -10,7 +10,20 @@
  * missing tool or no network leaves that line out and never fails the session.
  */
 import { spawnSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+// `import.meta.url` is symlink-resolved and percent-encoded, `process.argv[1]`
+// is neither, so comparing them as strings is false under a symlinked or spaced
+// path: the hook would never run and silently fail open (exit 0).
+function isEntryPoint() {
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
 
 function run(cmd, args, cwd, timeout = 5000) {
   const r = spawnSync(cmd, args, { cwd, encoding: "utf8", timeout });
@@ -52,7 +65,7 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isEntryPoint()) {
   let input = {};
   try {
     input = JSON.parse(await readStdin());

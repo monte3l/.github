@@ -16,7 +16,20 @@
  * says, 1 when it is not (each problem on stdout), 2 on a usage error. Run by
  * hand with `node bin/lib/roadmap.mjs --today 2027-01-01 < ROADMAP.md`.
  */
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { parseFrontmatter, isDate } from "./knowledge.mjs";
+
+// `import.meta.url` is symlink-resolved and percent-encoded, `process.argv[1]`
+// is neither, so comparing them as strings is false under a symlinked or spaced
+// path: the command would then print nothing and read as a clean ROADMAP.
+function isEntryPoint() {
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * The sections in the order the policy requires. A heading matches by prefix,
@@ -91,4 +104,4 @@ async function main(argv) {
   return problems.length === 0 ? 0 : 1;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) process.exitCode = await main(process.argv.slice(2));
+if (isEntryPoint()) process.exitCode = await main(process.argv.slice(2));
