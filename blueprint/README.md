@@ -31,7 +31,7 @@ in `m3l-groundwork`.
 | `issue-types.json`       | The organization's six issue types (Bug, Feature, Task, Gap, Debt, Verify). A record: issue types are an org setting, so nothing applies it |
 | `../.github/workflows/project-backfill.yml`, `../bin/project-backfill.sh` | The weekly run that adds issues the forms could not to the org Project. It adds only, and publishes counts only. See [Tracking work](tracking.md#milestones-and-the-org-project) |
 | `docs-site.md`           | The docs site standard, the Cloudflare one-time setup and the runbook. See [Docs site](#docs-site) |
-| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependency-review-config.yml`, `SECURITY.md` (a starting point with placeholders) and `CODEOWNERS`, and for a docs site `docs.config.mjs`, `deploy-tools/`, `environments.json` (the environment cleanup policy) and `dependency-review-config-docs.yml` (the `sharp` exemptions), `policies.yml` and `scancode-config.yml` (the ScanCode license policy and ignored paths), `dependabot.yml`, `labeler.yml`, `guard-shared-checkout.mjs` (the worktree guard, see [Worktree guard](#worktree-guard)), `require-signoff.sh` (the sign-off guard, see [Sign-off guard](#sign-off-guard)), a `README.md` skeleton, `ROADMAP.md` and `decisions/` (the roadmap and decision-record starters), `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
+| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependency-review-config.yml`, `SECURITY.md` (a starting point with placeholders) and `CODEOWNERS`, and for a docs site `docs.config.mjs`, `deploy-tools/`, `environments.json` (the environment cleanup policy) and `dependency-review-config-docs.yml` (the `sharp` exemptions), `policies.yml` and `scancode-config.yml` (the ScanCode license policy and ignored paths), `dependabot.yml`, `labeler.yml`, `guard-shared-checkout.mjs` (the worktree guard, see [Worktree guard](#worktree-guard)), `require-signoff.sh` (the sign-off guard, see [Sign-off guard](#sign-off-guard)), `guard-secret-writes.mjs`, `guard-double-background.mjs`, `guard-git-push-signed.mjs` and `signed-range.mjs` (see [Other guards](#other-guards)), a `README.md` skeleton, `ROADMAP.md` and `decisions/` (the roadmap and decision-record starters), `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
 | `claude/managed-settings.json` | The Claude Code policy for the whole Claude Team organization, pasted into the admin console by an Owner. Never applied by the script. See [Claude Code managed settings](#claude-code-managed-settings) |
 | `../bin/new-repo.sh`, `../bin/bootstrap-render.mjs` | Creates a repository that starts out following this blueprint. See [New repository](#new-repository) |
@@ -388,9 +388,11 @@ trigger it.
 
 ### Starters
 
-Six verbatim files from `files/` are compared the same way: `CODEOWNERS`,
+Ten verbatim files from `files/` are compared the same way: `CODEOWNERS`,
 `editorconfig`, `gitattributes`, `gitleaks.toml`, `guard-shared-checkout.mjs`
-(the worktree guard) and `require-signoff.sh` (the sign-off guard), see
+(the worktree guard), `require-signoff.sh` (the sign-off guard),
+`guard-secret-writes.mjs`, `guard-double-background.mjs`,
+`guard-git-push-signed.mjs` and `signed-range.mjs` (its helper), see
 [Claude Code guards](#claude-code-guards). A repository may keep one at
 a few paths (`CODEOWNERS` at `.github/`, the root or `docs/`). They are listed
 under `starters` in `sync.json`, and the first path is where a new repository
@@ -643,7 +645,7 @@ exceptions are the `env-janitor` branch policy and org-secret access, which
 | Dependency review config | `dependency review config` | `.github/dependency-review-config.yml`: the packages this repository exempts from the license check by package URL. `workflow-templates/dependency-review.yml` reads it (`config-file`) and fails without it, and the action also fails on an empty file, so it holds at least one key. The allowed licenses stay in the workflow, the same everywhere: an exemption in the workflow would make the copy differ from the template | `files/dependency-review-config.yml` |
 | Line endings and editor | `line endings`, `editor config` | `.gitattributes` with `* text=auto eol=lf` (the starter also marks `*.woff2` binary, for the fonts a docs site vendors), and `.editorconfig` (utf-8, lf, 2 spaces, final newline). A repository that hashes raw bytes keeps `* -text` instead: see the note below | `files/gitattributes`, `files/editorconfig` |
 | REUSE | `REUSE`, `REUSE check` | `REUSE.toml` plus `LICENSES/`, checked by `reuse lint` in CI, from any workflow. Required because every repository that vendors m3l-design ships its OFL-1.1 fonts next to MIT files. The copyright holder is `Enrico Lionello (enri3l) and Giulia Montevecchi (giulmonte), monte3l` in `LICENSE` and `REUSE.toml`, and the README badge is the REUSE API one, so register the repository at api.reuse.software | `files/REUSE.toml`, `workflow-templates/reuse.yml` |
-| ScanCode | `ScanCode check`, `ScanCode: last run` | A workflow running `aboutcode-org/scancode-action` with `check-compliance`, and a `policies.yml` listing every license the repository may contain. REUSE trusts what a file declares, so a copied third-party file with only a license notice passes `reuse lint` under the catch-all MIT entry. ScanCode reads the text and fails on any license the policy does not list. Not a required check in the `main` ruleset, because the action is still beta, so the last `push` run of its workflow is reported instead: a red run on `main` blocks nothing and is easy to miss. A license that a file names only as data (a test string, a policy list) goes in `scancode-config.yml` by exact path. See [Why ScanCode and not the other scanners](#why-scancode-and-not-the-other-scanners) | `files/policies.yml`, `files/scancode-config.yml`, `workflow-templates/scancode.yml` |
+| ScanCode | `ScanCode check`, `ScanCode: last run` | A workflow running `aboutcode-org/scancode-action` with `check-compliance`, and a `policies.yml` listing every license the repository may contain. REUSE trusts what a file declares, so a copied third-party file with only a license notice passes `reuse lint` under the catch-all MIT entry. ScanCode reads the text and fails on any license the policy does not list. Not a required check in the `main` ruleset, because the action is still beta, so the last `push` run of its workflow is reported instead: a red run on `main` blocks nothing and is easy to miss. The action itself prints only counts (`MISSING: 1`), so the template adds a step that names each flagged file in the log and the job summary. A license that a file names only as data (a test string, a policy list) goes in `scancode-config.yml` by exact path, never by a wildcard. See [Why ScanCode and not the other scanners](#why-scancode-and-not-the-other-scanners) | `files/policies.yml`, `files/scancode-config.yml`, `workflow-templates/scancode.yml` |
 | Claude Code plugin | `plugin: validate`, `plugin: root CLAUDE.md`, `plugin: marketplace.json` | Only for a repository with `.claude-plugin/plugin.json`: a workflow runs `claude plugin validate --strict`, there is no `CLAUDE.md` at the root (keep it in `.claude/`), and the repository ships no `marketplace.json`. The rules and their reasons are in [Claude Code plugins](#claude-code-plugins) | `.claude/CLAUDE.md` |
 | Workflow lint | `workflow lint` | actionlint and zizmor on every change to a workflow, from any workflow | `workflow-templates/workflow-lint.yml` |
 | Scorecard | `Scorecard workflow`, `Scorecard alerts` | Public repositories only. Open alerts are fixed or dismissed with a reason | `workflow-templates/scorecard.yml` |
@@ -829,8 +831,9 @@ identical apart from its header, as `repair-core-bare.mjs` does.
 
 | Hook | Blocks | Needs |
 | ---- | ------ | ----- |
-| `guard-secret-writes.mjs` | A write (`Write`, `Edit`) that puts a real secret on disk | Node only |
-| `guard-git-push-signed.mjs` | A `git push` with an unsigned outgoing commit, where signing is on | `bin/lib/signed-range.mjs` copied beside it |
+| `guard-secret-writes.mjs` | A write (`Write`, `Edit`) that puts a real secret on disk | Node only; the starter `files/guard-secret-writes.mjs`, see [Other guards](#other-guards) |
+| `guard-double-background.mjs` | A Bash call that backgrounds a command twice (`run_in_background` plus `&` or `nohup`) | Node only; the starter `files/guard-double-background.mjs` |
+| `guard-git-push-signed.mjs` | A `git push` with an unsigned outgoing commit, where signing is on | `bin/lib/signed-range.mjs`, the starter `files/signed-range.mjs`; the starter `files/guard-git-push-signed.mjs` |
 | `require-signoff.sh` | A `git commit` without `-s` | `jq` or `perl`; the starter `files/require-signoff.sh`, see [Sign-off guard](#sign-off-guard) |
 | `guard-shared-checkout.mjs` | An edit, a `git commit` or a new branch in a repository's main checkout | Node only; the starter `files/guard-shared-checkout.mjs`, see [Worktree guard](#worktree-guard) |
 
@@ -869,6 +872,52 @@ the bootstrap nor the sync sets:
 
 `tests/harness-starter.test.mjs` keeps the starter identical to this
 repository's own hook, and `tests/harness-signoff.test.mjs` runs it.
+
+### Other guards
+
+`guard-secret-writes.mjs`, `guard-double-background.mjs` and
+`guard-git-push-signed.mjs` are starters too, with `signed-range.mjs` (the
+helper of the push guard, written to `bin/lib/`). The copy in this repository is
+the one that runs and the one `tests/harness-starter.test.mjs` compares with the
+starter. Wire each in `.claude/settings.json`: the secret guard inside the
+`Write|Edit` matcher, the other two inside `Bash`.
+
+```json
+{
+  "type": "command",
+  "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-secret-writes.mjs\"",
+  "timeout": 30,
+  "onFailure": "block"
+}
+```
+
+Use the same entry with `guard-double-background.mjs` or
+`guard-git-push-signed.mjs` for the two `Bash` hooks.
+
+A guard that can block fails closed: a payload it cannot read as JSON, or one
+that is not an object, exits 2 with `could not read the hook payload`.
+`onFailure: "block"` covers a crash but not a deliberate `exit 0`, and `0` means
+allow. The push guard keeps one documented exception: when it cannot work out
+the outgoing range it lets the push go, because the `main` ruleset requires
+signed commits anyway. `tests/harness-guards-fail-closed.test.mjs` runs all
+three.
+
+Failing closed has a cost: two of the guards run on every `Bash` call and the
+third on every file write, so if Claude Code stopped sending a JSON object on
+stdin, all of those calls would be refused, and the secret guard would also
+refuse the edit that repairs a hook. Only an unreadable payload blocks. An
+object whose fields changed is judged by the fields it has, as before, so a
+renamed field does not lock a session. To get out, remove the entry from
+`.claude/settings.json` with an editor in a terminal, outside Claude Code.
+After a Claude Code upgrade, try one repository before the sync pull requests
+for the others are merged: the sync opens one per repository, and a repository
+whose copy is custom is never touched.
+
+These guards are local, best-effort checks on the command or the text Claude
+Code is about to run, not a security boundary. They read the command line, so a
+refspec form, a command wrapped in a subshell or a quoted key can get past them;
+the signed-commits ruleset, Gitleaks and the DCO check are what hold. A change
+to what a guard detects goes through the starter, so every copy gets it.
 
 ### Worktree guard
 
