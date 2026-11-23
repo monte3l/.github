@@ -2,7 +2,7 @@
   "m3l-groundwork": {
     "/": "npm version updates are off at the root on purpose: a weekly pull request per devDependency across the monorepo is more churn than one maintainer wants (see .github/dependabot.yml). Security updates still cover the lockfile"
   },
-  "m3l-claude-mentor": {
+  "m3l-mentor": {
     "/": "npm version updates are off at the root on purpose, the same choice as m3l-groundwork (see .github/dependabot.yml). Security updates still cover the lockfile"
   }
 }

@@ -408,7 +408,7 @@ a few paths (`CODEOWNERS` at `.github/`, the root or `docs/`). They are listed
 under `starters` in `sync.json`, and the first path is where a new repository
 gets the file, which `bin/sync-parity.mjs` checks against `bootstrap.json`. A
 repository that keeps a file elsewhere says so under `repos.<name>.paths`, which
-is also how `m3l-claude-mentor` and `m3l-groundwork` show their `ci.yml` as the
+is also how `m3l-mentor` and `m3l-groundwork` show their `ci.yml` as the
 `verify` copy.
 
 Two optional keys keep a refresh from doing harm. A starter may list `requires`

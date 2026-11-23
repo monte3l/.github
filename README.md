@@ -467,7 +467,7 @@ One row per file or group of files. **Delivery** is one of:
 | `monte3l/m3l-groundwork` | Public | 2026-11-19 | 56 OK, 0 drift, 1 skipped | Configured | Yes | `SUPPORT.md` |
 | `monte3l/m3l-prompt-optimizer` | Public | 2026-11-19 | 57 OK, 0 drift | Configured | Yes | `SUPPORT.md` |
 | `monte3l/m3l-output-governor` | Public | 2026-11-19 | 57 OK, 0 drift | Configured | Yes | `CODE_OF_CONDUCT.md`, `SUPPORT.md`, the issue forms |
-| `monte3l/m3l-claude-mentor` | Public | 2026-11-19 | 57 OK, 0 drift | Configured | Yes | `CODE_OF_CONDUCT.md`, `SUPPORT.md`, the pull request template, the issue forms |
+| `monte3l/m3l-mentor` | Public | 2026-11-19 | 57 OK, 0 drift | Configured | Yes | `CODE_OF_CONDUCT.md`, `SUPPORT.md`, the pull request template, the issue forms |
 | `monte3l/m3l-plugins` | Public | 2026-11-19 | 52 OK, 0 drift, 1 skipped | Configured | Yes | `CODE_OF_CONDUCT.md`, `SUPPORT.md`, the pull request template, the issue forms |
 
 Every repository has its own `LICENSE` and `.github/CODEOWNERS`, and the script
