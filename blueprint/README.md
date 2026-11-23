@@ -1015,8 +1015,11 @@ What the guards read, so a change to them can be judged:
   `${process.env.NPM_TOKEN}`) is a reference too, so test code that builds a token at run
   time is not refused. A string, a template, an operator or a nested call inside it
   (`${X || "<token>"}`, `${fn("<token>")}`) makes it a value again and is read as
-  one, and so is a name inside it that is spelled like a token (`${ghp_...}`) or is
-  longer than 40 characters. `$NAME` and `${NAME}` are a reference only when NAME is
+  one. Every name and argument inside it is judged: a name is a value when it is spelled
+  like a token (`${ghp_...}`), is longer than 40 characters, or is a run of 16 or more
+  letters and digits that looks like a secret (`${a.b.<random run>}`), and a number of
+  16 digits or more is a value. A short name with a digit and capitals (`accessToken2`)
+  is a name. `$NAME` and a bare `${NAME}` are a reference only when NAME is
   a name: at most 40 characters, not beginning like a token (`ghp_`, `sk_`, `AKIA`, ...,
   unless it is a short snake_case name of letters such as `npm_config_cache`), and an
   environment variable's name (`GITHUB_TOKEN`, `npm_config_x`) or letters and underscores
@@ -1044,13 +1047,14 @@ What the guards read, so a change to them can be judged:
   only); a lowercase snake_case run, which is read as a name; a lowercase
   hyphenated run of plain words, or one with a short part that has a digit, which
   is read as a name; a token whose shape is only a prefix this list does not know;
-  a name inside an interpolation that is a random run of letters and digits with no token
-  prefix (`${a1B2c3D4...}`, which an interpolation cannot tell from a long camelCase name);
-  and a secret written as a path or after a domain-like prefix. The other way, a
-  real name with three or more short parts that carry a digit and 16 or more
-  characters (`aws-s3-bucket-name-v2-eu1`), or a part that starts with a digit
-  (`key-rotation-job-2024`), is still blocked, by design: it is the shape of a
-  token, and the edit that needs it names it another way.
+  a name inside an interpolation that is a random run of fewer than 16 characters, or of
+  letters only, and a number of fewer than 16 digits; and a secret written as a path or
+  after a domain-like prefix. The other way, a real name with three or more short
+  parts that carry a digit and 16 or more characters (`aws-s3-bucket-name-v2-eu1`),
+  a part that starts with a digit (`key-rotation-job-2024`), and a long camelCase name
+  that has a digit inside an interpolation (`${ctx.runner.accessToken2Value}`) are
+  still blocked, by design: each is the shape of a token, and the edit that needs it
+  names it another way.
   `ghp_`, `gho_`, `ghu_`, `ghs_` and `ghr_` tokens are blocked on their own.
   `tests/harness-guards-hardening.test.mjs` runs it over every tracked file of
   this repository and expects no hit, so the guard never refuses the edit that

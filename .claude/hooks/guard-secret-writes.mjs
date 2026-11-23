@@ -230,15 +230,16 @@ function afterReference(text, quote) {
   if (text.startsWith("${{")) return bracket(3, "}}");
   if ((m = JS_INTERPOLATION.exec(text))) {
     // A JavaScript template literal's `${...}` whose body is only names and numbers holds no literal.
-    // A name spelled like a token (`ghp_...`, `sk-...`) is still read as one, and then so is what follows it.
     const closed = through(text.slice(2), "}", quote);
     if (closed === null) return "unclosed";
-    // A name that begins like a token (`ghp_...`, `sk-...`) or is longer than a name is no reference: the
-    // whole is read as a value.
-    if (m[0].slice(2).split(/[\s.,()}]+/).some((name) => name.length > 40 || spelledLikeToken(name))) return null;
-    // A lone name is judged as `${NAME}` is: an environment variable's name, or letters and underscores.
-    const lone = /^\$\{\s*([A-Za-z_$][\w$]*)\s*\}/.exec(m[0]);
-    if (lone && !isRefName(lone[1])) return null;
+    // Every name and argument in it is judged: a name is at most 40 characters, is not spelled like a token
+    // and is not a run that looks like a secret (16 or more characters of letters and digits), and a number
+    // is shorter than 16 digits. Otherwise it is no reference and the whole is read as a value. A short name
+    // that has a digit and capitals (`accessToken2`, `sha256Hash`) is a name, as a lone `${NAME}` of letters
+    // or an environment variable's name is.
+    const parts = m[0].slice(2).split(/[\s.,()}]+/).filter((part) => part !== "");
+    const isName = (part) => part.length <= 40 && !spelledLikeToken(part) && (TOKEN_PREFIX.test(part) || !looksLikeSecretRun(part));
+    if (parts.some((part) => (/^\d+$/.test(part) ? part.length >= 16 : !isName(part)))) return null;
     return { ...closed, after: text.slice(m[0].length) };
   }
   if ((m = /^\$\{([A-Za-z_]\w*)(?=[}:])/.exec(text))) return isRefName(m[1]) ? bracket(m[0].length, "}") : null;

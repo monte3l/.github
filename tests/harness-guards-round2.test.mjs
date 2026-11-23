@@ -388,7 +388,6 @@ describe("secret guard: a template literal's interpolation of names and calls is
       `${NPM}: ${interp("process.env." + NPM)}`,
       `${NPM}: ${interp("process.env." + GITHUB + "_FOR_TESTS")}`,
       `${NPM}: ${interp("config.tokens.npm")}`,
-      `${NPM}: ${interp("ctx.runner.accessToken2Value")}`,
       `${NPM}=${interp("KEY")}`,
       `${GITHUB}=${interp("makeToken()")}`,
     ]) {
@@ -447,6 +446,30 @@ describe("secret guard: a template literal's interpolation of names and calls is
     blocked(`${GH}: ${interp(`fn(${ghp})`)}`);
     blocked(`${GH}: ${interp(`tokens.${ghp}`)}`);
     blocked(`${GH}: ${interp("sk-" + mixed.slice(0, 20))}`);
+  });
+
+  it("judges every name and argument inside the interpolation, not only a lone name", () => {
+    for (const line of [
+      `${GH}: ${interp(`fn(${ghp})`)}`,
+      `${GH}: ${interp(`a.b.${tok}`)}`,
+      `${GH}: ${interp(`a.b.${["sk", tok].join("_")}`)}`,
+      `${GH}: ${interp("make(" + "12345678901234567890" + ")")}`,
+      `${GH}: ${interp("make(32, " + "9".repeat(16) + ")")}`,
+      `${GH}: ${interp(`tokens.make(${tok})`)}`,
+      `${GH}: ${interp("a.b." + "c".repeat(41))}`,
+      // Blocked by design, as the README says: a long camelCase name that has a digit reads as a random run.
+      `${NPM}: ${interp("ctx.runner.accessToken2Value")}`,
+    ]) {
+      blocked(line);
+    }
+    for (const line of [
+      `${GH}: ${interp("make(" + "9".repeat(15) + ")")}`,
+      `${GH}: ${interp("tokens.make(len, 32)")}`,
+      `${NPM}: ${interp("ctx.runner.accessToken")}`,
+      `${NPM}: ${interp("ctx.runner.accessToken2")}`,
+    ]) {
+      allowed(line);
+    }
   });
 
   it("takes $NAME and ${NAME} as a reference only when NAME is a name: short, no token prefix, no random mix", () => {
