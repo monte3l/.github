@@ -1051,7 +1051,9 @@ What the guards read, so a change to them can be judged:
   is read as a name; a token whose shape is only a prefix this list does not know;
   a name inside an interpolation that is a random run of fewer than 16 characters, or of
   letters only (a longer body is outside the grammar and read as a value); a short body
-  outside the grammar, which a value of fewer than 16 characters passes whatever it is;
+  outside the grammar, which a value of fewer than 16 characters passes whatever it is
+  (a bare `${accessToken2}` is allowed only because the value is shorter than 16
+  characters, not as a reference);
   and a secret written as a path or after a domain-like prefix. The other way, a real name with three or more short
   parts that carry a digit and 16 or more characters (`aws-s3-bucket-name-v2-eu1`),
   a part that starts with a digit (`key-rotation-job-2024`), and a long camelCase name

@@ -18,9 +18,9 @@
  * `nohup <cmd> > <log> 2>&1 & disown` with the polling done separately
  * against the raw PID (`kill -0 $PID`) -- never both on the same invocation.
  *
- * Fail-open on everything ambiguous: a malformed payload, a missing/
- * non-boolean `run_in_background`, or a command with no detach construct all
- * exit 0. This is a DENYLIST of the three known detach constructs, not a
+ * Fails closed on a payload it cannot read (exit 2), and open on the rest: a
+ * missing/non-boolean `run_in_background`, or a command with no detach
+ * construct, exits 0. This is a DENYLIST of the three known detach constructs, not a
  * strict parse of the shell grammar -- extend `hasShellDetach` as new gaps
  * are found rather than reaching for a real shell parser.
  */
