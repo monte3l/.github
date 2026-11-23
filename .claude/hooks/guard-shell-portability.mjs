@@ -200,6 +200,8 @@ const RESERVED = new Set(["do", "then", "else", "elif", "if", "while", "until", 
 const WRAPPERS = new Set(["env", "command", "sudo", "nohup", "exec"]);
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 const isBare = (w) => w.bare === w.value;
+/** Is `text` one or more quoted placeholders and nothing else? (No regex: a control character in one trips `no-control-regex`.) */
+const allQuoted = (text) => text.length > 0 && [...text].every((c) => c === Q);
 
 /** Index of the command word: past `do`, `if`, `!`, `VAR=x` prefixes and `env`-like wrappers. */
 function headIndex(words) {
@@ -306,13 +308,13 @@ export function findProblems(command, { shell = "", platform = "", cwd = "" } = 
     for (const w of words.slice(0, h + 1)) {
       const eq = w.bare.indexOf("=");
       if (eq <= 0 || !NAME.test(w.bare.slice(0, eq))) continue;
-      const quoted = /^\u0000+$/.test(w.bare.slice(eq + 1)) && hasLiteralSpace(w.value.slice(eq + 1));
+      const quoted = allQuoted(w.bare.slice(eq + 1)) && hasLiteralSpace(w.value.slice(eq + 1));
       if (quoted) multiword.add(w.bare.slice(0, eq));
       else multiword.delete(w.bare.slice(0, eq));
     }
     if (name === "for" && words[h + 1] && NAME.test(words[h + 1].value) && words[h + 2]?.value === "in") {
       const items = words.slice(h + 3);
-      if (items.some((w) => /^\u0000+$/.test(w.bare) && hasLiteralSpace(w.value))) multiword.add(words[h + 1].value);
+      if (items.some((w) => allQuoted(w.bare) && hasLiteralSpace(w.value))) multiword.add(words[h + 1].value);
       else multiword.delete(words[h + 1].value);
       for (const w of items) {
         const v = plainVariable(w);
