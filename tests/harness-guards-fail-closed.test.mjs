@@ -21,6 +21,9 @@ const GUARDS = [
     { tool_name: "Bash", tool_input: { command: "sleep 1 &", run_in_background: true } },
   ],
   ["guard-git-push-signed.mjs", { tool_name: "Bash", tool_input: { command: "echo hi" } }, null],
+  // It blocks only under zsh or on macOS, so a payload that must block would depend on the machine
+  // that runs this test. tests/harness-guard-shell-portability.test.mjs sets the shell and covers it.
+  ["guard-shell-portability.mjs", { tool_name: "Bash", tool_input: { command: "ls" } }, null],
 ];
 
 const run = (hook, stdin) => spawnSync("node", [path.join(root, ".claude/hooks", hook)], { input: stdin, encoding: "utf8" });

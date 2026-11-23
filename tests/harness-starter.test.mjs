@@ -91,6 +91,7 @@ const GUARDS = [
   ["guard-secret-writes.mjs", ".claude/hooks/guard-secret-writes.mjs", "Write|Edit|NotebookEdit"],
   ["guard-double-background.mjs", ".claude/hooks/guard-double-background.mjs", "Bash"],
   ["guard-git-push-signed.mjs", ".claude/hooks/guard-git-push-signed.mjs", "Bash"],
+  ["guard-shell-portability.mjs", ".claude/hooks/guard-shell-portability.mjs", "Bash"],
   ["signed-range.mjs", "bin/lib/signed-range.mjs", null],
 ];
 
