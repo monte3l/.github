@@ -28,7 +28,7 @@ describe("worktree guard starter", () => {
     const settings = JSON.parse(read(".claude/settings.json"));
     const wired = settings.hooks.PreToolUse.flatMap((g) => g.hooks.map((h) => ({ matcher: g.matcher, ...h })))
       .filter((h) => h.command.includes("guard-shared-checkout.mjs"));
-    assert.deepEqual(wired.map((h) => h.matcher).sort(), ["Bash", "Write|Edit"]);
+    assert.deepEqual(wired.map((h) => h.matcher).sort(), ["Bash", "Write|Edit|NotebookEdit"]);
     assert.ok(wired.every((h) => h.onFailure === "block"));
   });
 
@@ -71,7 +71,7 @@ describe("sign-off guard starter", () => {
 
 // Each starter is the live copy that runs in this repository: [starter, live path, matcher or null when it is not a hook].
 const GUARDS = [
-  ["guard-secret-writes.mjs", ".claude/hooks/guard-secret-writes.mjs", "Write|Edit"],
+  ["guard-secret-writes.mjs", ".claude/hooks/guard-secret-writes.mjs", "Write|Edit|NotebookEdit"],
   ["guard-double-background.mjs", ".claude/hooks/guard-double-background.mjs", "Bash"],
   ["guard-git-push-signed.mjs", ".claude/hooks/guard-git-push-signed.mjs", "Bash"],
   ["signed-range.mjs", "bin/lib/signed-range.mjs", null],

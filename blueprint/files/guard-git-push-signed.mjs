@@ -17,21 +17,29 @@
  * signing on (`git config commit.gpgsign true`) and this guard turns on with
  * it, no other configuration step.
  *
- * Fail-open by design (matching every sibling hook): a malformed payload, a
- * non-push command, signing not enabled, or a git failure all exit 0. The
- * literal-signature verdict is the only thing that blocks (exit 2). Pair
+ * Fails closed on a payload it cannot read, and open on the rest: a non-push
+ * command, signing not enabled, or a range it cannot work out all exit 0. The
+ * literal-signature verdict is the only other thing that blocks (exit 2). Pair
  * this with your remote's own "require signed commits" branch-protection
  * setting for the authoritative, unbypassable layer -- this hook is only the
  * earlier, local catch.
+ *
+ * It reads the command line the way a shell does (`bin/lib/signed-range.mjs`):
+ * a push inside `&&`, `|`, a subshell, `$(...)` or `bash -c` counts, `git -C DIR`
+ * and a `cd DIR` before it name the repository, and the refs a refspec names
+ * (`HEAD:refs/heads/x`, `+branch`, `--all`) are what is vetted. It is a local,
+ * best-effort check, not a security boundary.
  */
 import process from "node:process";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import path from "node:path";
 import {
-  parseGitPush,
+  parseGitPushes,
   outgoingCommits,
   unsignedCommits,
   signingEnabled,
+  gitRunner,
 } from "../../bin/lib/signed-range.mjs";
 
 async function readStdin() {
@@ -73,17 +81,29 @@ if (isEntryPoint()) {
   }
 
   const command = input.tool_input?.command;
-  const { isPush, dryRun } = parseGitPush(
-    typeof command === "string" ? command : "",
-  );
-  if (!isPush || dryRun) process.exit(0);
-  if (!signingEnabled()) process.exit(0);
+  const cwd = typeof input.cwd === "string" && input.cwd !== "" ? input.cwd : process.cwd();
 
-  let bad;
-  try {
-    bad = unsignedCommits(outgoingCommits());
-  } catch {
-    process.exit(0); // cannot determine range -> defer to remote branch protection
+  // Every real push in the command line (a chain, a subshell, `bash -c`, a
+  // `git -C DIR`, a `cd DIR` before it), each vetted where it runs and for the
+  // refs it names, not for `HEAD` of whatever directory the hook started in.
+  const bad = [];
+  const seen = new Set();
+  for (const push of parseGitPushes(typeof command === "string" ? command : "")) {
+    if (push.dryRun || push.tips.length === 0) continue;
+    for (const dir of new Set(push.dirs.map((d) => path.resolve(cwd, d)))) {
+      const runGit = gitRunner(dir);
+      if (!signingEnabled(runGit)) continue;
+      try {
+        for (const hit of unsignedCommits(outgoingCommits(runGit, push.tips), runGit)) {
+          if (!seen.has(hit.sha)) {
+            seen.add(hit.sha);
+            bad.push(hit);
+          }
+        }
+      } catch {
+        // cannot determine the range -> defer to remote branch protection
+      }
+    }
   }
   if (bad.length === 0) process.exit(0);
 

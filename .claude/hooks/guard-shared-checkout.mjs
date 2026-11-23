@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 /**
- * PreToolUse guard (Write|Edit, and Bash for git): implementation happens in a
- * linked git worktree off origin/main, never in a repository's main checkout.
+ * PreToolUse guard (Write|Edit|NotebookEdit, and Bash for git): implementation
+ * happens in a linked git worktree off origin/main, never in a repository's
+ * main checkout.
  *
- *  - Write|Edit: blocks when the file belongs to a main worktree.
+ *  - Write|Edit|NotebookEdit: blocks when the file (`file_path`, or a
+ *    notebook's `notebook_path`) belongs to a main worktree.
  *  - Bash: blocks `git commit`, `git switch -c|-C|--create` and
  *    `git checkout -b|-B` when the target (`git -C DIR`, a `cd DIR` before it,
  *    else the hook's `cwd`) is a main worktree. `git pull`, `git fetch` and
@@ -220,6 +222,24 @@ export function simpleCommands(line) {
       }
       word = (word ?? "") + "0";
       i = end;
+    } else if (c === "$" && line[i + 1] === "(") {
+      // A substitution stays one word, `$(...)`, so `git $(echo commit)` has an
+      // unreadable subcommand and `$(echo git) commit` an unreadable command
+      // word, which `gitWriteAt` and `gitWrites` judge as writing. Its body runs
+      // as commands of its own.
+      const end = closingParen(line, i + 1);
+      nested.push(line.slice(i + 2, end));
+      word = (word ?? "") + line.slice(i, end + 1);
+      grouped = true;
+      i = end;
+    } else if (c === "`") {
+      // Same for a backtick substitution: one word, body judged on its own.
+      const close = line.indexOf("`", i + 1);
+      const end = close === -1 ? line.length : close;
+      nested.push(line.slice(i + 1, end));
+      word = (word ?? "") + line.slice(i, end + 1);
+      grouped = true;
+      i = end;
     } else if (c === "<" && line[i + 1] === "<" && line[i + 2] !== "<") {
       const m = HEREDOC.exec(line.slice(i));
       if (m) {
@@ -236,7 +256,7 @@ export function simpleCommands(line) {
       if (double) i++;
     } else if (c === ";") {
       endCommand(";");
-    } else if (c === "(" || c === ")" || c === "`") {
+    } else if (c === "(" || c === ")") {
       grouped = true;
       endCommand("(");
     } else {
@@ -448,8 +468,8 @@ if (
   const cwd = str(input.cwd) || process.cwd();
   const tool = str(input.tool_name);
 
-  if (tool === "Write" || tool === "Edit") {
-    const filePath = str(toolInput.file_path);
+  if (tool === "Write" || tool === "Edit" || tool === "NotebookEdit") {
+    const filePath = str(toolInput.file_path) || str(toolInput.notebook_path);
     if (filePath) {
       const top = mainWorktreeOf(path.resolve(cwd, filePath));
       if (top) block(`\`${filePath}\` is in the main checkout of ${top}.`);

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * PreToolUse blocking (Write|Edit): refuse to write a real secret to disk.
+ * PreToolUse blocking (Write|Edit|NotebookEdit): refuse to write a real secret to disk.
  *
  * CLAUDE.md's Security section requires that no secret or token ever land in
  * source, tests, or fixtures. A CI secret-scanning step is the backstop;
@@ -48,7 +48,7 @@ export const SECRET_KEYS = [
 
 // High-signal literal shapes -- a match is almost certainly a real credential.
 const TOKEN_LITERALS = [
-  /\bghp_[A-Za-z0-9]{36}\b/, // GitHub personal access token
+  /\bgh[pousr]_[A-Za-z0-9]{36}\b/, // GitHub token: personal, OAuth, user-to-server, server-to-server, refresh
   /\bgithub_pat_[A-Za-z0-9_]{22,}\b/, // GitHub fine-grained PAT
   /\bnpm_[A-Za-z0-9]{36}\b/, // npm automation token
   /\bAKIA[0-9A-Z]{16}\b/, // AWS access key id
@@ -63,12 +63,20 @@ const TOKEN_LITERALS = [
  * @returns {boolean}
  */
 function isPlaceholderValue(value) {
-  const v = value.trim().replace(/^["']|["']$/g, "");
+  const v = value.trim().replace(/^["'`]|["'`]$/g, "");
   if (v.length === 0) return true;
-  if (/\$\{|\$\(|process\.env|secrets\.|env\./.test(v)) return true; // reference
+  // A reference starts the value: `${X}`, `$(cmd)`, `$X`, `process.env.X`,
+  // `secrets.X`, `env.X`. Matching it anywhere would let a real token that merely
+  // contains `env.` through.
+  if (/^(?:\$\{|\$\(|\$[A-Za-z_]|process\.env\b|secrets\.|env\.)/.test(v)) return true;
   if (/^<.*>$/.test(v)) return true; // <your-token>
+  // A dummy is a marker word set off from the rest by a delimiter (or the whole
+  // value), such as `your_token_here` or `example-token`. A marker buried inside
+  // a longer alphanumeric run (`s3cr3tfakeA1b2...`) is not one.
   if (
-    /(example|placeholder|changeme|your[-_]|xxx+|dummy|fake|redacted)/i.test(v)
+    /(?:^|[^A-Za-z0-9])(?:example|placeholder|changeme|your|dummy|fake|redacted|x{3,})(?:[^A-Za-z0-9]|$)/i.test(
+      v,
+    )
   )
     return true;
   // Too short / low-entropy to be a real token.
@@ -99,8 +107,10 @@ export function findSecrets(content) {
   const hits = [];
 
   for (const key of SECRET_KEYS) {
-    // KEY = value  or  KEY: value  (env/yaml/json-ish), value runs to EOL.
-    const re = new RegExp(`\\b${key}\\b\\s*[:=]\\s*(.+)`, "g");
+    // KEY = value, KEY: value or KEY => value (env, yaml, toml, ruby, ...), with
+    // the key itself optionally quoted ("KEY": "v", 'KEY' = 'v'), in any case.
+    // The value runs to the end of the line.
+    const re = new RegExp(`\\b${key}\\b["'\`]?\\s*(?:=>|[:=])\\s*(.+)`, "gi");
     for (const m of content.matchAll(re)) {
       if (!isPlaceholderValue(m[1]))
         hits.push(`${key} assigned a literal value`);
@@ -163,18 +173,22 @@ if (isEntryPoint()) {
     process.exit(2);
   }
 
-  const filePath = input.tool_input?.file_path ?? "";
+  // A notebook edit names its file `notebook_path` and carries `new_source`.
+  const ti = input.tool_input ?? {};
+  const filePath = ti.file_path ?? ti.notebook_path ?? "";
   if (typeof filePath !== "string" || filePath.length === 0) process.exit(0);
 
-  // Content by field presence (Write -> content, Edit -> new_string), matching
-  // the sibling-hook convention so the guard stays live if tool_name is absent.
-  const ti = input.tool_input ?? {};
+  // Content by field presence (Write -> content, Edit -> new_string, NotebookEdit
+  // -> new_source), matching the sibling-hook convention so the guard stays live
+  // if tool_name is absent.
   const content =
     typeof ti.content === "string"
       ? ti.content
       : typeof ti.new_string === "string"
         ? ti.new_string
-        : "";
+        : typeof ti.new_source === "string"
+          ? ti.new_source
+          : "";
 
   const reasons = isSecretWrite(filePath, content);
   if (reasons.length === 0) process.exit(0);

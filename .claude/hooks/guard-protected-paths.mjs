@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * PreToolUse guard (Write|Edit): protects files that are copied or generated,
+ * PreToolUse guard (Write|Edit|NotebookEdit): protects files that are copied or generated,
  * never hand-edited.
  *
  *  - `design/source/**`, `design/tokens.css` and `design/SHA256SUMS` are a
@@ -49,7 +49,8 @@ try {
   process.exit(0);
 }
 
-const filePath = input.tool_input?.file_path ?? "";
+// A notebook edit names its file `notebook_path`, not `file_path`.
+const filePath = input.tool_input?.file_path ?? input.tool_input?.notebook_path ?? "";
 if (!filePath) process.exit(0);
 
 // CLAUDE_PROJECT_DIR stays at the folder the session started in, even after it
