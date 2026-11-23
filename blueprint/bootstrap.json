@@ -296,7 +296,7 @@
   "excluded": [
     {
       "from": "blueprint/files/check-plugin-metadata.mjs",
-      "reason": "only a Claude Code plugin repository runs it, and a starter can require a kind being set but not the plugin kind in particular: a plugin copies it to bin/ by hand (blueprint/README.md, Claude Code plugins)"
+      "reason": "only a Claude Code plugin repository runs it, and a starter can require a kind being set but not the plugin kind in particular: a plugin copies it to tools/ci/ by hand (blueprint/README.md, Claude Code plugins)"
     }
   ],
   "orgSecrets": [

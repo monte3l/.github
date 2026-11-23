@@ -94,6 +94,21 @@ test("a plugin with a root CLAUDE.md, its own marketplace.json and no validate r
   assert.match(out, /counts ok=0 drift=4 skipped=0/);
 });
 
+test("the metadata check is found wherever the workflow runs it, so tools/ci/ keeps the item OK", () => {
+  for (const where of ["tools/ci", "scripts", "bin"]) {
+    const { out } = run(PLUGIN, "check_plugin_rules", { workflows: `${VALIDATE}      - run: node ${where}/check-plugin-metadata.mjs\n` });
+    assert.match(out, /OK     plugin: metadata check/, where);
+  }
+});
+
+test("the metadata hint says tools/ci/, because a plugin's own bin/ is on the Bash tool's PATH", () => {
+  // The hint prints only with --dry-run or --apply, so read it from the script.
+  const line = lines.find((l) => l.includes('report_workflow "plugin: metadata check"'));
+  assert.ok(line, "the item is in the script");
+  assert.match(line, /tools\/ci\/ \(not bin\/: a plugin's own bin\/ is put on the Bash tool's PATH\)/);
+  assert.doesNotMatch(line, /to bin\/ and run/);
+});
+
 test("validate without --strict is not enough", () => {
   const { out } = run(PLUGIN, "check_plugin_rules", { workflows: "      - run: claude plugin validate .\n" });
   assert.match(out, /DRIFT  plugin: validate/);
