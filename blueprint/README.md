@@ -892,6 +892,31 @@ starter. Wire each in `.claude/settings.json`: the secret guard inside the
 Use the same entry with `guard-double-background.mjs` or
 `guard-git-push-signed.mjs` for the two `Bash` hooks.
 
+A guard that can block fails closed: a payload it cannot read as JSON, or one
+that is not an object, exits 2 with `could not read the hook payload`.
+`onFailure: "block"` covers a crash but not a deliberate `exit 0`, and `0` means
+allow. The push guard keeps one documented exception: when it cannot work out
+the outgoing range it lets the push go, because the `main` ruleset requires
+signed commits anyway. `tests/harness-guards-fail-closed.test.mjs` runs all
+three.
+
+Failing closed has a cost: two of the guards run on every `Bash` call and the
+third on every file write, so if Claude Code stopped sending a JSON object on
+stdin, all of those calls would be refused, and the secret guard would also
+refuse the edit that repairs a hook. Only an unreadable payload blocks. An
+object whose fields changed is judged by the fields it has, as before, so a
+renamed field does not lock a session. To get out, remove the entry from
+`.claude/settings.json` with an editor in a terminal, outside Claude Code.
+After a Claude Code upgrade, try one repository before the sync pull requests
+for the others are merged: the sync opens one per repository, and a repository
+whose copy is custom is never touched.
+
+These guards are local, best-effort checks on the command or the text Claude
+Code is about to run, not a security boundary. They read the command line, so a
+refspec form, a command wrapped in a subshell or a quoted key can get past them;
+the signed-commits ruleset, Gitleaks and the DCO check are what hold. A change
+to what a guard detects goes through the starter, so every copy gets it.
+
 ### Worktree guard
 
 Implementation happens in a linked worktree off `origin/main`, never in a
