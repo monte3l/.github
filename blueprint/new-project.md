@@ -248,8 +248,9 @@ later change run `wt.sh` again (or `git worktree add`) off a freshly fetched
 
 | Task | Why |
 | --- | --- |
-| Wire `.claude/hooks/guard-shared-checkout.mjs` into `.claude/settings.json`. Copy the two entries from [Worktree guard](README.md#worktree-guard) | The file is already there, but it does nothing until the settings run it |
+| Wire the five hooks the script copied into `.claude/settings.json`: `guard-shared-checkout.mjs` (two entries, [Worktree guard](README.md#worktree-guard)), `require-signoff.sh` ([Sign-off guard](README.md#sign-off-guard)), and `guard-secret-writes.mjs`, `guard-double-background.mjs` and `guard-git-push-signed.mjs` ([Other guards](README.md#other-guards)). Copy each entry from the section named | The files are already there, but none does anything until the settings run it. The secret guard and the worktree guard's file-edit entry go inside a `Write\|Edit\|NotebookEdit` matcher, the rest inside `Bash`. `require-signoff.sh` runs through `bash`. The push guard loads `bin/lib/signed-range.mjs`, which the script also copied, so keep the two together |
 | Replace the placeholder step in `.github/workflows/verify.yml` with the repository's checks | It fails on purpose, and `verify` is a required check. A scaffolded repository has its own `ci.yml` instead |
+| For `--kind plugin`, copy `blueprint/files/check-plugin-metadata.mjs` from `.github` to `bin/` by hand, and run it and `claude plugin validate --strict .` from `verify`, with `GH_TOKEN: ${{ github.token }}` for the first ([Claude Code plugins](README.md#claude-code-plugins)) | The script does not copy it, because a starter cannot require the plugin kind in particular. The baseline reports `plugin: validate` and `plugin: metadata check` until both run |
 | Fill the placeholders the script listed, such as those in `README.md` and `SECURITY.md` | They are the owner's words |
 | Write the five sections of `ROADMAP.md`. [Tracking work](tracking.md) says what each holds | The baseline reports `roadmap: sections` until they exist |
 | After `--scaffold`, run `/customize` and install the dependencies | It tailors the scaffold to the project |
@@ -284,6 +285,17 @@ bin/apply-repo-baseline.sh monte3l/m3l-NAME
 `.github/bin/`. It is read-only. Exit 1 means drift, and some is
 normal on day one: the output names the items. Do not run `--apply` to clear it
 without reading what it changes.
+
+Besides the settings, it reports these items about the repository's own files.
+The standard behind each is in [Repository standard](README.md#repository-standard):
+
+| Item | What it wants |
+| --- | --- |
+| `ScanCode: last run` | The last run of the ScanCode workflow succeeded. It prints `SKIP` while a run is in progress |
+| `pull request template: org checklist` | No template of its own, or one that keeps the org's three items: the sign-off, the Conventional Commit title and the regression test |
+| `build output: dist not committed` | No `dist/` in the repository |
+| `Dependabot: lockfile folders` | Every folder with a lockfile has an `npm` entry in `dependabot.yml`, or an exemption with its reason in `blueprint/dependabot-exemptions.json` |
+| `plugin: root CLAUDE.md`, `plugin: marketplace.json`, `plugin: validate`, `plugin: metadata check` | Only for a plugin repository: no root `CLAUDE.md`, no `marketplace.json`, and the two checks from step 7 run in a workflow |
 
 What a person still does, outside this flow:
 
