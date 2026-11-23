@@ -95,7 +95,7 @@
     }
   },
   "repos": {
-    "m3l-claude-mentor": {
+    "m3l-mentor": {
       "flags": [
         "manifest"
       ],
