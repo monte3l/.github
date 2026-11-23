@@ -31,7 +31,7 @@ in `m3l-groundwork`.
 | `issue-types.json`       | The organization's six issue types (Bug, Feature, Task, Gap, Debt, Verify). A record: issue types are an org setting, so nothing applies it |
 | `../.github/workflows/project-backfill.yml`, `../bin/project-backfill.sh` | The weekly run that adds issues the forms could not to the org Project. It adds only, and publishes counts only. See [Tracking work](tracking.md#milestones-and-the-org-project) |
 | `docs-site.md`           | The docs site standard, the Cloudflare one-time setup and the runbook. See [Docs site](#docs-site) |
-| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependency-review-config.yml`, `SECURITY.md` (a starting point with placeholders) and `CODEOWNERS`, and for a docs site `docs.config.mjs`, `deploy-tools/`, `environments.json` (the environment cleanup policy) and `dependency-review-config-docs.yml` (the `sharp` exemptions), `policies.yml` and `scancode-config.yml` (the ScanCode license policy and ignored paths), `dependabot.yml`, `labeler.yml`, `guard-shared-checkout.mjs` (the worktree guard, see [Worktree guard](#worktree-guard)), `require-signoff.sh` (the sign-off guard, see [Sign-off guard](#sign-off-guard)), a `README.md` skeleton, `ROADMAP.md` and `decisions/` (the roadmap and decision-record starters), `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
+| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependency-review-config.yml`, `SECURITY.md` (a starting point with placeholders) and `CODEOWNERS`, and for a docs site `docs.config.mjs`, `deploy-tools/`, `environments.json` (the environment cleanup policy) and `dependency-review-config-docs.yml` (the `sharp` exemptions), `policies.yml` and `scancode-config.yml` (the ScanCode license policy and ignored paths), `dependabot.yml`, `labeler.yml`, `guard-shared-checkout.mjs` (the worktree guard, see [Worktree guard](#worktree-guard)), `require-signoff.sh` (the sign-off guard, see [Sign-off guard](#sign-off-guard)), `guard-secret-writes.mjs`, `guard-double-background.mjs`, `guard-git-push-signed.mjs` and `signed-range.mjs` (see [Other guards](#other-guards)), a `README.md` skeleton, `ROADMAP.md` and `decisions/` (the roadmap and decision-record starters), `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
 | `claude/managed-settings.json` | The Claude Code policy for the whole Claude Team organization, pasted into the admin console by an Owner. Never applied by the script. See [Claude Code managed settings](#claude-code-managed-settings) |
 | `../bin/new-repo.sh`, `../bin/bootstrap-render.mjs` | Creates a repository that starts out following this blueprint. See [New repository](#new-repository) |
@@ -388,9 +388,11 @@ trigger it.
 
 ### Starters
 
-Six verbatim files from `files/` are compared the same way: `CODEOWNERS`,
+Ten verbatim files from `files/` are compared the same way: `CODEOWNERS`,
 `editorconfig`, `gitattributes`, `gitleaks.toml`, `guard-shared-checkout.mjs`
-(the worktree guard) and `require-signoff.sh` (the sign-off guard), see
+(the worktree guard), `require-signoff.sh` (the sign-off guard),
+`guard-secret-writes.mjs`, `guard-double-background.mjs`,
+`guard-git-push-signed.mjs` and `signed-range.mjs` (its helper), see
 [Claude Code guards](#claude-code-guards). A repository may keep one at
 a few paths (`CODEOWNERS` at `.github/`, the root or `docs/`). They are listed
 under `starters` in `sync.json`, and the first path is where a new repository
@@ -827,8 +829,9 @@ identical apart from its header, as `repair-core-bare.mjs` does.
 
 | Hook | Blocks | Needs |
 | ---- | ------ | ----- |
-| `guard-secret-writes.mjs` | A write (`Write`, `Edit`) that puts a real secret on disk | Node only |
-| `guard-git-push-signed.mjs` | A `git push` with an unsigned outgoing commit, where signing is on | `bin/lib/signed-range.mjs` copied beside it |
+| `guard-secret-writes.mjs` | A write (`Write`, `Edit`) that puts a real secret on disk | Node only; the starter `files/guard-secret-writes.mjs`, see [Other guards](#other-guards) |
+| `guard-double-background.mjs` | A Bash call that backgrounds a command twice (`run_in_background` plus `&` or `nohup`) | Node only; the starter `files/guard-double-background.mjs` |
+| `guard-git-push-signed.mjs` | A `git push` with an unsigned outgoing commit, where signing is on | `bin/lib/signed-range.mjs`, the starter `files/signed-range.mjs`; the starter `files/guard-git-push-signed.mjs` |
 | `require-signoff.sh` | A `git commit` without `-s` | `jq` or `perl`; the starter `files/require-signoff.sh`, see [Sign-off guard](#sign-off-guard) |
 | `guard-shared-checkout.mjs` | An edit, a `git commit` or a new branch in a repository's main checkout | Node only; the starter `files/guard-shared-checkout.mjs`, see [Worktree guard](#worktree-guard) |
 
@@ -867,6 +870,27 @@ the bootstrap nor the sync sets:
 
 `tests/harness-starter.test.mjs` keeps the starter identical to this
 repository's own hook, and `tests/harness-signoff.test.mjs` runs it.
+
+### Other guards
+
+`guard-secret-writes.mjs`, `guard-double-background.mjs` and
+`guard-git-push-signed.mjs` are starters too, with `signed-range.mjs` (the
+helper of the push guard, written to `bin/lib/`). The copy in this repository is
+the one that runs and the one `tests/harness-starter.test.mjs` compares with the
+starter. Wire each in `.claude/settings.json`: the secret guard inside the
+`Write|Edit` matcher, the other two inside `Bash`.
+
+```json
+{
+  "type": "command",
+  "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-secret-writes.mjs\"",
+  "timeout": 30,
+  "onFailure": "block"
+}
+```
+
+Use the same entry with `guard-double-background.mjs` or
+`guard-git-push-signed.mjs` for the two `Bash` hooks.
 
 ### Worktree guard
 

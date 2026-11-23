@@ -53,6 +53,30 @@
         ".claude/hooks/guard-shared-checkout.mjs"
       ]
     },
+    "guard-secret-writes.mjs": {
+      "mode": "managed",
+      "paths": [
+        ".claude/hooks/guard-secret-writes.mjs"
+      ]
+    },
+    "guard-double-background.mjs": {
+      "mode": "managed",
+      "paths": [
+        ".claude/hooks/guard-double-background.mjs"
+      ]
+    },
+    "guard-git-push-signed.mjs": {
+      "mode": "managed",
+      "paths": [
+        ".claude/hooks/guard-git-push-signed.mjs"
+      ]
+    },
+    "signed-range.mjs": {
+      "mode": "managed",
+      "paths": [
+        "bin/lib/signed-range.mjs"
+      ]
+    },
     "require-signoff.sh": {
       "mode": "managed",
       "paths": [
