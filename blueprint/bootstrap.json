@@ -46,6 +46,11 @@
       "todo": "wire .claude/hooks/guard-shared-checkout.mjs into .claude/settings.json (blueprint/README.md, \"Worktree guard\" gives the two entries); until then it does nothing"
     },
     {
+      "from": "blueprint/files/require-signoff.sh",
+      "to": ".claude/hooks/require-signoff.sh",
+      "todo": "wire .claude/hooks/require-signoff.sh into .claude/settings.json (blueprint/README.md, \"Sign-off guard\" gives the entry); until then it does nothing"
+    },
+    {
       "from": "blueprint/files/ROADMAP.md",
       "to": "ROADMAP.md",
       "substitute": [

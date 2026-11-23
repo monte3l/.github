@@ -52,6 +52,12 @@
       "paths": [
         ".claude/hooks/guard-shared-checkout.mjs"
       ]
+    },
+    "require-signoff.sh": {
+      "mode": "managed",
+      "paths": [
+        ".claude/hooks/require-signoff.sh"
+      ]
     }
   },
   "repos": {

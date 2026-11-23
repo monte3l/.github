@@ -31,7 +31,7 @@ in `m3l-groundwork`.
 | `issue-types.json`       | The organization's six issue types (Bug, Feature, Task, Gap, Debt, Verify). A record: issue types are an org setting, so nothing applies it |
 | `../.github/workflows/project-backfill.yml`, `../bin/project-backfill.sh` | The weekly run that adds issues the forms could not to the org Project. It adds only, and publishes counts only. See [Tracking work](tracking.md#milestones-and-the-org-project) |
 | `docs-site.md`           | The docs site standard, the Cloudflare one-time setup and the runbook. See [Docs site](#docs-site) |
-| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependency-review-config.yml`, `SECURITY.md` (a starting point with placeholders) and `CODEOWNERS`, and for a docs site `docs.config.mjs`, `deploy-tools/`, `environments.json` (the environment cleanup policy) and `dependency-review-config-docs.yml` (the `sharp` exemptions), `policies.yml` and `scancode-config.yml` (the ScanCode license policy and ignored paths), `dependabot.yml`, `labeler.yml`, `guard-shared-checkout.mjs` (the worktree guard, see [Worktree guard](#worktree-guard)), a `README.md` skeleton, `ROADMAP.md` and `decisions/` (the roadmap and decision-record starters), `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
+| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependency-review-config.yml`, `SECURITY.md` (a starting point with placeholders) and `CODEOWNERS`, and for a docs site `docs.config.mjs`, `deploy-tools/`, `environments.json` (the environment cleanup policy) and `dependency-review-config-docs.yml` (the `sharp` exemptions), `policies.yml` and `scancode-config.yml` (the ScanCode license policy and ignored paths), `dependabot.yml`, `labeler.yml`, `guard-shared-checkout.mjs` (the worktree guard, see [Worktree guard](#worktree-guard)), `require-signoff.sh` (the sign-off guard, see [Sign-off guard](#sign-off-guard)), a `README.md` skeleton, `ROADMAP.md` and `decisions/` (the roadmap and decision-record starters), `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
 | `claude/managed-settings.json` | The Claude Code policy for the whole Claude Team organization, pasted into the admin console by an Owner. Never applied by the script. See [Claude Code managed settings](#claude-code-managed-settings) |
 | `../bin/new-repo.sh`, `../bin/bootstrap-render.mjs` | Creates a repository that starts out following this blueprint. See [New repository](#new-repository) |
@@ -388,9 +388,10 @@ trigger it.
 
 ### Starters
 
-Five verbatim files from `files/` are compared the same way: `CODEOWNERS`,
-`editorconfig`, `gitattributes`, `gitleaks.toml` and `guard-shared-checkout.mjs`
-(the worktree guard, see [Claude Code guards](#claude-code-guards)). A repository may keep one at
+Six verbatim files from `files/` are compared the same way: `CODEOWNERS`,
+`editorconfig`, `gitattributes`, `gitleaks.toml`, `guard-shared-checkout.mjs`
+(the worktree guard) and `require-signoff.sh` (the sign-off guard), see
+[Claude Code guards](#claude-code-guards). A repository may keep one at
 a few paths (`CODEOWNERS` at `.github/`, the root or `docs/`). They are listed
 under `starters` in `sync.json`, and the first path is where a new repository
 gets the file, which `bin/sync-parity.mjs` checks against `bootstrap.json`. A
@@ -827,12 +828,44 @@ identical apart from its header, as `repair-core-bare.mjs` does.
 | ---- | ------ | ----- |
 | `guard-secret-writes.mjs` | A write (`Write`, `Edit`) that puts a real secret on disk | Node only |
 | `guard-git-push-signed.mjs` | A `git push` with an unsigned outgoing commit, where signing is on | `bin/lib/signed-range.mjs` copied beside it |
-| `require-signoff.sh` | A `git commit` without `-s` | `jq`; the copy in `.github/.claude/hooks/` |
+| `require-signoff.sh` | A `git commit` without `-s` | `jq` or `perl`; the starter `files/require-signoff.sh`, see [Sign-off guard](#sign-off-guard) |
 | `guard-shared-checkout.mjs` | An edit, a `git commit` or a new branch in a repository's main checkout | Node only; the starter `files/guard-shared-checkout.mjs`, see [Worktree guard](#worktree-guard) |
 
 Every `main` ruleset requires signed commits and the org asks for a DCO
 sign-off, so the hooks catch a rejected push before it happens. The script does
 not check for them: whether a repository runs Claude Code is its own decision.
+
+A hook that can block sets `"onFailure": "block"` next to its `timeout`. Claude
+Code treats a hook that cannot start, times out or exits with any code but 0 or
+2 as a non-blocking error and lets the call through, so without it a crashed
+guard allows everything. A hook that only asks may leave it out.
+`tests/harness-settings.test.mjs` fails for a hook in this repository's
+`settings.json` that does neither.
+
+### Sign-off guard
+
+`require-signoff.sh` blocks `git commit` without `-s` (also behind `git -C`,
+`git -c` and `env`) and fails closed without `jq`. The sign-off is a deliberate
+act, so the hook blocks the commit and never adds the trailer for you. The DCO
+check stays the real gate: a local hook can be skipped.
+
+The file is a starter: a new repository gets it from `bootstrap.json`, and the
+template sync refreshes a copy that is an older version of it (`sync.json`).
+Wire it in the existing `Bash` matcher of `.claude/settings.json`, run through
+`bash` so the entry does not depend on the file being executable, which neither
+the bootstrap nor the sync sets:
+
+```json
+{
+  "type": "command",
+  "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/require-signoff.sh\"",
+  "timeout": 30,
+  "onFailure": "block"
+}
+```
+
+`tests/harness-starter.test.mjs` keeps the starter identical to this
+repository's own hook, and `tests/harness-signoff.test.mjs` runs it.
 
 ### Worktree guard
 
