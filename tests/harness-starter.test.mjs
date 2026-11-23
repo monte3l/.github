@@ -38,3 +38,33 @@ describe("worktree guard starter", () => {
     assert.equal((readme.match(/guard-shared-checkout\.mjs\\"",\n  "timeout": 30,\n  "onFailure": "block"/g) ?? []).length, 2);
   });
 });
+
+describe("sign-off guard starter", () => {
+  it("is byte-identical to the hook that runs in this repository", () => {
+    assert.equal(read("blueprint/files/require-signoff.sh"), read(".claude/hooks/require-signoff.sh"));
+  });
+
+  it("is written where bootstrap.json and sync.json say, and the hook is wired in settings.json", () => {
+    const bootstrap = JSON.parse(read("blueprint/bootstrap.json"));
+    const entry = bootstrap.starters.find((s) => s.from === "blueprint/files/require-signoff.sh");
+    assert.equal(entry?.to, ".claude/hooks/require-signoff.sh");
+    assert.match(entry.todo, /settings\.json/, "a new repository is told to wire it");
+
+    const sync = JSON.parse(read("blueprint/sync.json"));
+    const starter = sync.starters["require-signoff.sh"];
+    assert.equal(starter.mode, "managed");
+    assert.equal(starter.paths[0], entry.to, "the first sync path is where bootstrap writes it");
+
+    const settings = JSON.parse(read(".claude/settings.json"));
+    const wired = settings.hooks.PreToolUse.flatMap((g) => g.hooks.map((h) => ({ matcher: g.matcher, ...h })))
+      .filter((h) => h.command.includes("require-signoff.sh"));
+    assert.deepEqual(wired.map((h) => h.matcher), ["Bash"]);
+    assert.equal(wired[0].onFailure, "block");
+  });
+
+  it("documents the settings entry the todo points at, run through bash so it needs no executable bit", () => {
+    const readme = read("blueprint/README.md");
+    assert.match(readme, /### Sign-off guard/);
+    assert.match(readme, /"command": "bash \\"\$CLAUDE_PROJECT_DIR\/\.claude\/hooks\/require-signoff\.sh\\"",\n  "timeout": 30,\n  "onFailure": "block"/);
+  });
+});
