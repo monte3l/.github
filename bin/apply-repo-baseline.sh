@@ -377,9 +377,15 @@ fi
 # and a second copy of the template would only duplicate it.
 workflows_text=""
 workflow_names=""
+scancode_wf=""
 while IFS= read -r wf; do
-  workflows_text+="$(file_content ".github/workflows/$wf")"$'\n'
+  wf_text="$(file_content ".github/workflows/$wf" || true)"
+  workflows_text+="$wf_text"$'\n'
   workflow_names+="$wf"$'\n'
+  # The workflow that runs ScanCode, for `ScanCode: last run`.
+  if [[ -z "$scancode_wf" ]] && grep -q 'aboutcode-org/scancode-action' <<<"$wf_text"; then
+    scancode_wf="$wf"
+  fi
 done < <(gh api "repos/$repo/contents/.github/workflows" --jq '.[] | select(.type == "file") | .name' 2>/dev/null || true)
 
 # report_workflow LABEL HINT PATTERN...: OK when every PATTERN (an extended
@@ -411,6 +417,63 @@ report_workflow "commit lint" "copy workflow-templates/commit-lint.yml, or check
   'name: Commit lint'
 report_workflow "PR labeler" "copy workflow-templates/labeler.yml and start .github/labeler.yml from blueprint/files/labeler.yml" \
   'actions/labeler'
+
+# ScanCode is not a required check (the action is beta), so a red run on main
+# blocks no merge and nobody reads it: main stayed red for days that way. Report
+# the last push run, the way `env-janitor: last run` does. Report only.
+check_scancode_last_run() {
+  local state
+  if [[ -z "$scancode_wf" ]]; then
+    skip "ScanCode: last run" "no workflow runs aboutcode-org/scancode-action"
+    return
+  fi
+  state="$(gh run list --repo "$repo" --workflow "$scancode_wf" --event push --limit 1 --json status,conclusion \
+    --jq '.[0] | if . == null then "none" elif .status != "completed" then "in progress" else .conclusion end' 2>/dev/null)" || state="none"
+  case "$state" in
+    success)
+      printf 'OK     ScanCode: last run: success\n'
+      ok=$((ok + 1))
+      ;;
+    "in progress")
+      skip "ScanCode: last run" "a run is in progress"
+      ;;
+    *)
+      drift=$((drift + 1))
+      printf 'DRIFT  ScanCode: last run: %s\n' "${state:-none}"
+      [[ "$mode" == "check" ]] || printf '         open the run of %s on main: a license named only as data goes in scancode-config.yml by exact path\n' "$scancode_wf"
+      ;;
+  esac
+}
+check_scancode_last_run
+
+# Claude Code plugin rules (blueprint/README.md, "Claude Code plugins"). A plugin
+# is a repository with .claude-plugin/plugin.json; any other repository skips.
+# Report only.
+check_plugin_rules() {
+  if [[ -z "$(file_content .claude-plugin/plugin.json || true)" ]]; then
+    skip "plugin: rules" "no .claude-plugin/plugin.json"
+    return
+  fi
+  report_workflow "plugin: validate" "run claude plugin validate --strict . from a workflow that already runs (the repository's verify), see Claude Code plugins in blueprint/README.md" \
+    'claude plugin validate( [^#]*)?--strict'
+  if [[ -n "$(file_content CLAUDE.md || true)" ]]; then
+    drift=$((drift + 1))
+    printf 'DRIFT  plugin: root CLAUDE.md: CLAUDE.md sits at the plugin root\n'
+    [[ "$mode" == "check" ]] || printf '         needs a commit in %s: move it to .claude/CLAUDE.md, because validate --strict warns about it and Claude Code does not load it from a plugin\n' "$repo"
+  else
+    printf 'OK     plugin: root CLAUDE.md: none\n'
+    ok=$((ok + 1))
+  fi
+  if [[ -n "$(file_content .claude-plugin/marketplace.json || true)" ]]; then
+    drift=$((drift + 1))
+    printf 'DRIFT  plugin: marketplace.json: the plugin repository ships its own marketplace\n'
+    [[ "$mode" == "check" ]] || printf '         needs a commit in %s: delete it and list the plugin in monte3l/m3l-plugins, one marketplace gives one install id per plugin\n' "$repo"
+  else
+    printf 'OK     plugin: marketplace.json: none\n'
+    ok=$((ok + 1))
+  fi
+}
+check_plugin_rules
 
 # A literal version number after `node-version:` forks the pin from
 # `.node-version`, which is the single source. `node-version-file:` is the
