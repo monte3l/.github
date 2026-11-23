@@ -7,3 +7,7 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 *.woff2 binary
+# The knowledge log only grows at its end, so two pull requests that each add an
+# entry conflict there. Union keeps both; bin/knowledge-parity.mjs reports an
+# entry that ends up out of date order.
+knowledge/log.md merge=union

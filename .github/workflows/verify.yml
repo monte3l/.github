@@ -36,13 +36,25 @@ jobs:
       - name: Docs site builds, links resolve and docs match the blueprint
         run: node design/source/docs-kit/build.mjs --check
 
+      # Globs, not a list: a list of every script is the line two pull requests
+      # that each add a script both edit, and a script missing from it is never
+      # checked. `bash -n` takes one file, so it runs per file.
       - name: Script syntax and shellcheck
         run: |
-          bash -n bin/apply-repo-baseline.sh bin/design-resync-pr.sh bin/pin-freshness.sh bin/org-audit.sh bin/upstream-watch.sh bin/template-sync-pr.sh bin/new-repo.sh bin/wt.sh bin/lib/upsert-issue.sh bin/project-backfill.sh bin/lib/leftover-placeholders.sh bin/lib/docs-config-parity.sh bin/lib/release-pin-age.sh tests/new-repo.test.sh
-          shellcheck bin/apply-repo-baseline.sh bin/design-resync-pr.sh bin/pin-freshness.sh bin/org-audit.sh bin/upstream-watch.sh bin/template-sync-pr.sh bin/new-repo.sh bin/wt.sh bin/lib/upsert-issue.sh bin/project-backfill.sh bin/lib/leftover-placeholders.sh bin/lib/docs-config-parity.sh bin/lib/release-pin-age.sh tests/new-repo.test.sh
-          node --check bin/knowledge-report.mjs
-          node --check bin/bootstrap-render.mjs
-          node --check bin/template-sync.mjs
+          shopt -s globstar nullglob
+          scripts=(bin/**/*.sh tests/*.sh)
+          modules=(bin/**/*.mjs)
+          if [[ ${#scripts[@]} -eq 0 || ${#modules[@]} -eq 0 ]]; then
+            echo "no scripts found: the globs no longer match the layout" >&2
+            exit 1
+          fi
+          for file in "${scripts[@]}"; do
+            bash -n "$file"
+          done
+          shellcheck "${scripts[@]}"
+          for file in "${modules[@]}"; do
+            node --check "$file"
+          done
 
       # The parity gates, the template classifier (hostile input included) and bin/new-repo.sh, run against
       # stubs and a local bare repository. They need git, jq and node, and create nothing outside a temporary
