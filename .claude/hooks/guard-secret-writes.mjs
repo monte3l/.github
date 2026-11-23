@@ -66,15 +66,10 @@ function isPlaceholderValue(value) {
   const v = value.trim().replace(/^["'`]|["'`]$/g, "");
   if (v.length === 0) return true;
   if (/^[.…]+$/.test(v)) return true; // "..." or an ellipsis: text that elides the value
-  // A reference starts the value: `${X}`, `$(cmd)`, `$X`, `process.env.X`,
-  // `os.environ[...]`, `ENV[...]`, `getenv(...)`, `secrets.X`, `env.X`. Matching
-  // it anywhere would let a real token that merely contains `env.` through.
-  if (
-    /^(?:\$\{|\$\(|\$[A-Za-z_]|process\.env\b|os\.environ\b|os\.getenv\b|ENV\[|ENV\.|System\.getenv\b|getenv\(|secrets\.|env\.)/.test(
-      v,
-    )
-  )
-    return true;
+  // A value that is only a reference to a variable: `${X}`, `$X`, `${{ secrets.X }}`.
+  // A lookup call or index is judged by `afterReference`; matching a prefix here
+  // would let a real token that merely starts like one through.
+  if (/^(?:\$\{[A-Za-z_]\w*\}|\$[A-Za-z_]\w*|\$\{\{[^}]*\}\})$/.test(v)) return true;
   if (/^<.*>$/.test(v)) return true; // <your-token>
   // A dummy is a marker word set off from the rest by a delimiter (or the whole
   // value), such as `your_token_here` or `example-token`. A marker buried inside
@@ -101,41 +96,84 @@ function firstValue(rest) {
   const text = rest.trim();
   const quoted = /^(["'`])(.*?)\1/.exec(text);
   if (quoted) return quoted[2];
-  return /^[^\s,;)\]}]*/.exec(text)?.[0] ?? "";
+  // A `${...}` or `$(...)` is one unit, so `${X}<token>` and `$(cmd)<token>` are
+  // read to their end, not to the brace or the space. A backtick ends the value:
+  // it closes a code span in prose.
+  return /^(?:\$\{+[^}]*\}+|\$\([^)]*\)|[^\s,;)\]}`])*/.exec(text)?.[0] ?? "";
 }
 
-/** The start of a lookup that defers to the environment or a CI secret. */
-const REFERENCE_HEAD =
-  /^(?:\$\{\{|\$\{[A-Za-z_]\w*|\$[A-Za-z_]\w*|\$\(|process\.env\b|os\.environ\b|os\.getenv\b|ENV\b|System\.getenv\b|getenv\b|secrets\.|env\.)/;
-
-/** The variable name a lookup is called with: `["X"]`, `.get("X"`, `.fetch("X"`, `("X"`. */
-const NAME_ARGUMENT = /^(?:\.(?:get|fetch))?\s*[(\[]\s*(["'`])(?:(?!\1).)*\1/;
+/**
+ * A variable name that reads as a name and not as a value: `NPM_TOKEN`, `npm_config_x`,
+ * or a short word. A mixed-case run of letters and digits is a token, not a name.
+ */
+const isEnvName = (name) =>
+  /^[A-Z][A-Z0-9_]*$/.test(name) ||
+  (/^[a-z][a-z0-9_]*$/.test(name) && (name.length < 16 || name.includes("_")));
 
 /**
- * Whether the text after `KEY =` carries a literal secret. A value that starts as a
+ * The text up to and including the first `closer`, or null when it never closes
+ * or is followed at once by more value (`${X}<token>` is a value, not a reference).
+ */
+function through(text, closer) {
+  const end = text.indexOf(closer);
+  if (end === -1) return null;
+  const after = text[end + closer.length];
+  if (after !== undefined && !/[\s"'`),;}\]]/.test(after)) return null;
+  return text.slice(0, end + closer.length);
+}
+
+/**
+ * What follows a lookup of the environment on an object or a function: an index
+ * (`["X"]`), a call (`("X"`, `.get("X"`, `.fetch("X"`) or a plain `.NAME` property
+ * whose name reads as a name. Returns the text after the variable name, where a
+ * default would be, or null when it is none of those (so the value is not a
+ * lookup at all).
+ */
+function afterAccess(text, call) {
+  // More value glued to an index or a property (`.get-<token>`, `["X"]-<token>`) is not a lookup.
+  const ended = (rest) => (rest === "" || /^[\s"'`),;}\]|&?:]/.test(rest) ? rest : null);
+  let m;
+  if (!call && (m = /^\[\s*(["'])(?:(?!\1).)*\1\s*\]/.exec(text))) return ended(text.slice(m[0].length));
+  if (!call && (m = /^\[[^\]"']*\]/.exec(text))) return ended(text.slice(m[0].length));
+  if ((m = /^(?:\.(?:get|fetch))?\s*\(\s*(?:(["'])(?:(?!\1).)*\1)?/.exec(text))) return text.slice(m[0].length);
+  if (!call && (m = /^\.([A-Za-z_]\w*)(?![\w(])/.exec(text)) && isEnvName(m[1])) return ended(text.slice(m[0].length));
+  return null;
+}
+
+/**
+ * The text after a reference to the environment or a CI secret that stands at
+ * the start of `text`, where a default would be, or null when the value does not
+ * start with one. The head must be followed by what a lookup is followed by, so
+ * `ENV-<token>`, `getenv-<token>`, `env.<token>` and `os.environ<token>` are
+ * values, not references.
+ */
+function afterReference(text) {
+  let m;
+  if (text.startsWith("${{")) return through(text.slice(3), "}}");
+  if ((m = /^\$\{[A-Za-z_]\w*(?=[}:])/.exec(text))) return through(text.slice(m[0].length), "}");
+  if (text.startsWith("$(")) return through(text.slice(2), ")");
+  if ((m = /^\$[A-Za-z_]\w*(?=$|[\s"'`),;}\]])/.exec(text))) return text.slice(m[0].length);
+  if ((m = /^(?:secrets|env)\.([A-Za-z_][\w-]*)(?![\w.-])/.exec(text))) return isEnvName(m[1]) ? text.slice(m[0].length) : null;
+  if ((m = /^(?:process\.env|os\.environ|ENV)(?=[[.])/.exec(text))) return afterAccess(text.slice(m[0].length), false);
+  if ((m = /^(?:os\.getenv|System\.getenv|getenv)(?=\s*\()/.exec(text))) return afterAccess(text.slice(m[0].length), true);
+  return null;
+}
+
+/**
+ * Whether the text after `KEY =` carries a literal secret. A value that is a
  * lookup (`os.environ[...]`, `getenv(...)`, `process.env.X`, `${X}`, `${{ secrets.X }}`)
  * is a placeholder only for the lookup itself: what follows it is read too, because
  * a default is a literal (`os.environ.get("X", "<token>")`, `getenv("X") || "<token>"`,
  * `process.env.X ?? '<token>'`, `${X:-<token>}`). Every quoted string after the
- * variable name is checked, and a shell default word. Any other value is its first
- * token.
+ * variable name is checked, and a shell default word. A value that only starts like a
+ * lookup, and any other value, is judged as its first token.
  *
  * @param {string} rest the text after the `=` or `:`
  * @returns {boolean}
  */
 function valueIsSecret(rest) {
-  const text = rest.trim().replace(/^["'`]/, "");
-  const head = REFERENCE_HEAD.exec(text);
-  if (!head) return !isPlaceholderValue(firstValue(rest));
-  let remainder = text.slice(head[0].length);
-  // A bracketed reference ends where it closes, so prose after `${{ github.token }}`
-  // is not read as its default; a call or an index runs to the end of the line.
-  const closer = head[0] === "${{" ? "}}" : head[0] === "$(" ? ")" : head[0].startsWith("${") ? "}" : null;
-  if (closer !== null) {
-    const end = remainder.indexOf(closer);
-    if (end !== -1) remainder = remainder.slice(0, end + closer.length);
-  }
-  remainder = remainder.replace(NAME_ARGUMENT, "");
+  const remainder = afterReference(rest.trim().replace(/^["'`]/, ""));
+  if (remainder === null) return !isPlaceholderValue(firstValue(rest));
   const shellDefault = /^:?[-=+?]([^}]*)\}/.exec(remainder);
   if (shellDefault && !isPlaceholderValue(shellDefault[1])) return true;
   for (const literal of remainder.matchAll(/(["'])((?:\\.|(?!\1).)*)\1/g)) {

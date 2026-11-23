@@ -973,7 +973,9 @@ What the guards read, so a change to them can be judged:
   marker inside a longer run (`s3cr3tfake...`) does not make a real value one.
   A lookup is a placeholder only for itself: a literal default after it
   (`os.environ.get("X", "<token>")`, `getenv("X") || "<token>"`,
-  `process.env.X ?? '<token>'`, `${X:-<token>}`) is read as a value too. It does
+  `process.env.X ?? '<token>'`, `${X:-<token>}`) is read as a value too, and a
+  value that only starts like a lookup (`ENV-<token>`, `getenv-<token>`,
+  `env.<token>`) is a value, not a lookup. It does
   not read a second assignment on the same line, a secret built by concatenation,
   or an unquoted default word other than the shell form.
   `ghp_`, `gho_`, `ghu_`, `ghs_` and `ghr_` tokens are blocked on their own.

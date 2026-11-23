@@ -463,6 +463,57 @@ describe("secret guard", () => {
     }
   });
 
+  it("treats a value that only starts like a lookup as a value", () => {
+    // `ENV`, `getenv`, `env.` and the rest are references only when followed by what a lookup is
+    // followed by (an index, a call, a plain NAME); glued to a token they are part of the token.
+    const mixed = "aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bC1d";
+    for (const line of [
+      `${NPM}=ENV-${value}`,
+      `${NPM}=getenv-${value}`,
+      `${NPM}=System.getenv-${value}`,
+      `${NPM}=os.environ-${value}`,
+      `${NPM}=process.env-${value}`,
+      `${NPM}=os.getenvx${value}`,
+      `${NPM}=ENVIRONMENT${value}`,
+      `${NPM}=env.${mixed}`,
+      `${NPM}=secrets.${mixed}`,
+      `${NPM}=ENV.${mixed}`,
+      `${NPM}=process.env.${mixed}`,
+      `${NPM}=$${value}-${value}`,
+      `${NPM}=\${X}${value}`,
+      `${NPM}=$(cat x)${value}`,
+      `${NPM}: "ENV-${value}"`,
+      `${NPM} = os.environ.get-${value}`,
+    ]) {
+      blocked("a.txt", line);
+    }
+  });
+
+  it("still lets every ordinary lookup through", () => {
+    for (const line of [
+      `${NPM}=process.env.${NPM}`,
+      `${NPM}=process.env["${NPM}"]`,
+      `${NPM}=process.env[KEY]`,
+      `${NPM} = os.environ["${NPM}"]`,
+      `${NPM} = os.environ.get("${NPM}")`,
+      `${NPM} = os.getenv("${NPM}")`,
+      `${NPM} = getenv("${NPM}")`,
+      `${NPM} = System.getenv("${NPM}")`,
+      `${NPM} = ENV["${NPM}"]`,
+      `${NPM} = ENV.fetch("${NPM}")`,
+      `${NPM}: \${{ secrets.${NPM} }}`,
+      `${NPM}: env.${NPM}`,
+      `${NPM}: secrets.${NPM}`,
+      `${NPM}=\${${NPM}}`,
+      `${NPM}="\${${NPM}}"`,
+      `${NPM}=$${NPM}`,
+      `${NPM}=$(cat /run/secrets/npm)`,
+      `${NPM}: process.env.npm_config_token`,
+    ]) {
+      allowed("a.txt", line);
+    }
+  });
+
   it("still blocks a real value with something after it on the line", () => {
     blocked("a.sh", `${NPM}=${value} # ${NPM}: set in CI`);
     blocked("a.json", `{"${NPM}": "${value}", "other": "..."}`);
