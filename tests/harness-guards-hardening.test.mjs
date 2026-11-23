@@ -489,6 +489,52 @@ describe("secret guard", () => {
     }
   });
 
+  it("treats a value stuck to a closed reference, behind a quote or not, as a value", () => {
+    for (const line of [
+      `${NPM}=\${X}"${value}"`,
+      `${NPM}=\${X}'${value}'`,
+      `${NPM}: \${{ secrets.X }}'${value}'`,
+      `${NPM}: \${{ secrets.X }}"${value}"`,
+      `${NPM}=$(cmd)"${value}"`,
+      `${NPM}="\${X}""${value}"`,
+      `${NPM}="\${X}"'${value}'`,
+      `${NPM}="$(cmd)""${value}"`,
+      `${NPM}=\`\${X}\`${value}\``,
+    ]) {
+      blocked("a.txt", line);
+    }
+  });
+
+  it("reads the literal after a default operator that follows a reference or a plain value", () => {
+    for (const line of [
+      `${NPM} = \`\${X}\` || "${value}"`,
+      `${NPM}="\${X}" || "${value}"`,
+      `${NPM}=\${X} ?? '${value}'`,
+      `${NPM}: \${{ secrets.X }} || '${value}'`,
+      `${NPM} = "" or "${value}"`,
+      `${NPM} = "changeme" || "${value}"`,
+      `${NPM} = os.environ["X"] or "" or "${value}"`,
+    ]) {
+      blocked("a.txt", line);
+    }
+  });
+
+  it("still lets a closed reference, quoted or not, with prose or a comment after it through", () => {
+    for (const line of [
+      `${NPM}: "\${{ secrets.X }}"`,
+      `${NPM}="\${X}"`,
+      `${NPM}='\${X}'`,
+      `${NPM}="$(cmd)"`,
+      `${NPM}: \${{ secrets.X }}`,
+      `${NPM}=\${X}`,
+      `{"${NPM}": "\${X}", "other": "${value}"}`,
+      `${NPM}="\${X}" # "${value}" is the old one`,
+      `${NPM}: \${{ github.token }}\`: the pull request and the commits`,
+    ]) {
+      allowed("a.txt", line);
+    }
+  });
+
   it("still lets every ordinary lookup through", () => {
     for (const line of [
       `${NPM}=process.env.${NPM}`,

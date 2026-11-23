@@ -975,7 +975,10 @@ What the guards read, so a change to them can be judged:
   (`os.environ.get("X", "<token>")`, `getenv("X") || "<token>"`,
   `process.env.X ?? '<token>'`, `${X:-<token>}`) is read as a value too, and a
   value that only starts like a lookup (`ENV-<token>`, `getenv-<token>`,
-  `env.<token>`) is a value, not a lookup. It does
+  `env.<token>`) is a value, not a lookup, and so is a closed reference with more
+  value stuck to it (`${X}"<token>"`). A literal after a default operator
+  (`|| "<token>"`, `?? '<token>'`, `or "<token>"`) is read after a reference or a
+  plain value. It does
   not read a second assignment on the same line, a secret built by concatenation,
   or an unquoted default word other than the shell form.
   `ghp_`, `gho_`, `ghu_`, `ghs_` and `ghr_` tokens are blocked on their own.

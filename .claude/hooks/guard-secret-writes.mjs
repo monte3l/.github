@@ -111,15 +111,47 @@ const isEnvName = (name) =>
   (/^[a-z][a-z0-9_]*$/.test(name) && (name.length < 16 || name.includes("_")));
 
 /**
- * The text up to and including the first `closer`, or null when it never closes
- * or is followed at once by more value (`${X}<token>` is a value, not a reference).
+ * The text of a bracketed reference up to and including its `closer` (what is
+ * inside may hold a default, so it is read), and what follows it. `quote` is the
+ * quote the value opened with, if any: the same quote right after the closer
+ * closes the value and is not part of what follows. Returns null when the
+ * reference never closes.
+ *
+ * @param {string} text the text after the opening token
+ * @param {string} closer
+ * @param {string} quote
+ * @returns {{ scan: string, suffix: string } | null}
  */
-function through(text, closer) {
+function through(text, closer, quote) {
   const end = text.indexOf(closer);
   if (end === -1) return null;
-  const after = text[end + closer.length];
-  if (after !== undefined && !/[\s"'`),;}\]]/.test(after)) return null;
-  return text.slice(0, end + closer.length);
+  let suffix = text.slice(end + closer.length);
+  if (quote !== "" && suffix.startsWith(quote)) suffix = suffix.slice(1);
+  return { scan: text.slice(0, end + closer.length), suffix };
+}
+
+/**
+ * What a reference may be followed by: nothing, a space or a delimiter, or a code
+ * span's closing backtick in prose. More value stuck to it (`${X}<token>`,
+ * `${X}"<token>"`, `$(cmd)'<token>'`) makes the whole a value, not a lookup.
+ */
+const endsReference = (suffix) =>
+  suffix === "" ||
+  /^[\s,;)\]}|&?:]/.test(suffix) ||
+  (suffix[0] === "`" && (suffix.length === 1 || /[\s:.,;)\]}]/.test(suffix[1])));
+
+/**
+ * The literals after a default operator (`|| "x"`, `?? 'x'`, `or "x"`, `| "x"`),
+ * however many are chained: what a default looks like once the reference ended.
+ */
+function defaultLiterals(tail) {
+  const found = [];
+  let rest = tail;
+  for (let m; (m = /^\s*(?:\|\||\?\?|\bor\b|\|)\s*(["'])((?:\\.|(?!\1).)*)\1/.exec(rest)); ) {
+    found.push(m[2]);
+    rest = rest.slice(m[0].length);
+  }
+  return found;
 }
 
 /**
@@ -141,45 +173,76 @@ function afterAccess(text, call) {
 }
 
 /**
- * The text after a reference to the environment or a CI secret that stands at
- * the start of `text`, where a default would be, or null when the value does not
- * start with one. The head must be followed by what a lookup is followed by, so
- * `ENV-<token>`, `getenv-<token>`, `env.<token>` and `os.environ<token>` are
- * values, not references.
+ * A reference to the environment or a CI secret at the start of `text`:
+ *  - null when the value does not start with one (`ENV-<token>`, `getenv-<token>`,
+ *    `env.<token>` and `os.environ<token>` are values, not references: the head must
+ *    be followed by what a lookup is followed by);
+ *  - `{ scan, suffix }` when it is one: `scan` is read for any quoted literal (a
+ *    default inside the reference), `suffix` is what follows it on the line;
+ *  - "unclosed" when a bracketed reference never closes.
+ *
+ * @param {string} text
+ * @param {string} quote the quote the value opened with, or ""
+ * @returns {{ scan: string, suffix: string } | "unclosed" | null}
  */
-function afterReference(text) {
+function afterReference(text, quote) {
   let m;
-  if (text.startsWith("${{")) return through(text.slice(3), "}}");
-  if ((m = /^\$\{[A-Za-z_]\w*(?=[}:])/.exec(text))) return through(text.slice(m[0].length), "}");
-  if (text.startsWith("$(")) return through(text.slice(2), ")");
-  if ((m = /^\$[A-Za-z_]\w*(?=$|[\s"'`),;}\]])/.exec(text))) return text.slice(m[0].length);
-  if ((m = /^(?:secrets|env)\.([A-Za-z_][\w-]*)(?![\w.-])/.exec(text))) return isEnvName(m[1]) ? text.slice(m[0].length) : null;
-  if ((m = /^(?:process\.env|os\.environ|ENV)(?=[[.])/.exec(text))) return afterAccess(text.slice(m[0].length), false);
-  if ((m = /^(?:os\.getenv|System\.getenv|getenv)(?=\s*\()/.exec(text))) return afterAccess(text.slice(m[0].length), true);
-  return null;
+  const bracket = (opening, closer) => through(text.slice(opening), closer, quote) ?? "unclosed";
+  if (text.startsWith("${{")) return bracket(3, "}}");
+  if ((m = /^\$\{[A-Za-z_]\w*(?=[}:])/.exec(text))) return bracket(m[0].length, "}");
+  if (text.startsWith("$(")) return bracket(2, ")");
+  if ((m = /^\$[A-Za-z_]\w*(?=$|[\s"'`),;}\]])/.exec(text))) return { scan: text.slice(m[0].length), suffix: "" };
+  if ((m = /^(?:secrets|env)\.([A-Za-z_][\w-]*)(?![\w.-])/.exec(text))) return isEnvName(m[1]) ? { scan: text.slice(m[0].length), suffix: "" } : null;
+  let rest = null;
+  if ((m = /^(?:process\.env|os\.environ|ENV)(?=[[.])/.exec(text))) rest = afterAccess(text.slice(m[0].length), false);
+  else if ((m = /^(?:os\.getenv|System\.getenv|getenv)(?=\s*\()/.exec(text))) rest = afterAccess(text.slice(m[0].length), true);
+  return rest === null ? null : { scan: rest, suffix: "" };
+}
+
+/** The first value of `rest` and what follows it. */
+function valueAndTail(rest) {
+  const text = rest.trim();
+  const quoted = /^(["'`])(.*?)\1/.exec(text);
+  if (quoted) return { value: quoted[2], tail: text.slice(quoted[0].length) };
+  const value = firstValue(text);
+  return { value, tail: text.slice(value.length) };
 }
 
 /**
  * Whether the text after `KEY =` carries a literal secret. A value that is a
  * lookup (`os.environ[...]`, `getenv(...)`, `process.env.X`, `${X}`, `${{ secrets.X }}`)
- * is a placeholder only for the lookup itself: what follows it is read too, because
- * a default is a literal (`os.environ.get("X", "<token>")`, `getenv("X") || "<token>"`,
- * `process.env.X ?? '<token>'`, `${X:-<token>}`). Every quoted string after the
- * variable name is checked, and a shell default word. A value that only starts like a
- * lookup, and any other value, is judged as its first token.
+ * is a placeholder only for the lookup itself: a default is a literal
+ * (`os.environ.get("X", "<token>")`, `process.env.X ?? '<token>'`, `${X:-<token>}`,
+ * `${X} || "<token>"`), so every quoted string inside the reference, a shell default
+ * word and the literals after a default operator are read. A reference with more value
+ * stuck to it (`${X}"<token>"`) is that value. Any other value is its first token, and
+ * the literals after a default operator that follows it.
+ *
+ * Not read: a second assignment on the line, a secret built by concatenation, and
+ * prose after the value.
  *
  * @param {string} rest the text after the `=` or `:`
  * @returns {boolean}
  */
 function valueIsSecret(rest) {
-  const remainder = afterReference(rest.trim().replace(/^["'`]/, ""));
-  if (remainder === null) return !isPlaceholderValue(firstValue(rest));
-  const shellDefault = /^:?[-=+?]([^}]*)\}/.exec(remainder);
+  const text = rest.trim();
+  const quote = /^["'`]/.exec(text)?.[0] ?? "";
+  const ref = afterReference(text.slice(quote.length), quote);
+  if (ref === "unclosed" || ref === null) {
+    const { value, tail } = valueAndTail(rest);
+    return !isPlaceholderValue(value) || defaultLiterals(tail).some((literal) => !isPlaceholderValue(literal));
+  }
+  const shellDefault = /^:?[-=+?]([^}]*)\}/.exec(ref.scan);
   if (shellDefault && !isPlaceholderValue(shellDefault[1])) return true;
-  for (const literal of remainder.matchAll(/(["'])((?:\\.|(?!\1).)*)\1/g)) {
+  for (const literal of ref.scan.matchAll(/(["'])((?:\\.|(?!\1).)*)\1/g)) {
     if (!isPlaceholderValue(literal[2])) return true;
   }
-  return false;
+  if (!endsReference(ref.suffix)) {
+    // More value stuck to the reference: judge the glued run, quotes removed.
+    const run = ref.suffix.split(/\s/)[0].replace(/["'`]/g, "").replace(/[,;)\]}]+$/, "");
+    return !isPlaceholderValue(run);
+  }
+  return defaultLiterals(ref.suffix).some((literal) => !isPlaceholderValue(literal));
 }
 
 /**
