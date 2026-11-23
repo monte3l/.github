@@ -27,8 +27,8 @@ const run = (hook, stdin) => spawnSync("node", [path.join(root, ".claude/hooks",
 
 describe("blocking guards fail closed on a payload they cannot read", () => {
   for (const [hook, allowed, blocked] of GUARDS) {
-    it(`${hook} blocks garbage, an empty payload, null and a bare number`, () => {
-      for (const stdin of ["not json", "", "null", "42", '"text"']) {
+    it(`${hook} blocks garbage, an empty payload, null, a bare number, a string and an array`, () => {
+      for (const stdin of ["not json", "", "null", "42", '"text"', '"x"', "true", "[]", "[1]", '[{"tool_input":{}}]']) {
         const r = run(hook, stdin);
         assert.equal(r.status, 2, `${JSON.stringify(stdin)} -> ${r.status}: ${r.stderr}`);
         assert.match(r.stderr, /could not read the hook payload/);
