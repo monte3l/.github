@@ -9,7 +9,8 @@
  * `blueprint/projects.json`; a flag nobody declared; a `sync:if` block in a
  * template that is not closed, or names an undeclared flag; or, for a starter, a
  * file that is not in `blueprint/files/`, a path that could leave the repository,
- * or a first path that is not where `bootstrap.json` writes it.
+ * or a first path that is not where `bootstrap.json` writes it; a `requires` that
+ * names no starter, and a repository `skip` that names neither a template nor a starter.
  *
  * The template sync reads this file to decide what it may touch, so a typo here
  * would quietly widen or narrow that.
@@ -93,6 +94,17 @@ export default async function parity({ root }) {
     if (name in config.templates) problems.push(`${where} has the name of a workflow template, so a path override for it would be ambiguous`);
     if (!existsSync(path.join(root, "blueprint", "files", name))) problems.push(`${where} is not in blueprint/files/`);
     if (!MODES.has(entry.mode)) problems.push(`${where} has the mode "${entry.mode}", which is neither managed nor unmanaged`);
+    // `requires` names the starters this one cannot work without (the push guard and its helper): it is refreshed only beside them.
+    if (entry.requires !== undefined) {
+      if (!Array.isArray(entry.requires) || entry.requires.some((need) => typeof need !== "string")) {
+        problems.push(`${where} has a "requires" that is not a list of starter names`);
+      } else {
+        for (const need of entry.requires) {
+          if (need === name) problems.push(`${where} requires itself`);
+          else if (!(need in starters)) problems.push(`${where} requires "${need}", which is not a starter in blueprint/sync.json`);
+        }
+      }
+    }
     if (!Array.isArray(entry.paths) || entry.paths.length === 0) {
       problems.push(`${where} needs a non-empty "paths" array`);
       continue;
@@ -108,6 +120,17 @@ export default async function parity({ root }) {
     if (repo === ".github") problems.push(`blueprint/sync.json: "repos" lists ".github", whose workflows are its own, not copies`);
     for (const flag of entry.flags ?? []) {
       if (!flags.has(flag)) problems.push(`blueprint/sync.json: ${repo} sets the flag "${flag}", which is not declared`);
+    }
+    // `skip` leaves units out for one repository: a name that is neither a template nor a starter would silently skip nothing.
+    if (entry.skip !== undefined) {
+      if (!Array.isArray(entry.skip) || entry.skip.some((name) => typeof name !== "string")) {
+        problems.push(`blueprint/sync.json: ${repo} has a "skip" that is not a list of template or starter names`);
+      } else {
+        for (const name of entry.skip) {
+          if (!(name in config.templates) && !(name in starters)) problems.push(`blueprint/sync.json: ${repo} skips "${name}", which is neither a workflow template nor a starter`);
+        }
+        if (new Set(entry.skip).size !== entry.skip.length) problems.push(`blueprint/sync.json: ${repo} lists a name twice under "skip"`);
+      }
     }
     for (const [name, value] of Object.entries(entry.paths ?? {})) {
       if (!(name in config.templates) && !(name in starters)) problems.push(`blueprint/sync.json: ${repo} sets a path for "${name}", which is neither a workflow template nor a starter`);

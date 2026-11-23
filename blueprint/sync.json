@@ -70,6 +70,9 @@
       "mode": "managed",
       "paths": [
         ".claude/hooks/guard-git-push-signed.mjs"
+      ],
+      "requires": [
+        "signed-range.mjs"
       ]
     },
     "signed-range.mjs": {

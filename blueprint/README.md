@@ -410,6 +410,20 @@ repository that keeps a file elsewhere says so under `repos.<name>.paths`, which
 is also how `m3l-claude-mentor` and `m3l-groundwork` show their `ci.yml` as the
 `verify` copy.
 
+Two optional keys keep a refresh from doing harm. A starter may list `requires`
+(the push guard requires `signed-range.mjs`, which it imports): it is refreshed
+only when every starter it needs, in the same repository, is current or is
+refreshed in the same run. Beside a helper that is custom, missing or skipped it
+is held back (`H4` in the table, `HELD` in the data), nothing is written for it,
+and the findings say so: `m3l-x: .claude/hooks/guard-git-push-signed.mjs is 4
+versions behind its starter, but is not refreshed: bin/lib/signed-range.mjs is
+custom. Refresh the pair together by hand`. A repository may also leave a
+template or starter out for good with `repos.<name>.skip` (a list of names): it
+is not read, written or reported (`skip` in the table), which is how a repository
+that keeps its own version on purpose says so. `bin/sync-parity.mjs` fails on a
+`requires` that names no starter, and on a `skip` that names neither a template
+nor a starter.
+
 Most copies are custom on purpose. `m3l-design`'s `.gitattributes` keeps bytes
 exact for its checksums, and `m3l-prompt-optimizer`'s gitleaks config allows its
 fake test keys. A custom copy is never reported and never overwritten. Only a
@@ -968,15 +982,23 @@ What the guards read, so a change to them can be judged:
   (`refs/tags/v1`, `refs/tags/v1:refs/tags/x`), and a deletion, are not vetted;
   any other destination, a branch or a bare name such as `main` that git matches
   against the remote's refs, and any source that is a revision (`refs/tags/v1~1`),
-  is vetted as its commit. Git runs only in the repository the hook runs in, its worktrees and
-  `CLAUDE_PROJECT_DIR`, and with `gpg.program`, `core.fsmonitor` and the other
-  program settings of the repository overridden, because a repository's own config
-  can name programs git then runs. A push from any other directory goes unvetted
-  here, like a range the guard cannot work out; the signed-commits ruleset holds.
+  is vetted as its commit. A command word that is an expansion (`$G push`,
+  `sudo $G push`, `env X=1 $G push`, a backtick) is read as a possible git; an
+  expansion that is only an argument is not. Git runs only in the repository the
+  hook runs in, its worktrees and `CLAUDE_PROJECT_DIR`, and with `gpg.program`,
+  `core.fsmonitor` and the other program settings of the repository overridden,
+  because a repository's own config can name programs git then runs. A push from
+  another real directory goes unvetted here, like a range the guard cannot work
+  out; the signed-commits ruleset holds. A directory that cannot be placed is not
+  "somewhere else": a `-C` or `cd` operand built at run time (`"$W"`, `$(...)`, a
+  backtick, `~`) or one that is no directory makes the guard vet the hook's own
+  repository for it. Not covered: a command built so that no text of it says git
+  (a sourced script, a variable holding a whole command), an expansion used as the
+  subcommand (`git $S origin`), and an expansion after `sudo -u USER`, whose user
+  name is read as the command.
 - **Secret guard.** A key may be quoted (`"NPM_TOKEN": "..."`) and in any case; a
   key in backticks is prose about it. The value is the quoted string, or the run
-  up to a space, comma or bracket, so what follows on the line is not read. It is a
-  placeholder only when it is only dots, starts with a reference (`${X}`, `$X`,
+  up to a space, comma or bracket. It is a placeholder only when it is only dots, starts with a reference (`${X}`, `$X`,
   `process.env.X`, `os.environ[...]`, `ENV[...]`, `getenv(...)`, `secrets.X`) or
   has a marker word set off by a delimiter (`your_token`, `example-key`); a
   marker inside a longer run (`s3cr3tfake...`) does not make a real value one.
@@ -987,18 +1009,22 @@ What the guards read, so a change to them can be judged:
   `env.<token>`) is a value, not a lookup, and so is a closed reference with more
   value stuck to it (`${X}"<token>"`). A literal after a default operator
   (`|| "<token>"`, `?? '<token>'`, `or "<token>"`) is read after a reference or a
-  plain value. After a reference (at the start of the value or anywhere in it)
-  nothing is trusted by its shape: the whole rest of the line is split at
+  plain value. Whatever the first value is, a
+  placeholder (`changeme`, `<token>`, an empty string) or a reference included,
+  nothing after it is trusted by its shape: the whole rest of the line is split at
   quotes, operators and delimiters, and a run of 16 or more characters with a
   token prefix (`ghp_`, `sk-`, `AKIA`, ...), or with letters and digits, that is
-  not a placeholder, a path, a URL or a `NAME_LIKE_THIS` is a secret. So a list
-  element, a concatenation, a second argument or a JSON sibling next to a
-  reference is read, and a line that holds a reference and a secret-looking run
-  is refused. Not covered: a line with no reference at all, where only the first
-  value is read; a secret split across parts (`"ab" + "cd"`) or under 16
-  characters; one with no digit and no token prefix (letters only); a lowercase
-  snake_case run, which is read as a name; and a secret written as a path or
-  after a domain-like prefix.
+  not a placeholder, a path, a URL, a `NAME_LIKE_THIS` or a hyphenated name of
+  lowercase words (`m3l-output-governor`) is a secret. A repository or package
+  name is not one: every part of it starts with a letter and one is a plain word,
+  where a UUID or a random token has parts that start with a digit or are noise.
+  So a list element, a concatenation, a second argument or a JSON sibling after a
+  value is read, and a line that holds a placeholder or a reference and a
+  secret-looking run is refused. Not covered: a secret split across parts (`"ab" +
+  "cd"`) or under 16 characters; one with no digit and no token prefix (letters
+  only); a lowercase snake_case run, which is read as a name; a lowercase
+  hyphenated run of words, which is read as a name; and a secret written as a
+  path or after a domain-like prefix.
   `ghp_`, `gho_`, `ghu_`, `ghs_` and `ghr_` tokens are blocked on their own.
   `tests/harness-guards-hardening.test.mjs` runs it over every tracked file of
   this repository and expects no hit, so the guard never refuses the edit that
@@ -1008,7 +1034,11 @@ What the guards read, so a change to them can be judged:
   own. A guard beside a helper that is missing or older does not crash (under
   `onFailure: "block"` that would refuse every `Bash` call): it blocks a command
   that looks like a push, saying to refresh both files, and lets any other command
-  through. Refresh both together: they sit side by side in `sync.json`.
+  through. They are refreshed together: `guard-git-push-signed.mjs` lists
+  `signed-range.mjs` under `requires` in `sync.json`, so the sync never refreshes
+  the guard in a repository whose helper is custom or missing (a finding says so),
+  and refreshes both when both are stale. A repository that keeps its own helper
+  refreshes the pair by hand, or lists the guard under `skip`.
 
 ### Worktree guard
 
@@ -1021,11 +1051,19 @@ a checkout is on `main`, so a repository keeps both. It reads the directory from
 the hook input's `cwd`, because `CLAUDE_PROJECT_DIR` stays at the folder the
 session started in even after it enters a worktree. A `git -C "$W"` or `cd "$W"`
 is judged in the directory `W` names when the same command line set it to a
-literal value once, unconditionally, and the name appears nowhere else on the line except as the operand of that `git -C` or `cd` (`W=../wt; git -C "$W" commit`); one doubtful word (`read`, `eval`, `source`, a loop, another `=`) drops every variable of the line, and a variable it cannot resolve is
-judged from `cwd`, and a `cd` followed by `;` still counts both places, because
-the `cd` may have failed. A command or subcommand that is a substitution
-(`git $(echo commit)`, ``git `echo commit` ``, `$(echo git) commit`) cannot be
-read and is judged as writing. It also covers `NotebookEdit` (the file is the
+literal value once, outright, and the name appears nowhere else on the line except
+as the operand of that `git -C` or `cd` (`W=../wt; git -C "$W" commit`). Outright
+means not after `&&` or `||` anywhere before it (a newline after one continues it)
+and not inside `if`, `case`, a loop or a brace group: one doubtful word (`read`,
+`eval`, `source`, `if`, `then`, `done`, `{`, `!`, another `=`) drops every variable
+of the line. A variable it cannot resolve is judged from `cwd`, and a `cd`
+followed by `;` still counts both places, because the `cd` may have failed. A
+command or subcommand that is a substitution (`git $(echo commit)`,
+``git `echo commit` ``, `$(echo git) commit`) cannot be read and is judged as
+writing, and so is a command word that is an expansion (`$G commit`), after a
+prefix (`sudo`, `env X=1`, `time`, `xargs`, `if ...; then`) too. An expansion that
+is only an argument (`cp $A $B`) is not. Not read: an expansion after
+`sudo -u USER`, whose user name is taken for the command. It also covers `NotebookEdit` (the file is the
 notebook's `notebook_path`). It fails open on a payload it cannot read, because
 failing closed would refuse every `Bash` call if Claude Code changed its input;
 `onFailure: "block"` covers a crash or a timeout.

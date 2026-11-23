@@ -73,4 +73,22 @@ await expectProblem("a repository path for a template is clean", (c) => { c.sync
 await expectProblem("a repository path for a starter is clean", (c) => { withStarter(c); c.sync.repos["m3l-x"].paths = { "x.toml": "conf/x.toml" }; }, null);
 await expectProblem("a repository path for something that is neither", (c) => { c.sync.repos["m3l-x"].paths = { nope: "x.yml" }; }, "neither a workflow template nor a starter");
 await expectProblem("a repository path that leaves the repository", (c) => { c.sync.repos["m3l-x"].paths = { a: "../ci.yml" }; }, "leaves the repository");
+
+// `requires`: a starter that is refreshed only beside another (the push guard and its helper).
+const withPair = (c, requires) => {
+  c.sync.starters = { "g.mjs": { mode: "managed", paths: [".g.mjs"], ...(requires === undefined ? {} : { requires }) }, "h.mjs": { mode: "managed", paths: [".h.mjs"] } };
+  c.files["g.mjs"] = "g\n";
+  c.files["h.mjs"] = "h\n";
+  c.bootstrap.starters = [{ from: "blueprint/files/g.mjs", to: ".g.mjs" }, { from: "blueprint/files/h.mjs", to: ".h.mjs" }];
+};
+await expectProblem("a starter that requires another starter is clean", (c) => withPair(c, ["h.mjs"]), null);
+await expectProblem("a starter that requires itself", (c) => withPair(c, ["g.mjs"]), "requires itself");
+await expectProblem("a starter that requires something that is not a starter", (c) => withPair(c, ["nope.mjs"]), 'requires "nope.mjs", which is not a starter');
+await expectProblem("a requires that is not a list", (c) => withPair(c, "h.mjs"), 'a "requires" that is not a list of starter names');
+await expectProblem("a requires with a name that is not a string", (c) => withPair(c, [7]), 'a "requires" that is not a list of starter names');
+// `skip`: a repository leaves a template or a starter out.
+await expectProblem("a repository that skips a template and a starter is clean", (c) => { withPair(c); c.sync.repos["m3l-x"].skip = ["a", "g.mjs"]; }, null);
+await expectProblem("a repository that skips a name that is neither", (c) => { c.sync.repos["m3l-x"].skip = ["nope"]; }, 'skips "nope", which is neither a workflow template nor a starter');
+await expectProblem("a skip that is not a list", (c) => { c.sync.repos["m3l-x"].skip = "a"; }, 'a "skip" that is not a list');
+await expectProblem("a skip that lists a name twice", (c) => { c.sync.repos["m3l-x"].skip = ["a", "a"]; }, 'lists a name twice under "skip"');
 console.log(failed ? `\n${failed} FAILED` : "\nALL SYNC-PARITY CASES BEHAVE"); process.exit(failed ? 1 : 0);

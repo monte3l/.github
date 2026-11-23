@@ -26,9 +26,10 @@
  * `bin/lib/template-sync.mjs`, and the data (which templates and starters are managed,
  * which repositories take which optional blocks) is `blueprint/sync.json`.
  *
- * Prints a table (`I` identical, `E` equivalent, `S1` stale by one version, `C`
- * custom, `-` the repository has no such file), then the counts for the managed
- * templates and the findings.
+ * Prints a table (`I` identical, `E` equivalent, `S1` stale by one version, `H1` stale
+ * but held back because a starter it needs is custom or missing, `C` custom, `skip` left out
+ * by the repository's `skip` list in sync.json, `-` the repository has no such file), then
+ * the counts for the managed templates and the findings.
  *
  * Findings are what a person should look at: a managed copy that is stale, and a
  * repository whose flag in `sync.json` disagrees with its own `docs.config.mjs`.
@@ -48,7 +49,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { classify, describeStale, jobNames, keepHeader, render, unitsFor } from "./lib/template-sync.mjs";
+import { classify, describeHeld, describeStale, holdUncoupled, jobNames, keepHeader, render, unitsFor } from "./lib/template-sync.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const NAME_RE = /^[A-Za-z0-9._][A-Za-z0-9._-]*$/;
@@ -188,11 +189,18 @@ try {
         mismatches.push(`${repo}: ${flags.includes("manifest") ? 'sets the flag "manifest" but its docs.config.mjs has none' : 'has a manifest in docs.config.mjs but no "manifest" flag'}`);
       }
     }
+    const rows = [];
+    const copies = new Map();
     for (const unit of unitsFor(config, repo)) {
-      const found = fetchFirst(repo, unit.paths);
       const row = { repo, template: unit.name, kind: unit.kind, managed: unit.managed };
+      // A repository that keeps its own version on purpose says so in sync.json: nothing is read or written.
+      if (unit.skipped) {
+        rows.push({ ...row, path: unit.paths[0], state: "SKIPPED" });
+        continue;
+      }
+      const found = fetchFirst(repo, unit.paths);
       if (found === null) {
-        results.push({ ...row, path: unit.paths[0], state: "MISSING" });
+        rows.push({ ...row, path: unit.paths[0], state: "MISSING" });
         continue;
       }
       let current;
@@ -210,8 +218,15 @@ try {
         }
       }
       const verdict = classify(found.text, current, old);
-      results.push({ ...row, path: found.path, ...verdict });
-      if (writeDir !== null && unit.managed && verdict.state === "STALE") {
+      rows.push({ ...row, path: found.path, ...verdict });
+      copies.set(unit.name, { unit, found, current });
+    }
+    // A starter that needs another (the push guard and its helper) is refreshed only beside a usable one.
+    for (const row of holdUncoupled(rows, config)) {
+      results.push(row);
+      const copy = copies.get(row.template);
+      if (writeDir !== null && copy && row.managed && row.state === "STALE") {
+        const { unit, found, current } = copy;
         // Only a workflow has jobs: a starter has no required check to rename.
         if (unit.kind === "workflow" && jobNames(found.text).join("\n") !== jobNames(current).join("\n")) {
           console.error(`template-sync: left out ${repo} ${unit.name}.yml: the refresh would change its job names, which a required check depends on. A person does this one`);
@@ -231,8 +246,10 @@ try {
 }
 
 const stale = results.filter((r) => r.managed && r.state === "STALE");
+const held = results.filter((r) => r.managed && r.state === "HELD");
 const findings = [
   ...stale.map(describeStale),
+  ...held.map(describeHeld),
   ...mismatches,
 ];
 if (findingsFile) writeFileSync(findingsFile, findings.length === 0 ? "" : `${findings.join("\n")}\n`);
@@ -240,7 +257,7 @@ if (findingsFile) writeFileSync(findingsFile, findings.length === 0 ? "" : `${fi
 if (asJson) {
   console.log(JSON.stringify({ results, mismatches }, null, 2));
 } else {
-  const cell = (r) => (r.state === "MISSING" ? "-" : r.state === "STALE" ? `S${r.back}` : r.state[0]) + (r.managed ? "" : "*");
+  const cell = (r) => (r.state === "MISSING" ? "-" : r.state === "SKIPPED" ? "skip" : r.state === "STALE" ? `S${r.back}` : r.state === "HELD" ? `H${r.back}` : r.state[0]) + (r.managed ? "" : "*");
   console.log(`${"template".padEnd(20)}${repos.map((r) => r.replace("m3l-", "").slice(0, 11).padEnd(12)).join("")}`);
   for (const unit of unitsFor(config, repos[0])) {
     console.log(unit.name.padEnd(20) + repos.map((repo) => cell(results.find((r) => r.repo === repo && r.template === unit.name)).padEnd(12)).join(""));
