@@ -70,3 +70,19 @@ describe("managed settings: force-push rules", () => {
     }
   });
 });
+
+describe("managed settings: protected files", () => {
+  it("denies edits of lockfiles and .git, which pnpm install and Dependabot write themselves", () => {
+    for (const rule of ["Edit(**/pnpm-lock.yaml)", "Edit(**/package-lock.json)", "Edit(**/yarn.lock)", "Edit(**/.git/**)"]) {
+      assert.ok(deny.includes(rule), `deny should list ${rule}`);
+    }
+  });
+
+  it("does not deny the commands that rewrite a lockfile, and uses Edit rules, not Write ones", () => {
+    for (const cmd of ["pnpm install", "pnpm install --frozen-lockfile", "npm install", "git commit -m x", "git push origin feature"]) {
+      assert.ok(!matches(deny, cmd), `deny must not match: ${cmd}`);
+    }
+    // Claude Code matches Edit rules for Write, MultiEdit and NotebookEdit; a Write(path) rule matches nothing.
+    for (const rule of deny) assert.ok(!/^(Write|MultiEdit|NotebookEdit)\(/.test(rule), `use Edit(...) instead of ${rule}`);
+  });
+});
