@@ -11,6 +11,7 @@
       "tag-separator": "--",
       "draft": true,
       "force-tag-creation": true,
+      "exclude-paths": [".claude", ".github", "LICENSES", "docs"],
       "extra-files": [
         {
           "type": "json",

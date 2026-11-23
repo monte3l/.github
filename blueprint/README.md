@@ -376,8 +376,13 @@ clean result.
 Keep per-repository data out of a template. A package allow-list or a URL in the
 file turns every copy custom. A URL is a parameter (`PROJECT`), an optional step
 is a `sync:if` block, and data belongs in a config file the workflow reads.
-`workflow-templates/docs-live.yml` has the one block today: `--metadata` fails
+`workflow-templates/docs-live.yml` has one block (`manifest`): `--metadata` fails
 when `docs.config.mjs` has no `manifest`, so only a repository with one takes it.
+`workflow-templates/release.yml` has another (`assets`, the tarball job), but it
+is `unmanaged`, so nothing renders it per repository: it reaches a repository only
+when a person copies the file and removes the markers. A copy made through
+Actions, New workflow keeps the markers as comments, which is why that job also
+tests a repository variable at run time (see [Releases](#releases)).
 
 `verify.yml` and `release.yml` are `unmanaged`: their lanes and inputs belong to
 each repository, and no `sync:if` flag can say which lanes a repository has.
@@ -568,7 +573,10 @@ error that names neither.
    manifest to the current version.
 2. Copy `workflow-templates/release.yml` and `commit-lint.yml`.
 3. Set `notify` in `release.yml` to the repositories that consume this one.
-4. Put any repository-specific job between `prepare` and `finalize`.
+4. Put any repository-specific job between `prepare` and `finalize`. A repository that ships a source tarball can use the `assets` block of `release.yml`: it checks the tag through the API with the token (so a private repository works), runs `git archive`, runs `scripts/release-sbom.mjs` if the repository has one (it writes `<tarball>.cdx.json`) and uploads to the draft. It attests nothing: `finalize` attests every asset on the draft by glob, and `actions/attest` takes one literal file for `sbom-path`, never a glob, which is why a spelled-out SBOM path broke releases. The SBOM is then a signed asset, not a predicate of the tarball. A repository that wants that keeps its own job and sets `attest: false`.
+   - **Opt-in twice.** The job runs only when the repository variable `RELEASE_ASSETS` is `true`, so a copy made through Actions, New workflow, which keeps the `# sync:if assets` / `# sync:end` markers as comments and so contains the job, skips it and still publishes (`finalize` uses `!failure()` so that a skipped job does not skip it). It also needs a `.node-version` file. Set the variable, and drop the marker lines.
+   - **No effect by itself.** `release` is `unmanaged` and `bin/lib/bootstrap.mjs` renders with no flags, so the `assets` flag reaches a repository only when a person copies the block.
+5. Keep `exclude-paths` in a root package's configuration (the `plugin.json` and `simple.json` starters carry `.claude`, `.github`, `LICENSES` and `docs`). release-please releases a `fix:` or `feat:` commit, and a commit that changes only those paths would cut a release with nothing new in it. List the repository's other non-payload folders (`bin`, `tests`, `tools`) too. The `library.json` starter has none: its packages live under `packages/`, so a change outside them is not in any package.
 
 | Starter | For | Tag |
 | ------- | --- | --- |
@@ -1032,6 +1040,15 @@ The files to list are the vendored `design/` copy, the starters the sync
 refreshes (`.claude/hooks/guard-*.mjs`, `bin/lib/signed-range.mjs`,
 `require-signoff.sh`, `.gitattributes`, `.editorconfig`) and the JSON and YAML a
 release or `pnpm` rewrites. A repository without a formatter has nothing to do.
+
+### Lines two pull requests both edit
+
+A list that every change touches is a merge conflict waiting to happen: the one line that names every script in `verify.yml` was edited by most pull requests that added a script (`.github` had six reported conflicts, most there). Two rules remove the common cases.
+
+- **Check scripts by glob, not by name.** `bash -n` reads one script and takes the rest as arguments, so a list on one line checked only the first. Loop over `bin/**/*.sh` with `shopt -s globstar nullglob` and pass the same array to `shellcheck`. Fail when a glob matches nothing, so a moved folder cannot turn the check into a pass. `.github/workflows/verify.yml` is the example.
+- **A file that only grows at its end can merge by union.** In `.gitattributes`, `docs/log.md merge=union` keeps both sides' added lines instead of conflicting. Git does not order them, so use it only where a check or a reader copes with that (`knowledge/log.md` here, whose entries `bin/knowledge-parity.mjs` checks for date order). The `gitattributes` starter carries the line as a comment, because a path other repositories lack would be noise.
+
+A merge queue would remove the remaining catch-up merges. It is not adopted: every required workflow needs a `merge_group` trigger first.
 
 ## Claude Code managed settings
 

@@ -55,11 +55,107 @@ jobs:
   # A repository-specific job goes here. It runs only when a release was
   # created, and attaches its assets to the draft named by
   # `needs.prepare.outputs.tag_name`. Then add it to `finalize`'s `needs`.
+  #
+  # The block below is the common case: a source tarball and, if the repository
+  # has `scripts/release-sbom.mjs`, its SBOM. A repository that ships a tarball
+  # keeps the block (and the matching `needs` line of `finalize`) and drops the
+  # two marker comments; the others have it removed when this file is rendered.
+  # Attesting is not done here: `finalize` attests every asset on the draft
+  # with a glob (`subject-path`), so no per-version path is written anywhere.
+  # `actions/attest` takes one literal file for `sbom-path` and no glob, which
+  # broke two releases when the path was spelled out here. The SBOM is therefore
+  # attested as a subject, not as a predicate of the tarball.
+  #
+  # The job holds `contents: write` only, runs no repository code except the
+  # SBOM script, and must finish before `finalize` publishes: an immutable
+  # release takes no new asset.
+  #
+  # It is opt-in at run time too. A copy made through Actions, New workflow
+  # keeps these marker lines as comments, so the job is in every such copy and
+  # would fail in one with no `.node-version`. It runs only when the repository
+  # variable RELEASE_ASSETS is `true` (Settings, Secrets and variables, Actions,
+  # Variables). Otherwise it is skipped, and `finalize` still publishes.
+  # sync:if assets
+  assets:
+    name: Assets
+    needs: [prepare]
+    if: needs.prepare.outputs.releases_created == 'true' && vars.RELEASE_ASSETS == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # gh release upload to the draft
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .node-version
+
+      # The draft's tag is made at the commit the release pull request merged
+      # as. A tag anywhere else means the release and the build disagree.
+      - name: Check that the release tag points at the commit that was built
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ needs.prepare.outputs.tag_name }}
+          BUILT_SHA: ${{ github.sha }}
+        run: |
+          # Through the API with the token, so a private repository works. An
+          # annotated tag points at a tag object, whose target is the commit.
+          ref="$(gh api "repos/${REPOSITORY}/git/ref/tags/${TAG}" --jq '.object.type + " " + .object.sha')"
+          read -r kind sha <<<"$ref"
+          if [ "$kind" = "tag" ]; then
+            sha="$(gh api "repos/${REPOSITORY}/git/tags/${sha}" --jq '.object.sha')"
+          fi
+          if [ "$sha" = "$BUILT_SHA" ]; then
+            exit 0
+          fi
+          echo "::error title=Release tag does not match the build::${TAG} points at '${sha}' but the assets were built from ${BUILT_SHA}."
+          exit 1
+
+      - name: Build the tarball and its SBOM
+        env:
+          NAME: ${{ github.event.repository.name }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "not a release version: $VERSION" >&2
+            exit 1
+          fi
+          mkdir release-assets
+          tarball="release-assets/${NAME}-${VERSION}.tar.gz"
+          git archive --format=tar.gz --prefix="${NAME}-${VERSION}/" --output="$tarball" HEAD
+          # The script writes <tarball>.cdx.json, the OSSF SBOM Everywhere name.
+          if [[ -f scripts/release-sbom.mjs ]]; then
+            node scripts/release-sbom.mjs "$tarball" "$VERSION"
+          fi
+
+      - name: Attach the assets to the draft and read them back
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag_name }}
+        run: |
+          assets=(release-assets/*)
+          gh release upload "$TAG" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+          mkdir uploaded
+          gh release download "$TAG" --dir uploaded --repo "$GITHUB_REPOSITORY"
+          for asset in "${assets[@]}"; do
+            cmp -- "$asset" "uploaded/$(basename -- "$asset")"
+          done
+  # sync:end
 
   finalize:
     name: Finalize
-    needs: [prepare]
-    if: needs.prepare.outputs.releases_created == 'true'
+    needs:
+      - prepare
+      # sync:if assets
+      - assets
+      # sync:end
+    # `!failure()` lets a skipped `assets` (its variable is not set) through,
+    # which the implicit `success()` would not.
+    if: ${{ !failure() && !cancelled() && needs.prepare.outputs.releases_created == 'true' }}
     permissions:
       contents: write
       id-token: write

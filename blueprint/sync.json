@@ -1,6 +1,7 @@
 {
   "flags": {
-    "manifest": "the repository's docs.config.mjs sets a manifest, so docs-live also runs check-live.mjs --metadata"
+    "manifest": "the repository's docs.config.mjs sets a manifest, so docs-live also runs check-live.mjs --metadata",
+    "assets": "the repository's release builds a tarball and attaches it to the draft, so release.yml keeps its assets job"
   },
   "templates": {
     "claude": "managed",
