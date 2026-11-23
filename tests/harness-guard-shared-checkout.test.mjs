@@ -176,6 +176,21 @@ describe("guard-shared-checkout", () => {
     assert.equal(at(`bash -c 'cd ${linked} && git commit -m x'`), 2, "a nested cd is not trusted");
   });
 
+  it("resolves a literal VAR=value assignment of the same command line", () => {
+    const at = (command, cwd = main) => run({ tool_name: "Bash", cwd, tool_input: { command } }).status;
+    assert.equal(at(`W=${linked}; git -C "$W" commit -m x`), 0, "assignment, then git -C $W into a worktree");
+    assert.equal(at(`W=${linked} && git -C \${W} commit -m x`), 0, "the braced form");
+    assert.equal(at(`export W=${linked}; git -C $W commit -m x`), 0, "export");
+    assert.equal(at(`W=${linked}\ngit -C $W commit -m x`), 0, "assignment on its own line");
+    assert.equal(at(`W=${main}; git -C "$W" commit -m x`, linked), 2, "a variable that names the main checkout still blocks");
+    assert.equal(at(`W=${linked}; W=${main}; git -C $W commit -m x`, linked), 2, "the last assignment wins");
+    assert.equal(at('git -C "$W" commit -m x'), 2, "an unset variable is judged from cwd");
+    assert.equal(at(`W=$(pwd); git -C $W commit -m x`), 2, "a value built by substitution is not literal");
+    assert.equal(at(`W=${linked} | git -C $W commit -m x`), 2, "an assignment in a pipeline does not carry over");
+    assert.equal(at(`(W=${linked}); git -C $W commit -m x`), 2, "a subshell assignment does not carry over");
+    assert.equal(at(`W=${linked}; cd "$W" && git commit -m x`), 0, "a cd through a resolved variable");
+  });
+
   it("checks every git word of a command, and reads a shell fed a here-document", () => {
     for (const command of [
       "git status && git log | xargs git commit -m x",

@@ -24,7 +24,9 @@
  * `git` word of a simple command, so a prefix such as `sudo`, `time`,
  * `if ...; then` or `xargs` does not hide it. Where it cannot tell, it errs
  * towards blocking: a `cd` that may or may not have moved the shell is checked
- * both ways, and a path built from a variable is judged from the hook's `cwd`.
+ * both ways, and a path built from a variable is judged from the hook's `cwd`,
+ * unless the same command line set that variable to a literal value
+ * (`W=../wt; git -C "$W" commit`), which is then used.
  *
  * Blocks by exiting 2 with a message on stderr. It fails open on input it
  * cannot read; settings.json marks it `onFailure: block` for a crash.
@@ -322,6 +324,28 @@ export function gitWrites(words, cwd) {
   return hits;
 }
 
+const ASSIGNMENT = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=([^$`*?~\s]*)$/;
+
+/**
+ * The variable a simple command sets to a literal value (`W=../wt`), or null.
+ * A value built from another expansion, a glob or `~` is not literal.
+ */
+export function literalAssignment(words) {
+  const text = words[0] === "export" ? words.slice(0, 2).join(" ") : words[0];
+  if (words.length !== (words[0] === "export" ? 2 : 1)) return null;
+  const m = ASSIGNMENT.exec(text);
+  return m ? { name: m[1], value: m[2] } : null;
+}
+
+/** `$NAME` and `${NAME}` replaced by a literal value seen earlier; others stay. */
+export function expandVars(word, vars) {
+  if (vars.size === 0 || !word.includes("$")) return word;
+  return word.replace(
+    /\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/g,
+    (whole, a, b) => vars.get(a ?? b) ?? whole,
+  );
+}
+
 async function readStdin() {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
@@ -374,10 +398,24 @@ if (
     // or a path built from a variable, a `cd` is ignored.
     let dirs = [cwd];
     let pending = null;
-    for (const { words, sep, top: topLevel } of expandCommands(
+    // Literal `VAR=value` assignments of the line, so `W=../wt; git -C "$W"
+    // commit` is judged in the directory it names and not in `cwd`. Only a
+    // plain assignment counts, and only when nothing groups the line.
+    const vars = new Map();
+    let pendingVar = null;
+    for (const { words: raw, sep, top: topLevel } of expandCommands(
       commands,
       seps,
     )) {
+      if (pendingVar && topLevel && sep !== "|" && sep !== "&")
+        vars.set(pendingVar.name, pendingVar.value);
+      if (topLevel) pendingVar = null;
+      const assigned = topLevel && !grouped ? literalAssignment(raw) : null;
+      if (assigned) {
+        pendingVar = assigned;
+        continue;
+      }
+      const words = raw.map((w) => expandVars(w, vars));
       if (pending && topLevel) {
         dirs =
           sep === "&&"
