@@ -928,7 +928,12 @@ checkout, and allows `git pull` and `git worktree add`. It is stricter than
 `guard-branch-isolation.mjs`, which only blocks `src/` and `tests/` writes while
 a checkout is on `main`, so a repository keeps both. It reads the directory from
 the hook input's `cwd`, because `CLAUDE_PROJECT_DIR` stays at the folder the
-session started in even after it enters a worktree.
+session started in even after it enters a worktree. A `git -C "$W"` or `cd "$W"`
+is judged in the directory `W` names when the same command line set it to a
+literal value once, unconditionally, and the name appears nowhere else on the line except as the operand of that `git -C` or `cd` (`W=../wt; git -C "$W" commit`); one doubtful word (`read`, `eval`, `source`, a loop, another `=`) drops every variable of the line, and a variable it cannot resolve is
+judged from `cwd`, and a `cd` followed by `;` still counts both places, because
+the `cd` may have failed. It fails open on a payload it cannot read, and
+`onFailure: "block"` covers a crash.
 
 The file is a starter: a new repository gets it from `bootstrap.json`, and the
 template sync refreshes a copy that is an older version of it (`sync.json`,
@@ -996,6 +1001,20 @@ the variable is unset. Use an array (`"${items[@]}"`), `${=var}` for one
 deliberate split, or write each argument out. This showed up in at least eight
 commands across five repositories before it was written down.
 
+### Working with Claude Code
+
+Two habits the maintainers stated again and again, in at least four
+repositories, and that were only in memory files. They are org policy, not
+Anthropic guidance, and no check enforces them.
+
+- **Create and edit skills through `/skill-creator`.** Do not hand-write a
+  `SKILL.md`: the skill-creator plugin interviews, drafts and tests it. Its use
+  is optional in Anthropic's documentation; here it is the rule.
+- **Verify a fact against the official source before acting on it.** For
+  Claude Code, the Claude API, GitHub, a tool or a standard, read the vendor's
+  current page and cite it in the pull request, or say that none exists. Do not
+  rely on recalled behaviour, and say "unverified" where a page did not load.
+
 ### Files that a tool writes
 
 A file written by the template sync, the design re-sync, release-please or
@@ -1039,7 +1058,7 @@ here by pull request and paste the result, never edit the console alone.
 | `strictKnownMarketplaces`, `extraKnownMarketplaces` | `anthropics/claude-plugins-official`, `monte3l/m3l-plugins`, `skills-dir` | One identity per marketplace. `skills-dir` keeps plugins under `~/.claude/skills/` loading |
 | `autoMode.environment` | `$defaults` plus the monte3l context | The classifier treats `github.com/monte3l`, `*.monte3l.com` and the publish environments as known. Without `$defaults` the built-in rules are lost |
 | `permissions.disableBypassPermissionsMode` | `disable` | No `--dangerously-skip-permissions`. Auto mode stays available |
-| `permissions.deny` | Secrets, force-push, `--no-verify`, `--admin`, `gh repo delete` | The secrets list is the union of the repository lists, in the recursive form. The git rules are standing rules in every repository. The force-push rules end in a space before the `*` (`git push --force *`), so `--force-with-lease` is not denied and reaches its `ask` rule: deny is checked first, and `--force*` would also match it (`tests/managed-settings.test.mjs`) |
+| `permissions.deny` | Secrets, force-push, `--no-verify`, `--admin`, `gh repo delete`, `Edit` of lockfiles and `.git/**` | The secrets list is the union of the repository lists, in the recursive form. The git rules are standing rules in every repository. The `Edit` denies for `pnpm-lock.yaml`, `package-lock.json`, `yarn.lock` and `.git/**` are local policy, not Anthropic guidance (its examples deny only `.env` and `secrets/**`): a lockfile is changed by `pnpm install`, not by hand. Deny rules from every scope add up and a lower scope cannot override one, so a repository that carried the same four entries can drop them. The rule covers Claude's file tools and the Bash commands Claude Code recognizes as writing a file (`sed`, `tee`, a redirect); `pnpm install`, `npm install` and Dependabot are not affected. The force-push rules end in a space before the `*` (`git push --force *`), so `--force-with-lease` is not denied and reaches its `ask` rule: deny is checked first, and `--force*` would also match it (`tests/managed-settings.test.mjs`) |
 | `permissions.ask` | `gh api` writes, `gh secret`, `gh pr merge`, releases and publishing, `git push origin main`, `git reset --hard`, `sudo`, global installs, a bare `chezmoi apply` | The actions the auto mode classifier blocked most often, now a prompt instead of a block |
 | `permissions.allow` | Read-only `git`, `gh`, shell commands and the documentation domains | The read-only commands that dominate real usage, so they stop prompting |
 | `companyAnnouncements` | One line | The short version of the rules above |
