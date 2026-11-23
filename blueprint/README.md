@@ -930,7 +930,7 @@ a checkout is on `main`, so a repository keeps both. It reads the directory from
 the hook input's `cwd`, because `CLAUDE_PROJECT_DIR` stays at the folder the
 session started in even after it enters a worktree. A `git -C "$W"` or `cd "$W"`
 is judged in the directory `W` names when the same command line set it to a
-literal value (`W=../wt; git -C "$W" commit`); a variable it cannot resolve is
+literal value once, unconditionally, and the name appears nowhere else on the line except as the operand of that `git -C` or `cd` (`W=../wt; git -C "$W" commit`); one doubtful word (`read`, `eval`, `source`, a loop, another `=`) drops every variable of the line, and a variable it cannot resolve is
 judged from `cwd`, and a `cd` followed by `;` still counts both places, because
 the `cd` may have failed. It fails open on a payload it cannot read, and
 `onFailure: "block"` covers a crash.

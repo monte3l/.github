@@ -337,33 +337,68 @@ export function literalAssignment(words) {
   return m ? { name: m[1], value: m[2] } : null;
 }
 
-const BUILTINS_SETTING = new Set([
-  "unset", "read", "declare", "local", "typeset", "readonly", "export",
-  "printf", "mapfile", "readarray", "getopts", "for", "select", "let",
-  "eval", "source", ".",
+/** Words that set, bind or read a variable in a way the parser does not model. */
+const VARIABLE_WORDS = new Set([
+  "source", ".", "eval", "declare", "typeset", "local", "read", "mapfile",
+  "readarray", "getopts", "let", "unset", "for", "while", "until", "select",
+  "coproc", "readonly", "nameref",
 ]);
 
+const isGitWord = (w) => w === "git" || w.endsWith("/git");
+
 /**
- * The variable names a simple command may set, change or unset in a form the
- * parser does not model: `W+=x`, `W=$(..)`, `W=x cmd`, `unset W`, `read W`,
- * `declare W`, `for W in ...`, `printf -v W`. Deliberately broad: a name
- * dropped from the map is judged from `cwd`, the safe side.
+ * The literal `VAR=value` assignments of a command line that may be trusted,
+ * as a Map, or an empty Map. Deliberately conservative: one doubtful thing
+ * anywhere in the line clears the whole map, and the guard then judges from
+ * `cwd`, as it does for a variable it knows nothing about.
+ *
+ * A name is kept only if (a) it is set once, by a plain literal at an
+ * unconditional position of a top-level command (the line start, `;` or a
+ * newline, and not piped or backgrounded), and (b) it appears nowhere else in
+ * the line except as `$NAME` or `${NAME}` in the operand of `git -C` or `cd`,
+ * after the assignment. Any other word that contains `=`, any word that is or
+ * contains a `source`, `.`, `eval`, `declare`, `read`, `for`, `while`... token,
+ * `printf -v`, or an `export` with an expansion, clears the map.
+ *
+ * @param {{ words: string[], sep: string, top: boolean }[]} entries
+ * @returns {Map<string, string>}
  */
-export function touchedNames(words) {
-  const names = new Set();
-  let i = 0;
-  for (; i < words.length; i++) {
-    const m = /^([A-Za-z_][A-Za-z0-9_]*)\+?=/.exec(words[i]);
-    if (!m) break;
-    names.add(m[1]);
-  }
-  if (BUILTINS_SETTING.has(words[i] ?? "")) {
-    for (const w of words.slice(i + 1)) {
-      const m = /^([A-Za-z_][A-Za-z0-9_]*)/.exec(w);
-      if (m) names.add(m[1]);
+export function trustedVars(entries, grouped) {
+  const none = new Map();
+  if (grouped) return none;
+  const found = [];
+  entries.forEach((entry, index) => {
+    if (!entry.top || (entry.sep !== ";" && entry.sep !== "\n")) return;
+    const next = entries[index + 1];
+    if (next && next.top && (next.sep === "|" || next.sep === "&")) return;
+    const assigned = literalAssignment(entry.words);
+    if (assigned) found.push({ ...assigned, index });
+  });
+  const assignmentAt = new Set(found.map((f) => f.index));
+  const names = found.map((f) => f.name);
+  if (new Set(names).size !== names.length) return none;
+  for (const [index, { words, top }] of entries.entries()) {
+    if (assignmentAt.has(index)) continue;
+    for (const [at, word] of words.entries()) {
+      if (word.includes("=")) return none;
+      for (const token of word.split(/[\s;|&(){}`$<>"']+/)) {
+        if (VARIABLE_WORDS.has(token)) return none;
+      }
+      if (word === "-v" && words[0] === "printf") return none;
+      if (words[0] === "export" && /[$`]/.test(word)) return none;
+      for (const { name, index: set } of found) {
+        if (!word.includes(name)) continue;
+        const operand =
+          top &&
+          index > set &&
+          ((words[0] === "cd" && at === 1) ||
+            (words[at - 1] === "-C" && words.slice(0, at).some(isGitWord)));
+        const ref = new RegExp(`\\$\\{${name}\\}|\\$${name}(?![A-Za-z0-9_])`, "g");
+        if (!operand || word.replace(ref, "").includes(name)) return none;
+      }
     }
   }
-  return names;
+  return new Map(found.map((f) => [f.name, f.value]));
 }
 
 /** `$NAME` and `${NAME}` replaced by a literal value seen earlier; others stay. */
@@ -428,32 +463,13 @@ if (
     let dirs = [cwd];
     let pending = null;
     // Literal `VAR=value` assignments of the line, so `W=../wt; git -C "$W"
-    // commit` is judged in the directory it names and not in `cwd`. Only a
-    // plain assignment counts, and only when nothing groups the line.
-    const vars = new Map();
-    let pendingVar = null;
-    for (const { words: raw, sep, top: topLevel } of expandCommands(
-      commands,
-      seps,
-    )) {
-      if (pendingVar && topLevel && sep !== "|" && sep !== "&")
-        vars.set(pendingVar.name, pendingVar.value);
-      if (topLevel) pendingVar = null;
-      // Any later command that sets a name in a form not modelled drops it, so
-      // the name is judged from `cwd` again. This runs for nested commands too.
-      for (const name of touchedNames(raw)) vars.delete(name);
-      // A value is recorded only when its assignment runs unconditionally: it
-      // starts the line or follows `;` or a newline, never `&&`, `||`, `|`, `&`.
-      const assigned =
-        topLevel && !grouped && (sep === ";" || sep === "\n")
-          ? literalAssignment(raw)
-          : null;
-      if (assigned) {
-        pendingVar = assigned;
-        continue;
-      }
-      // Variables are expanded in top-level commands only: a child shell
-      // (`bash -c`, `eval`, a here-document) does not see a non-exported one.
+    // commit` is judged in the directory it names and not in `cwd`. See
+    // `trustedVars`: anything doubtful leaves the map empty.
+    const entries = expandCommands(commands, seps);
+    const vars = trustedVars(entries, grouped);
+    for (const { words: raw, sep, top: topLevel } of entries) {
+      const assigned = topLevel ? literalAssignment(raw) : null;
+      if (assigned && vars.get(assigned.name) === assigned.value) continue;
       const words =
         topLevel && !grouped ? raw.map((w) => expandVars(w, vars)) : raw;
       if (pending && topLevel) {

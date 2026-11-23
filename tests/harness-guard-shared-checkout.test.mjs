@@ -183,7 +183,7 @@ describe("guard-shared-checkout", () => {
     assert.equal(at(`export W=${linked}; git -C $W commit -m x`), 0, "export");
     assert.equal(at(`W=${linked}\ngit -C $W commit -m x`), 0, "assignment on its own line");
     assert.equal(at(`W=${main}; git -C "$W" commit -m x`, linked), 2, "a variable that names the main checkout still blocks");
-    assert.equal(at(`W=${linked}; W=${main}; git -C $W commit -m x`, linked), 2, "the last assignment wins");
+    assert.equal(at(`W=${linked}; W=${main}; git -C $W commit -m x`, main), 2, "a name set twice is not trusted: judged from cwd");
     assert.equal(at('git -C "$W" commit -m x'), 2, "an unset variable is judged from cwd");
     assert.equal(at(`W=$(pwd); git -C $W commit -m x`), 2, "a value built by substitution is not literal");
     assert.equal(at(`W=${linked} | git -C $W commit -m x`), 2, "an assignment in a pipeline does not carry over");
@@ -223,7 +223,40 @@ describe("guard-shared-checkout", () => {
     ]) {
       assert.equal(at(`W=${linked}; ${change}; git -C $W commit -m x`), 2, change);
     }
-    assert.equal(at(`W=${linked}; W=${linked}; git -C $W commit -m x`), 0, "a second literal assignment is still modelled");
+    assert.equal(at(`W=${linked}; W=${linked}; git -C $W commit -m x`), 2, "a name set twice is not trusted, even to the same value");
+  });
+
+  it("clears every variable at the first doubtful thing in the line", () => {
+    const at = (command) => run({ tool_name: "Bash", cwd: main, tool_input: { command } }).status;
+    const use = "git -C $W commit -m x";
+    for (const doubt of [
+      "while read W; do :; done </dev/null",
+      "if read W; then :; fi",
+      "true && read W",
+      "time read W",
+      "command read W",
+      "builtin read W",
+      "exec read W",
+      "! read W",
+      "{ read W; }",
+      "env W=x true",
+      "W[0]=x",
+      "source ./x.sh",
+      ". ./x.sh",
+      "eval \"$cmd\"",
+      "declare -n W=other",
+      "typeset -n W=other",
+      "until read W; do :; done",
+      "select W in a; do break; done",
+      "coproc true",
+      "mapfile W </dev/null",
+      "echo $W",
+      "X=y",
+    ]) {
+      const status = at(`W=${linked}; ${doubt}; ${use}`);
+      if (doubt === "X=y") assert.equal(status, 0, "another plain literal does not matter");
+      else assert.equal(status, 2, doubt);
+    }
   });
 
   it("checks every git word of a command, and reads a shell fed a here-document", () => {
