@@ -3,7 +3,7 @@
 
 // The template sync classifier: render, lenient and strict comparison, and what may never be called stale.
 // Run with: node --test "tests/*.test.mjs"
-const { classify, render, lenient, strict, jobNames, unitsFor, describeStale } = await import(new URL("../bin/lib/template-sync.mjs", import.meta.url).href);
+const { classify, render, lenient, strict, jobNames, unitsFor, describeStale, keepHeader } = await import(new URL("../bin/lib/template-sync.mjs", import.meta.url).href);
 let failed = 0;
 const eq = (name, got, want) => { const ok = JSON.stringify(got) === JSON.stringify(want); console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : `\n       got  ${JSON.stringify(got)}\n       want ${JSON.stringify(want)}`}`); if (!ok) failed++; };
 const throws = (name, fn, re) => { let msg = null; try { fn(); } catch (e) { msg = e.message; } const ok = msg !== null && re.test(msg); console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : `\n       got ${msg}`}`); if (!ok) failed++; };
@@ -141,5 +141,36 @@ eq("an older starter plus a person's allowlist is CUSTOM, never overwritten", cl
 eq("an older starter with an edited comment is CUSTOM", classify(g1.replace("# Gitleaks config", "# ours"), g2, [g1]).state, "CUSTOM");
 eq("only a comment differing from the current starter is EQUIVALENT", classify(g2.replace("# Gitleaks config", "# other words"), g2).state, "EQUIVALENT");
 eq("a starter with no history cannot be stale", classify(g1, g2, []).state, "CUSTOM");
+
+console.log("--- a refresh keeps the repository's own SPDX header (a repository that checks its headers inline fails without it)");
+const GW = "# SPDX-FileCopyrightText: Copyright the m3l-groundwork contributors\n# SPDX-License-Identifier: MIT\n";
+const scanOld = "name: ScanCode\n\njobs:\n  scan:\n    name: ScanCode\n    steps:\n      - run: scan\n";
+const scanNew = "name: ScanCode\n\njobs:\n  scan:\n    name: ScanCode\n    steps:\n      - run: scan\n      - run: list the flagged files\n";
+const groundwork = `${GW}\n${scanOld}`;
+const written = keepHeader(scanNew, groundwork);
+eq("a workflow with the repository's header: the header stays, the body is the template's", written, `${GW}\n${scanNew}`);
+eq("the copy was STALE before the refresh, though it carries a header the template lacks", classify(groundwork, scanNew, [scanOld]), { state: "STALE", back: 1 });
+eq("the refreshed file is EQUIVALENT, so the next run does nothing", classify(written, scanNew).state, "EQUIVALENT");
+eq("a header the template lacks is not invented for a repository with none", keepHeader(scanNew, scanOld), scanNew);
+eq("a template header is dropped for a repository whose file has none", keepHeader(T(), "name: Demo\n"), T().split("\n").slice(2).join("\n"));
+eq("a different header on the template is replaced by the repository's", keepHeader(T(" && echo new"), `${GW}\nname: Demo\n`), `${GW}\n${T(" && echo new").split("\n").slice(2).join("\n")}`);
+const modHeader = "// SPDX-FileCopyrightText: 2026 someone\n// SPDX-License-Identifier: MIT\n";
+const modOld = "#!/usr/bin/env node\n/** guard v1 */\nexport const a = 1;\n";
+const modNew = "#!/usr/bin/env node\n/** guard v2 */\nexport const a = 2;\n";
+const modCopy = `#!/usr/bin/env node\n${modHeader}\n/** guard v1 */\nexport const a = 1;\n`;
+eq("a module copy with a // header, after a shebang, is STALE and no longer CUSTOM", classify(modCopy, modNew, [modOld]), { state: "STALE", back: 1 });
+eq("the shebang stays first, then the repository's // header, then the new body", keepHeader(modNew, modCopy), `#!/usr/bin/env node\n${modHeader}\n/** guard v2 */\nexport const a = 2;\n`);
+const modBlank = `#!/usr/bin/env node\n\n${modHeader}\n/** guard v1 */\nexport const a = 1;\n`;
+eq("blank lines between the shebang and the header are part of the header position: STALE, header kept with its spacing", [classify(modBlank, modNew, [modOld]).state, keepHeader(modNew, modBlank)], ["STALE", `#!/usr/bin/env node\n\n${modHeader}\n/** guard v2 */\nexport const a = 2;\n`]);
+const spdxInMiddle = `#!/usr/bin/env node\n/** guard v1 */\n${modHeader}export const a = 1;\n`;
+eq("an SPDX line in the middle is the file's own text: CUSTOM, never refreshed", classify(spdxInMiddle, modNew, [modOld]).state, "CUSTOM");
+const spdxAtEnd = `#!/usr/bin/env node\n/** guard v1 */\nexport const a = 1;\n${modHeader}`;
+eq("an SPDX line at the end is the file's own text: CUSTOM, never refreshed", classify(spdxAtEnd, modNew, [modOld]).state, "CUSTOM");
+eq("an SPDX line after a leading comment is CUSTOM, for a workflow too", classify(`# our note\n${GW}\n${scanOld}`, scanNew, [scanOld]).state, "CUSTOM");
+eq("an SPDX line at the end of a workflow is CUSTOM", classify(`${scanOld}${GW}`, scanNew, [scanOld]).state, "CUSTOM");
+eq("a blank line inside the header run does not end it", classify(`# SPDX-FileCopyrightText: a\n\n# SPDX-License-Identifier: MIT\n\n${scanOld}`, scanNew, [scanOld]).state, "STALE");
+eq("and the refresh keeps that header as it is", keepHeader(scanNew, `# SPDX-FileCopyrightText: a\n\n# SPDX-License-Identifier: MIT\n\n${scanOld}`), `# SPDX-FileCopyrightText: a\n\n# SPDX-License-Identifier: MIT\n\n${scanNew}`);
+eq("the header's own spacing is kept (no blank line after it stays none)", keepHeader(scanNew, `${GW}${scanOld}`), `${GW}${scanNew}`);
+eq("CRLF in the repository's file does not leak a carriage return", keepHeader(scanNew, groundwork.replace(/\n/g, "\r\n")), `${GW}\n${scanNew}`);
 
 console.log(failed ? `\n${failed} FAILED` : "\nALL CLASSIFIER CASES BEHAVE"); process.exit(failed ? 1 : 0);

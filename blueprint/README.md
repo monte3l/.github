@@ -416,8 +416,14 @@ fake test keys. A custom copy is never reported and never overwritten. Only a
 copy that strictly equals an older version of the starter is refreshed, and only
 at a path `sync.json` lists, under `starters` or in the repository's own
 `paths`: `bin/template-sync-pr.sh` reads that list and refuses any other file. A
-copy that carries its own SPDX header is left alone, because a refresh would drop
-the header. A file that holds per-repository content (`SECURITY.md`,
+refresh keeps the SPDX header the copy has, in the `#` or the `//` form, at the
+top of the file or after a shebang, and a copy with none gets none. A line that
+says SPDX anywhere else is the file's own text, so such a copy is custom and
+never overwritten. A repository decides
+what header its files carry (REUSE, or an inline check such as
+`m3l-groundwork`'s `check-license-headers`), and a workflow that lost its header
+fails that check. The comparison ignores the header, so the refreshed file reads
+as equivalent on the next run. A file that holds per-repository content (`SECURITY.md`,
 `REUSE.toml`, `dependency-review-config.yml`) is not a starter here. The
 baseline's placeholder items check the first two for a starter that was never
 filled in.
@@ -834,7 +840,7 @@ and a second one splits each plugin's install id.
 | A release is a tag `<name>--vX.Y.Z`, the form `claude plugin tag` uses, created by the shared release workflow | The tags ruleset and immutable releases stop the tag from moving, and the catalog pins it. `m3l-groundwork` is the exception: its plugin version mirrors the CLI, so its tag is `@monte3l/groundwork@X.Y.Z` |
 | The README's Quickstart, Settings and Manage sections give every command as both `claude plugin …` and `/plugin …` | Users install from a shell script or from a session, and should not have to translate. A plugin with `userConfig` options lists them in Settings with the ways to set them, and never shows a secret passed on the command line |
 | `claude plugin validate --strict .` runs in the repository's `verify` | A manifest error should fail before a release, not after |
-| `bin/check-plugin-metadata.mjs` (the starter `files/check-plugin-metadata.mjs`) runs in the repository's `verify`, with `GH_TOKEN: ${{ github.token }}`: `description` equals the GitHub description, and `keywords`, if set, equal the GitHub topics | Claude Code's plugin reference makes `description`, `keywords` and `author` optional and ties none of them to GitHub, so `validate` cannot catch a manifest that drifted from the repository, the org site and the catalog entry. Four such fixes landed after the merge. The check compares with the live repository: change the GitHub setting first (`gh repo edit`), then the manifest, then re-run the check. The baseline already holds the GitHub side to `projects.json` |
+| `tools/ci/check-plugin-metadata.mjs` (the starter `files/check-plugin-metadata.mjs`, never in the plugin root's `bin/`) runs in the repository's `verify`, with `GH_TOKEN: ${{ github.token }}`: `description` equals the GitHub description, and `keywords`, if set, equal the GitHub topics | A plugin's top-level `bin/` is not a place for CI tools. The plugins reference says of it: "Files here are on the Bash tool's PATH while the plugin is enabled, so Claude runs them as bare commands. claude.ai and Cowork don't install a plugin that has this directory". A CI script there would be on every user's PATH, and a plugin with the directory does not install on claude.ai. The baseline item looks for the file name in a workflow, so any folder outside `bin/` satisfies it. Claude Code's plugin reference makes `description`, `keywords` and `author` optional and ties none of them to GitHub, so `validate` cannot catch a manifest that drifted from the repository, the org site and the catalog entry. Four such fixes landed after the merge. The check compares with the live repository: change the GitHub setting first (`gh repo edit`), then the manifest, then re-run the check. The baseline already holds the GitHub side to `projects.json` |
 | `author` is `{ "name": "Enrico Lionello" }`, and `keywords` is set | Guidance, not checked. `author.name` is the only required part of `author`; the other plugins carry just the name, and one adds an email. `keywords` is discovery tags, and a set that equals the topics gives search the same words everywhere |
 | No `CLAUDE.md` at the plugin root; keep it in `.claude/` | `validate --strict` warns about a root `CLAUDE.md`, and Claude Code does not load it from a plugin |
 | Listing is a pull request to `m3l-plugins` that adds an entry pinned to the tag and its full commit SHA, with a `homepage` on `monte3l.com` and a `description` identical to `plugin.json` | `bin/check-catalog.mjs` fails the pull request otherwise |
@@ -1115,12 +1121,40 @@ formatter looks, once per repository:
 | --------- | --- | ------------- |
 | Prettier | `.prettierignore` (gitignore syntax) for `design/` and the synced starters. An `overrides` entry with `files` and `"options": { "parser": "json-stringify" }` for the JSON that release-please rewrites, such as `.claude-plugin/plugin.json` and `.release-please-manifest.json`. The parser's whitespace resembles `JSON.stringify()`, which is what release-please writes; that match is observed in two repositories, not documented | prettier.io/docs/ignore, prettier.io/docs/configuration, prettier.io/docs/options |
 | Biome | A negated pattern in `files.includes` (`!design/**`). `!!` also leaves the path out of project analysis | biomejs.dev/guides/configure-biome |
+| ESLint | `globalIgnores([".claude/hooks/guard-*.mjs", "bin/lib/signed-range.mjs"])` in `eslint.config.js`, the helper from `eslint/config` that the ESLint page names for ignoring files and directories. Patterns are relative to the config file | eslint.org/docs/latest/use/configure/ignore |
 | editorconfig-checker | `Exclude` in `.editorconfig-checker.json`, a regular expression per entry | github.com/editorconfig-checker/editorconfig-checker |
 
-The files to list are the vendored `design/` copy, the starters the sync
-refreshes (`.claude/hooks/guard-*.mjs`, `bin/lib/signed-range.mjs`,
-`require-signoff.sh`, `.gitattributes`, `.editorconfig`) and the JSON and YAML a
-release or `pnpm` rewrites. A repository without a formatter has nothing to do.
+The files to list are the vendored `design/` copy, the JSON and YAML a release or
+`pnpm` rewrites, and every starter the sync refreshes, at the paths `sync.json`
+gives:
+
+| Starter | Path |
+| --- | --- |
+| The worktree guard, the secret guard, the double-background guard, the push guard | `.claude/hooks/guard-shared-checkout.mjs`, `.claude/hooks/guard-secret-writes.mjs`, `.claude/hooks/guard-double-background.mjs`, `.claude/hooks/guard-git-push-signed.mjs` |
+| The push guard's helper | `bin/lib/signed-range.mjs` |
+| The sign-off guard | `.claude/hooks/require-signoff.sh` |
+| The config files | `.gitattributes`, `.editorconfig`, `.gitleaks.toml`, `CODEOWNERS` (`.github/`, the root or `docs/`) |
+
+A repository without a formatter has nothing to do. Two reasons to list them:
+
+- **Formatting a verbatim copy turns it into a custom copy.** The sync then never
+  reports or refreshes it again, and the repository keeps an old guard without
+  anyone noticing.
+- **A refresh the formatter rejects fails the repository's `Format check`.** The
+  starters are written to the org's style, which a repository's Prettier or
+  Biome configuration may disagree with, and a refresh pull request cannot pass
+  its own required check. The first guard refresh failed this way in
+  `m3l-claude-mentor`, and a dry run showed `m3l-groundwork` would.
+
+**A repository's own tests of a starter follow the starter's version.** A test
+that pins what a guard did last month fails when the sync refreshes it, which is
+what a refresh pull request is for. The change from fail-open to fail-closed
+guards broke three tests in `m3l-claude-mentor` and a fake `git` in
+`m3l-plugins`, each pinning the old behaviour. When a refresh fails a test, change
+the test to the new behaviour, and never the starter: an edited copy is custom.
+The starters' own tests are in this repository (`tests/harness-*.test.mjs`) and
+cover the contract, so a repository that only wants the guard to run needs none
+of its own.
 
 ### Lines two pull requests both edit
 

@@ -511,7 +511,7 @@ check_plugin_rules() {
   fi
   report_workflow "plugin: validate" "run claude plugin validate --strict . from a workflow that already runs (the repository's verify), see Claude Code plugins in blueprint/README.md" \
     'claude plugin validate( [^#]*)?--strict'
-  report_workflow "plugin: metadata check" "copy blueprint/files/check-plugin-metadata.mjs to bin/ and run it from the repository's verify, see Claude Code plugins in blueprint/README.md" \
+  report_workflow "plugin: metadata check" "copy blueprint/files/check-plugin-metadata.mjs to tools/ci/ (not bin/: a plugin's own bin/ is put on the Bash tool's PATH) and run it from the repository's verify, see Claude Code plugins in blueprint/README.md" \
     'check-plugin-metadata\.mjs'
   if [[ -n "$(file_content CLAUDE.md || true)" ]]; then
     drift=$((drift + 1))

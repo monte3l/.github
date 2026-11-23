@@ -48,7 +48,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { classify, describeStale, jobNames, render, unitsFor } from "./lib/template-sync.mjs";
+import { classify, describeStale, jobNames, keepHeader, render, unitsFor } from "./lib/template-sync.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const NAME_RE = /^[A-Za-z0-9._][A-Za-z0-9._-]*$/;
@@ -209,10 +209,7 @@ try {
           // An older version with broken markers cannot be rendered, so nothing is called stale against it.
         }
       }
-      let verdict = classify(found.text, current, old);
-      // A starter has no SPDX header and the comparison ignores that line, so a copy that carries its
-      // own would be refreshed without it, which can fail a REUSE check there. A person does that one.
-      if (unit.kind === "starter" && verdict.state === "STALE" && /SPDX-/.test(found.text) && !/SPDX-/.test(current)) verdict = { state: "CUSTOM" };
+      const verdict = classify(found.text, current, old);
       results.push({ ...row, path: found.path, ...verdict });
       if (writeDir !== null && unit.managed && verdict.state === "STALE") {
         // Only a workflow has jobs: a starter has no required check to rename.
@@ -222,7 +219,10 @@ try {
         }
         const target = path.join(writeDir, found.path);
         mkdirSync(path.dirname(target), { recursive: true });
-        writeFileSync(target, current.endsWith("\n") ? current : `${current}\n`);
+        // The comparison ignores the SPDX header, so the refresh must leave the repository's own alone: a
+        // repository that checks its licence headers inline fails on a workflow that lost them.
+        const refreshed = keepHeader(current, found.text);
+        writeFileSync(target, refreshed.endsWith("\n") ? refreshed : `${refreshed}\n`);
       }
     }
   }

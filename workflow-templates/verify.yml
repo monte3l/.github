@@ -40,8 +40,9 @@ jobs:
       # Pin the toolchain in a file the repository owns, not in this workflow,
       # for example `node-version-file: .node-version`.
       # A Claude Code plugin also runs `claude plugin validate --strict .` and
-      # `node bin/check-plugin-metadata.mjs` (env `GH_TOKEN: ${{ github.token }}`,
-      # the starter is blueprint/files/check-plugin-metadata.mjs) as steps or
+      # `node tools/ci/check-plugin-metadata.mjs` (env `GH_TOKEN: ${{ github.token }}`,
+      # the starter is blueprint/files/check-plugin-metadata.mjs, kept out of the
+      # plugin root's bin/, which is on the Bash tool's PATH) as steps or
       # lanes: see "Claude Code plugins" in blueprint/README.md.
       - name: Replace this step with the repository's checks
         run: echo "no checks configured yet" && exit 1

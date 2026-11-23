@@ -18,7 +18,11 @@
  * or a topic goes in two steps: edit the repository setting first (`gh repo
  * edit`), then merge the manifest change and re-run the failed check.
  *
- * Usage: node bin/check-plugin-metadata.mjs [--repo OWNER/NAME] [--root DIR]
+ * Keep it in tools/ci/, not in the plugin root's bin/: Claude Code puts a
+ * plugin's bin/ on the Bash tool's PATH while the plugin is enabled, and
+ * claude.ai and Cowork do not install a plugin that has that directory.
+ *
+ * Usage: node tools/ci/check-plugin-metadata.mjs [--repo OWNER/NAME] [--root DIR]
  *   --repo  defaults to $GITHUB_REPOSITORY
  *   --root  defaults to the current directory
  * Needs `gh` and a token in GH_TOKEN (`${{ github.token }}` is enough).
