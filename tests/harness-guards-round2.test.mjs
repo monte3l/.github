@@ -301,3 +301,65 @@ describe("secret guard: the rest of the line is read whatever the first value wa
     allowed(`${NPM}=short`);
   });
 });
+
+describe("secret guard: a hyphenated name is a name, and a token shaped like one is not", () => {
+  const GH = "GH_" + "TOKEN";
+  const NPM = "NPM_" + "TOKEN";
+  const ref = "${{ github.token }}";
+  // A run is judged the same after a reference, after a placeholder and inside a sentence.
+  const lines = (run) => [`${GH}: ${ref} ${run}`, `${NPM}: changeme ${run}`, `${GH}: ${ref} so ${run} can read it`];
+  const blocked = (run) => lines(run).forEach((line) => assert.ok(findSecrets(line).length > 0, `should block: ${line}`));
+  const allowed = (run) => lines(run).forEach((line) => assert.deepEqual(findSecrets(line), [], `should allow: ${line}`));
+
+  it("still lets a repository or package name through", () => {
+    for (const name of [
+      "m3l-output-governor",
+      "m3l-prompt-optimizer",
+      "m3l-claude-mentor",
+      "m3l-design-system-resync",
+      "claude-code-plugin",
+      "key-value-store-service",
+      "key-value-store-v2",
+      "key-manager-v2-prod",
+      "key-vault-name-s3x",
+      "my-app-v2-service",
+      "m3l-s3-bucket-name",
+      "release-please-config",
+      "dependency-review-action",
+    ]) {
+      allowed(name);
+    }
+  });
+
+  it("blocks a token shaped like a name: a long part that mixes letters and digits, or groups of them", () => {
+    for (const run of [
+      "key-a1b2c3d4e5f6g7h8i9j0",
+      "foo-a1b2c3d4e5f6g7h8i9j0",
+      "app-b7e1f4a9c2d5e8f1a4b7",
+      "token-a1b2c3d4e5f6g7h8",
+      "my-app-a1b2c3d4e5f6",
+      "tok-ab12-cd34-ef56-gh78-ij90",
+      "svc-a1b2-c3d4-e5f6-a7b8-c9d0",
+      "x-deadbeef1234deadbeef1234",
+    ]) {
+      blocked(run);
+    }
+  });
+
+  it("blocks a token that starts with a digit or has a part that does, and a key- token with a digit", () => {
+    // The long key- value is repeated at run time, so the file does not hold a literal that Gitleaks reads as a key.
+    for (const run of ["abc-9f8e7d6c5b4a3f2e1d0c", "3f2504e0-4f89-11d3-9a0c-0305e82c3301", "key-ab12-cd34-ef56-gh78", `key-${"9f8e7d6c".repeat(4)}`]) {
+      blocked(run);
+    }
+  });
+
+  it("accepts at most two short parts that carry a digit, and no part of four characters or more with one", () => {
+    allowed("m3l-s3-bucket-name");
+    allowed("a2-b3-storage-service");
+    blocked("a2-b3-c4-storage-service-1234567");
+    blocked("my-service-ab123");
+    // Blocked by design, as the README says: three short parts with a digit, or a part that starts with one.
+    blocked("aws-s3-bucket-name-v2-eu1");
+    blocked("key-rotation-job-2024");
+  });
+});
