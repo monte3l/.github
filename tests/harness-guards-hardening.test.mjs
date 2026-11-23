@@ -431,6 +431,38 @@ describe("secret guard", () => {
     allowed("a.md", `${NPM} is a long description of what this variable is for and how to set it`);
   });
 
+  it("blocks a lookup that carries a literal default, and still lets the plain lookup through", () => {
+    // A default is a literal: the lookup is a placeholder only for itself.
+    for (const line of [
+      `${NPM} = os.environ.get("X", "${value}")`,
+      `${NPM} = os.getenv("X", "${value}")`,
+      `${NPM} = getenv("X") || "${value}"`,
+      `${NPM}: process.env.X ?? '${value}'`,
+      `${NPM} = process.env.X || "${value}"`,
+      `${NPM} = ENV.fetch("X", "${value}")`,
+      `${NPM} = ENV["X"] || '${value}'`,
+      `${NPM} = os.environ["X"] or "${value}"`,
+      `${NPM}=\${X:-${value}}`,
+      `${NPM}: \${{ secrets.X || '${value}' }}`,
+      `${NPM}="$(echo '${value}')"`,
+    ]) {
+      blocked("a.txt", line);
+    }
+    for (const line of [
+      `${NPM} = System.getenv("MY_VERY_LONG_ENVIRONMENT_VARIABLE_NAME")`,
+      `${NPM} = os.environ["MY_VERY_LONG_ENVIRONMENT_VARIABLE_NAME"]`,
+      `${NPM} = os.environ.get("MY_VERY_LONG_ENVIRONMENT_VARIABLE_NAME", "")`,
+      `${NPM} = os.getenv("X", "changeme")`,
+      `${NPM} = os.getenv("X")`,
+      `${NPM}=\${X:-}`,
+      `${NPM}=\${X:-\${Y}}`,
+      `${NPM}: \${{ secrets.${NPM} }}`,
+      `${NPM}=$(cat /run/secrets/npm)`,
+    ]) {
+      allowed("a.txt", line);
+    }
+  });
+
   it("still blocks a real value with something after it on the line", () => {
     blocked("a.sh", `${NPM}=${value} # ${NPM}: set in CI`);
     blocked("a.json", `{"${NPM}": "${value}", "other": "..."}`);

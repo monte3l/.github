@@ -70,7 +70,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/require-signoff.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/require-signoff.sh\"",
             "timeout": 30,
             "onFailure": "block"
           },
@@ -97,7 +97,8 @@
             "type": "command",
             "if": "Bash(gh *)",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-public-issues.mjs\"",
-            "timeout": 30
+            "timeout": 30,
+            "onFailure": "block"
           }
         ]
       },

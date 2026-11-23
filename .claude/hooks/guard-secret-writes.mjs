@@ -104,6 +104,46 @@ function firstValue(rest) {
   return /^[^\s,;)\]}]*/.exec(text)?.[0] ?? "";
 }
 
+/** The start of a lookup that defers to the environment or a CI secret. */
+const REFERENCE_HEAD =
+  /^(?:\$\{\{|\$\{[A-Za-z_]\w*|\$[A-Za-z_]\w*|\$\(|process\.env\b|os\.environ\b|os\.getenv\b|ENV\b|System\.getenv\b|getenv\b|secrets\.|env\.)/;
+
+/** The variable name a lookup is called with: `["X"]`, `.get("X"`, `.fetch("X"`, `("X"`. */
+const NAME_ARGUMENT = /^(?:\.(?:get|fetch))?\s*[(\[]\s*(["'`])(?:(?!\1).)*\1/;
+
+/**
+ * Whether the text after `KEY =` carries a literal secret. A value that starts as a
+ * lookup (`os.environ[...]`, `getenv(...)`, `process.env.X`, `${X}`, `${{ secrets.X }}`)
+ * is a placeholder only for the lookup itself: what follows it is read too, because
+ * a default is a literal (`os.environ.get("X", "<token>")`, `getenv("X") || "<token>"`,
+ * `process.env.X ?? '<token>'`, `${X:-<token>}`). Every quoted string after the
+ * variable name is checked, and a shell default word. Any other value is its first
+ * token.
+ *
+ * @param {string} rest the text after the `=` or `:`
+ * @returns {boolean}
+ */
+function valueIsSecret(rest) {
+  const text = rest.trim().replace(/^["'`]/, "");
+  const head = REFERENCE_HEAD.exec(text);
+  if (!head) return !isPlaceholderValue(firstValue(rest));
+  let remainder = text.slice(head[0].length);
+  // A bracketed reference ends where it closes, so prose after `${{ github.token }}`
+  // is not read as its default; a call or an index runs to the end of the line.
+  const closer = head[0] === "${{" ? "}}" : head[0] === "$(" ? ")" : head[0].startsWith("${") ? "}" : null;
+  if (closer !== null) {
+    const end = remainder.indexOf(closer);
+    if (end !== -1) remainder = remainder.slice(0, end + closer.length);
+  }
+  remainder = remainder.replace(NAME_ARGUMENT, "");
+  const shellDefault = /^:?[-=+?]([^}]*)\}/.exec(remainder);
+  if (shellDefault && !isPlaceholderValue(shellDefault[1])) return true;
+  for (const literal of remainder.matchAll(/(["'])((?:\\.|(?!\1).)*)\1/g)) {
+    if (!isPlaceholderValue(literal[2])) return true;
+  }
+  return false;
+}
+
 /**
  * True when the basename is a real dotenv file (not a committed template).
  *
@@ -134,7 +174,7 @@ export function findSecrets(content) {
     // about the key, not an assignment.
     const re = new RegExp(`\\b${key}\\b["']?\\s*(?:=>|[:=])\\s*(.+)`, "gi");
     for (const m of content.matchAll(re)) {
-      if (!isPlaceholderValue(firstValue(m[1])))
+      if (valueIsSecret(m[1]))
         hits.push(`${key} assigned a literal value`);
     }
   }

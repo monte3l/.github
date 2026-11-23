@@ -14,7 +14,6 @@ const settings = JSON.parse(fs.readFileSync(path.join(root, ".claude/settings.js
 const ADVISORY = new Map([
   ["guard-cross-worktree.mjs", "answers ask, a person decides"],
   ["guard-review-dates.mjs", "answers ask, a person decides"],
-  ["guard-public-issues.mjs", "fails open on input it cannot read, by design (see its header)"],
 ]);
 
 const hooks = settings.hooks.PreToolUse.flatMap((group) => group.hooks.map((hook) => ({ matcher: group.matcher, ...hook })));
