@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
- * PreToolUse guard (Write|Edit): asks before a change whose only effect is to
- * bump a review marker, because a report is never cleared by moving a date.
+ * PreToolUse guard (Write|Edit|NotebookEdit): asks before a change whose only
+ * effect is to bump a review marker, because a report is never cleared by moving
+ * a date. A notebook edit is judged on the cell it replaces (`notebook_path`,
+ * `cell_id` or `cell_number`, `new_source`): a markdown cell can carry a marker.
  *
  *  - In a markdown file: the `reviewed:` frontmatter date or a
  *    `**Reviewed:** YYYY-MM-DD` line (knowledge wiki pages, ROADMAP.md and any
@@ -54,6 +56,18 @@ export function onlyReviewMarkerChanged(file, before, after) {
   return a !== null && b !== null && a === b;
 }
 
+/** The source of the notebook cell a NotebookEdit replaces, or null when it cannot be found. */
+export function notebookCell(file, ti) {
+  try {
+    const cells = JSON.parse(fs.readFileSync(file, "utf8")).cells ?? [];
+    const cell = typeof ti.cell_id === "string" ? cells.find((c) => c.id === ti.cell_id) : cells[ti.cell_number];
+    if (!cell || ti.edit_mode === "insert" || ti.edit_mode === "delete") return null;
+    return Array.isArray(cell.source) ? cell.source.join("") : String(cell.source ?? "");
+  } catch {
+    return null;
+  }
+}
+
 async function readStdin() {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
@@ -68,19 +82,24 @@ if (isEntryPoint()) {
     process.exit(0);
   }
   const ti = input.tool_input ?? {};
-  const filePath = ti.file_path ?? "";
+  const filePath = ti.file_path ?? ti.notebook_path ?? "";
   if (filePath) {
     const absolute = path.resolve(input.cwd ?? process.cwd(), filePath);
     let before = null;
     let after = null;
+    let judged = absolute;
     if (input.tool_name === "Edit" && typeof ti.old_string === "string" && typeof ti.new_string === "string") {
       before = ti.old_string;
       after = ti.new_string;
     } else if (input.tool_name === "Write" && typeof ti.content === "string" && fs.existsSync(absolute)) {
       before = fs.readFileSync(absolute, "utf8");
       after = ti.content;
+    } else if (input.tool_name === "NotebookEdit" && typeof ti.new_source === "string") {
+      before = notebookCell(absolute, ti);
+      after = ti.new_source;
+      judged = "cell.md"; // a cell is read as markdown, the only place a marker lives
     }
-    if (before !== null && onlyReviewMarkerChanged(absolute, before, after)) {
+    if (before !== null && onlyReviewMarkerChanged(judged, before, after)) {
       process.stdout.write(
         JSON.stringify({
           hookSpecificOutput: {

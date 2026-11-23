@@ -854,7 +854,7 @@ identical apart from its header, as `repair-core-bare.mjs` does.
 
 | Hook | Blocks | Needs |
 | ---- | ------ | ----- |
-| `guard-secret-writes.mjs` | A write (`Write`, `Edit`) that puts a real secret on disk | Node only; the starter `files/guard-secret-writes.mjs`, see [Other guards](#other-guards) |
+| `guard-secret-writes.mjs` | A write (`Write`, `Edit`, `NotebookEdit`) that puts a real secret on disk | Node only; the starter `files/guard-secret-writes.mjs`, see [Other guards](#other-guards) |
 | `guard-double-background.mjs` | A Bash call that backgrounds a command twice (`run_in_background` plus `&` or `nohup`) | Node only; the starter `files/guard-double-background.mjs` |
 | `guard-git-push-signed.mjs` | A `git push` with an unsigned outgoing commit, where signing is on | `bin/lib/signed-range.mjs`, the starter `files/signed-range.mjs`; the starter `files/guard-git-push-signed.mjs` |
 | `require-signoff.sh` | A `git commit` without `-s` | `jq` or `perl`; the starter `files/require-signoff.sh`, see [Sign-off guard](#sign-off-guard) |
@@ -867,9 +867,11 @@ not check for them: whether a repository runs Claude Code is its own decision.
 A hook that can block sets `"onFailure": "block"` next to its `timeout`. Claude
 Code treats a hook that cannot start, times out or exits with any code but 0 or
 2 as a non-blocking error and lets the call through, so without it a crashed
-guard allows everything. A hook that only asks may leave it out.
+guard allows everything. A hook that only asks may leave it out. A hook that
+can answer `deny` (`guard-public-issues.mjs` exits 2 on a per-repository drift
+line) counts as one that can block, though it also asks.
 `tests/harness-settings.test.mjs` fails for a hook in this repository's
-`settings.json` that does neither.
+`settings.json` that does neither, and lists the two that only ask.
 
 ### Sign-off guard
 
@@ -902,8 +904,10 @@ repository's own hook, and `tests/harness-signoff.test.mjs` runs it.
 `guard-git-push-signed.mjs` are starters too, with `signed-range.mjs` (the
 helper of the push guard, written to `bin/lib/`). The copy in this repository is
 the one that runs and the one `tests/harness-starter.test.mjs` compares with the
-starter. Wire each in `.claude/settings.json`: the secret guard inside the
-`Write|Edit` matcher, the other two inside `Bash`.
+starter. Wire each in `.claude/settings.json`: the secret guard inside a
+`Write|Edit|NotebookEdit` matcher (a notebook edit names its file `notebook_path`
+and carries `new_source`, which the guard reads like `file_path` and `content`),
+the other two inside `Bash`.
 
 ```json
 {
@@ -938,9 +942,64 @@ whose copy is custom is never touched.
 
 These guards are local, best-effort checks on the command or the text Claude
 Code is about to run, not a security boundary. They read the command line, so a
-refspec form, a command wrapped in a subshell or a quoted key can get past them;
-the signed-commits ruleset, Gitleaks and the DCO check are what hold. A change
-to what a guard detects goes through the starter, so every copy gets it.
+command built at run time (a variable, a sourced script) or a secret split over
+several lines can get past them; the signed-commits ruleset, Gitleaks and the DCO
+check are what hold. A change to what a guard detects goes through the starter,
+so every copy gets it.
+
+What the guards read, so a change to them can be judged:
+
+- **Push guard.** It reads a command line the way a shell does: a push inside
+  `&&`, `|`, a subshell, `$(...)` or `bash -c` counts, `git -C DIR` and a literal
+  `cd DIR` before it name the repository, and the refs a refspec names
+  (`HEAD:refs/heads/x`, `+branch`, `--all`) are what it vets, not only `HEAD`. A
+  push option whose value looks like a flag (`-o -n`) is not a dry run. A long
+  option is read by its unique prefix as git does (`--mir`, `--dry`), and one the
+  guard does not know vets every branch. A plain tag ref sent to a tag
+  (`refs/tags/v1`, `refs/tags/v1:refs/tags/x`), and a deletion, are not vetted;
+  any other destination, a branch or a bare name such as `main` that git matches
+  against the remote's refs, and any source that is a revision (`refs/tags/v1~1`),
+  is vetted as its commit. Git runs only in the repository the hook runs in, its worktrees and
+  `CLAUDE_PROJECT_DIR`, and with `gpg.program`, `core.fsmonitor` and the other
+  program settings of the repository overridden, because a repository's own config
+  can name programs git then runs. A push from any other directory goes unvetted
+  here, like a range the guard cannot work out; the signed-commits ruleset holds.
+- **Secret guard.** A key may be quoted (`"NPM_TOKEN": "..."`) and in any case; a
+  key in backticks is prose about it. The value is the quoted string, or the run
+  up to a space, comma or bracket, so what follows on the line is not read. It is a
+  placeholder only when it is only dots, starts with a reference (`${X}`, `$X`,
+  `process.env.X`, `os.environ[...]`, `ENV[...]`, `getenv(...)`, `secrets.X`) or
+  has a marker word set off by a delimiter (`your_token`, `example-key`); a
+  marker inside a longer run (`s3cr3tfake...`) does not make a real value one.
+  A lookup is a placeholder only for itself: a literal default after it
+  (`os.environ.get("X", "<token>")`, `getenv("X") || "<token>"`,
+  `process.env.X ?? '<token>'`, `${X:-<token>}`) is read as a value too, and a
+  value that only starts like a lookup (`ENV-<token>`, `getenv-<token>`,
+  `env.<token>`) is a value, not a lookup, and so is a closed reference with more
+  value stuck to it (`${X}"<token>"`). A literal after a default operator
+  (`|| "<token>"`, `?? '<token>'`, `or "<token>"`) is read after a reference or a
+  plain value. After a reference (at the start of the value or anywhere in it)
+  nothing is trusted by its shape: the whole rest of the line is split at
+  quotes, operators and delimiters, and a run of 16 or more characters with a
+  token prefix (`ghp_`, `sk-`, `AKIA`, ...), or with letters and digits, that is
+  not a placeholder, a path, a URL or a `NAME_LIKE_THIS` is a secret. So a list
+  element, a concatenation, a second argument or a JSON sibling next to a
+  reference is read, and a line that holds a reference and a secret-looking run
+  is refused. Not covered: a line with no reference at all, where only the first
+  value is read; a secret split across parts (`"ab" + "cd"`) or under 16
+  characters; one with no digit and no token prefix (letters only); a lowercase
+  snake_case run, which is read as a name; and a secret written as a path or
+  after a domain-like prefix.
+  `ghp_`, `gho_`, `ghu_`, `ghs_` and `ghr_` tokens are blocked on their own.
+  `tests/harness-guards-hardening.test.mjs` runs it over every tracked file of
+  this repository and expects no hit, so the guard never refuses the edit that
+  repairs a file the repository already holds.
+- **Push guard and its helper are one unit.** `guard-git-push-signed.mjs` loads
+  `bin/lib/signed-range.mjs`, and the template sync refreshes each file on its
+  own. A guard beside a helper that is missing or older does not crash (under
+  `onFailure: "block"` that would refuse every `Bash` call): it blocks a command
+  that looks like a push, saying to refresh both files, and lets any other command
+  through. Refresh both together: they sit side by side in `sync.json`.
 
 ### Worktree guard
 
@@ -955,14 +1014,18 @@ session started in even after it enters a worktree. A `git -C "$W"` or `cd "$W"`
 is judged in the directory `W` names when the same command line set it to a
 literal value once, unconditionally, and the name appears nowhere else on the line except as the operand of that `git -C` or `cd` (`W=../wt; git -C "$W" commit`); one doubtful word (`read`, `eval`, `source`, a loop, another `=`) drops every variable of the line, and a variable it cannot resolve is
 judged from `cwd`, and a `cd` followed by `;` still counts both places, because
-the `cd` may have failed. It fails open on a payload it cannot read, and
-`onFailure: "block"` covers a crash.
+the `cd` may have failed. A command or subcommand that is a substitution
+(`git $(echo commit)`, ``git `echo commit` ``, `$(echo git) commit`) cannot be
+read and is judged as writing. It also covers `NotebookEdit` (the file is the
+notebook's `notebook_path`). It fails open on a payload it cannot read, because
+failing closed would refuse every `Bash` call if Claude Code changed its input;
+`onFailure: "block"` covers a crash or a timeout.
 
 The file is a starter: a new repository gets it from `bootstrap.json`, and the
 template sync refreshes a copy that is an older version of it (`sync.json`,
 `starters`). Copying the file does nothing until `.claude/settings.json` runs
 it. Add the two entries, the `Bash` one inside the existing `Bash` matcher and
-the other inside `Write|Edit`:
+the other inside `Write|Edit|NotebookEdit`:
 
 ```json
 {

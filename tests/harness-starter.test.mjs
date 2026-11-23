@@ -28,7 +28,7 @@ describe("worktree guard starter", () => {
     const settings = JSON.parse(read(".claude/settings.json"));
     const wired = settings.hooks.PreToolUse.flatMap((g) => g.hooks.map((h) => ({ matcher: g.matcher, ...h })))
       .filter((h) => h.command.includes("guard-shared-checkout.mjs"));
-    assert.deepEqual(wired.map((h) => h.matcher).sort(), ["Bash", "Write|Edit"]);
+    assert.deepEqual(wired.map((h) => h.matcher).sort(), ["Bash", "Write|Edit|NotebookEdit"]);
     assert.ok(wired.every((h) => h.onFailure === "block"));
   });
 
@@ -67,11 +67,28 @@ describe("sign-off guard starter", () => {
     assert.match(readme, /### Sign-off guard/);
     assert.match(readme, /"command": "bash \\"\$CLAUDE_PROJECT_DIR\/\.claude\/hooks\/require-signoff\.sh\\"",\n  "timeout": 30,\n  "onFailure": "block"/);
   });
+
+  it("is wired here with the command the README shows, and that command runs and blocks", async () => {
+    const { spawnSync } = await import("node:child_process");
+    const settings = JSON.parse(read(".claude/settings.json"));
+    const wired = settings.hooks.PreToolUse.flatMap((g) => g.hooks).find((h) => h.command.includes("require-signoff.sh"));
+    const example = /"command": (".*require-signoff\.sh\\""),/.exec(read("blueprint/README.md"));
+    assert.equal(wired.command, JSON.parse(example[1]), "settings.json and the README example differ");
+    // Run it as Claude Code does: through a shell, with the project directory in the environment.
+    const run = (command) =>
+      spawnSync("sh", ["-c", wired.command], {
+        input: JSON.stringify({ tool_name: "Bash", tool_input: { command } }),
+        encoding: "utf8",
+        env: { ...process.env, CLAUDE_PROJECT_DIR: root },
+      });
+    assert.equal(run("git commit -m x").status, 2);
+    assert.equal(run("git commit -s -m x").status, 0);
+  });
 });
 
 // Each starter is the live copy that runs in this repository: [starter, live path, matcher or null when it is not a hook].
 const GUARDS = [
-  ["guard-secret-writes.mjs", ".claude/hooks/guard-secret-writes.mjs", "Write|Edit"],
+  ["guard-secret-writes.mjs", ".claude/hooks/guard-secret-writes.mjs", "Write|Edit|NotebookEdit"],
   ["guard-double-background.mjs", ".claude/hooks/guard-double-background.mjs", "Bash"],
   ["guard-git-push-signed.mjs", ".claude/hooks/guard-git-push-signed.mjs", "Bash"],
   ["signed-range.mjs", "bin/lib/signed-range.mjs", null],

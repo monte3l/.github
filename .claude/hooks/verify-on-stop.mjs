@@ -48,7 +48,8 @@ const TESTS = [
   [/^knowledge\/|^bin\/knowledge-|^bin\/lib\/knowledge\.mjs$/, ["knowledge-parity", "knowledge-report"]],
   [/^blueprint\/sync\.json$|^bin\/(lib\/)?template-sync|^bin\/sync-parity\.mjs$|^workflow-templates\//, ["template-sync", "sync-parity"]],
   [/^bin\/new-repo\.sh$/, ["new-repo"]],
-  [/^\.claude\/hooks\//, ["harness-"]],
+  // The guard starters in blueprint/files/ and the push guard's helper are copies of, or used by, the hooks.
+  [/^\.claude\/hooks\/|^bin\/lib\/signed-range\.mjs$|^blueprint\/files\//, ["harness-"]],
 ];
 
 export function plan(changed) {
