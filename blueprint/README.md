@@ -416,8 +416,10 @@ fake test keys. A custom copy is never reported and never overwritten. Only a
 copy that strictly equals an older version of the starter is refreshed, and only
 at a path `sync.json` lists, under `starters` or in the repository's own
 `paths`: `bin/template-sync-pr.sh` reads that list and refuses any other file. A
-refresh keeps the SPDX header the copy has, in the `#` or the `//` form and after
-a shebang if there is one, and a copy with none gets none. A repository decides
+refresh keeps the SPDX header the copy has, in the `#` or the `//` form, at the
+top of the file or after a shebang, and a copy with none gets none. A line that
+says SPDX anywhere else is the file's own text, so such a copy is custom and
+never overwritten. A repository decides
 what header its files carry (REUSE, or an inline check such as
 `m3l-groundwork`'s `check-license-headers`), and a workflow that lost its header
 fails that check. The comparison ignores the header, so the refreshed file reads

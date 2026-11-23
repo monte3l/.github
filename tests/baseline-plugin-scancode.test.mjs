@@ -64,7 +64,7 @@ echo "counts ok=$ok drift=$drift skipped=$skipped"
 
 const PLUGIN = { ".claude-plugin/plugin.json": "{}" };
 const VALIDATE = "      - run: claude plugin validate --strict .\n";
-const METADATA = "      - run: node bin/check-plugin-metadata.mjs\n";
+const METADATA = "      - run: node tools/ci/check-plugin-metadata.mjs\n";
 
 test("a repository that is not a plugin skips the plugin rules and counts no drift", () => {
   const { status, out, err } = run({}, "check_plugin_rules");

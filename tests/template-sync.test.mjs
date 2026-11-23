@@ -160,6 +160,16 @@ const modNew = "#!/usr/bin/env node\n/** guard v2 */\nexport const a = 2;\n";
 const modCopy = `#!/usr/bin/env node\n${modHeader}\n/** guard v1 */\nexport const a = 1;\n`;
 eq("a module copy with a // header, after a shebang, is STALE and no longer CUSTOM", classify(modCopy, modNew, [modOld]), { state: "STALE", back: 1 });
 eq("the shebang stays first, then the repository's // header, then the new body", keepHeader(modNew, modCopy), `#!/usr/bin/env node\n${modHeader}\n/** guard v2 */\nexport const a = 2;\n`);
+const modBlank = `#!/usr/bin/env node\n\n${modHeader}\n/** guard v1 */\nexport const a = 1;\n`;
+eq("blank lines between the shebang and the header are part of the header position: STALE, header kept with its spacing", [classify(modBlank, modNew, [modOld]).state, keepHeader(modNew, modBlank)], ["STALE", `#!/usr/bin/env node\n\n${modHeader}\n/** guard v2 */\nexport const a = 2;\n`]);
+const spdxInMiddle = `#!/usr/bin/env node\n/** guard v1 */\n${modHeader}export const a = 1;\n`;
+eq("an SPDX line in the middle is the file's own text: CUSTOM, never refreshed", classify(spdxInMiddle, modNew, [modOld]).state, "CUSTOM");
+const spdxAtEnd = `#!/usr/bin/env node\n/** guard v1 */\nexport const a = 1;\n${modHeader}`;
+eq("an SPDX line at the end is the file's own text: CUSTOM, never refreshed", classify(spdxAtEnd, modNew, [modOld]).state, "CUSTOM");
+eq("an SPDX line after a leading comment is CUSTOM, for a workflow too", classify(`# our note\n${GW}\n${scanOld}`, scanNew, [scanOld]).state, "CUSTOM");
+eq("an SPDX line at the end of a workflow is CUSTOM", classify(`${scanOld}${GW}`, scanNew, [scanOld]).state, "CUSTOM");
+eq("a blank line inside the header run does not end it", classify(`# SPDX-FileCopyrightText: a\n\n# SPDX-License-Identifier: MIT\n\n${scanOld}`, scanNew, [scanOld]).state, "STALE");
+eq("and the refresh keeps that header as it is", keepHeader(scanNew, `# SPDX-FileCopyrightText: a\n\n# SPDX-License-Identifier: MIT\n\n${scanOld}`), `# SPDX-FileCopyrightText: a\n\n# SPDX-License-Identifier: MIT\n\n${scanNew}`);
 eq("the header's own spacing is kept (no blank line after it stays none)", keepHeader(scanNew, `${GW}${scanOld}`), `${GW}${scanNew}`);
 eq("CRLF in the repository's file does not leak a carriage return", keepHeader(scanNew, groundwork.replace(/\n/g, "\r\n")), `${GW}\n${scanNew}`);
 

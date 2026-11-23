@@ -90,7 +90,20 @@ export function render(template, { site, flags = [], defaultBranch = "main" }) {
 }
 
 const pins = (line) => line.replace(PIN_RE, "$1@PIN");
-const blankOrSpdx = (line) => SPDX_RE.test(line) || line.trim() === "";
+
+/**
+ * The lines of a file that are not its SPDX header and not blank. The header is one definition (`headerOf`),
+ * used here to compare and in `keepHeader` to write, so a line that mentions SPDX anywhere else counts as
+ * the file's own text: such a copy is a person's, and never overwritten.
+ *
+ * @param {string} text
+ * @returns {string[]}
+ */
+function body(text) {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const header = headerOf(lines);
+  return lines.filter((line, i) => (i < header.start || i >= header.end) && line.trim() !== "");
+}
 
 /**
  * The lenient form: the behaviour of a workflow, as lines. No SPDX header, no
@@ -101,10 +114,8 @@ const blankOrSpdx = (line) => SPDX_RE.test(line) || line.trim() === "";
  * @returns {string[]}
  */
 export function lenient(text) {
-  return text
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .filter((line) => !blankOrSpdx(line) && !/^\s*#/.test(line))
+  return body(text)
+    .filter((line) => !/^\s*#/.test(line))
     .map((line) => pins(line.replace(USES_COMMENT_RE, "$1").replace(SIMPLE_VALUE_RE, "$1")).trimEnd());
 }
 
@@ -116,30 +127,34 @@ export function lenient(text) {
  * @returns {string[]}
  */
 export function strict(text) {
-  return text
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .filter((line) => !blankOrSpdx(line))
-    .map((line) => pins(line.replace(USES_COMMENT_RE, "$1")).trimEnd());
+  return body(text).map((line) => pins(line.replace(USES_COMMENT_RE, "$1")).trimEnd());
 }
 
 const same = (a, b) => a.length === b.length && a.every((line, i) => line === b[i]);
 
 /**
- * Where a file's SPDX header sits: after a shebang if there is one, the run of `SPDX-` comment lines,
- * and the blank lines that separate it from the rest. The comparison above ignores exactly these
- * lines, so reading them here is what keeps the comparison and the refresh in agreement.
+ * Where a file's SPDX header sits: the run of `SPDX-` comment lines at the top, after a shebang if there
+ * is one and after any blank lines that follow it, and then the blank lines that separate it from the
+ * rest. A line that says SPDX anywhere else is not the header. A file with none has `start === end`.
  *
  * @param {string[]} lines
- * @returns {{ start: number, end: number, gap: number }} `[start, end)` is the header, `gap` the blank lines after it
+ * @returns {{ s: number, start: number, end: number, gap: number }}
+ *   `s` is the line after a shebang, `[start, end)` the header and `gap` the blank lines after it
  */
 function headerOf(lines) {
-  const start = lines[0]?.startsWith("#!") ? 1 : 0;
+  const s = lines[0]?.startsWith("#!") ? 1 : 0;
+  let start = s;
+  while (start < lines.length && lines[start].trim() === "") start += 1;
+  // The run may have a blank line inside it, as long as an SPDX line follows: it stops at the first other text.
   let end = start;
-  while (end < lines.length && SPDX_RE.test(lines[end])) end += 1;
+  for (let i = start; i < lines.length; i += 1) {
+    if (SPDX_RE.test(lines[i])) end = i + 1;
+    else if (lines[i].trim() !== "") break;
+  }
+  if (end === start) return { s, start: s, end: s, gap: 0 };
   let gap = 0;
-  if (end > start) while (end + gap < lines.length && lines[end + gap].trim() === "") gap += 1;
-  return { start, end, gap };
+  while (end + gap < lines.length && lines[end + gap].trim() === "") gap += 1;
+  return { s, start, end, gap };
 }
 
 /**
@@ -158,11 +173,11 @@ export function keepHeader(current, copy) {
   const theirs = headerOf(next);
   const own = headerOf(mine);
   const ownHeader = mine.slice(own.start, own.end);
-  const body = next.slice(theirs.end + theirs.gap);
   // A template with no header keeps its text as it is, which also keeps a file with none unchanged.
   if (theirs.end === theirs.start && ownHeader.length === 0) return current;
-  const gap = ownHeader.length === 0 ? [] : Array(own.gap).fill("");
-  return [...next.slice(0, theirs.start), ...ownHeader, ...gap, ...body].join("\n");
+  const before = ownHeader.length === 0 ? [] : Array(own.start - own.s).fill("");
+  const after = ownHeader.length === 0 ? [] : Array(own.gap).fill("");
+  return [...next.slice(0, theirs.s), ...before, ...ownHeader, ...after, ...next.slice(theirs.end + theirs.gap)].join("\n");
 }
 
 /**
