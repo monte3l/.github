@@ -1145,6 +1145,28 @@ the variable is unset. Use an array (`"${items[@]}"`), `${=var}` for one
 deliberate split, or write each argument out. This showed up in at least eight
 commands across five repositories before it was written down.
 
+Past sessions in the seven repositories logged about 950 failed Bash results
+between 26 October and 23 November 2026. These mistakes recurred the most, so
+write the right form the first time:
+
+| Mistake | What happens | Write instead |
+| ------- | ------------ | ------------- |
+| Unquoted glob: `--include=*.ts`, `ls dir/FILE*`, `--format=%G?` | zsh stops with `no matches found` before the command starts | Quote it: `--include='*.ts'` |
+| `?` in a URL: `gh api repos/x/y?ref=z` | The same `no matches found` | Quote the whole URL |
+| `C="node cli.js"; $C pack` | zsh looks for a program named `node cli.js` | An array, `${=C}` or a function |
+| `echo == text` | zsh expands `==` as a command lookup | Quote it: `echo '== text'` |
+| `sed -i 's/a/b/' file` | BSD `sed` reads `s/a/b/` as the backup suffix | Use the `Edit` tool, or `sed -i ''` |
+| `cat -A`, `head -c 0`, `head -n -3` | BSD tools lack these | `od -c`, or `awk` |
+| `pnpm -s`, `pnpm -s knip` | pnpm 12 rejects `-s` | `pnpm --silent` or `pnpm run` |
+| `sleep 90; gh pr checks N` | Claude Code blocks a foreground `sleep` | `gh pr checks N --watch`, or `Monitor` with an until-loop |
+
+A session in a worktree also refuses a command it cannot prove stays inside the
+worktree. A `for` loop, a `cd DIR;` before `git`, a heredoc next to `git`, or a
+scratch path that contains `.github` all trip it, and about 190 refusals in
+`.github` and `m3l-groundwork` came from that. Keep each call short and
+single-purpose, and pass the repository with `git -C` or `gh --repo` instead of
+`cd`.
+
 ### Working with Claude Code
 
 Two habits the maintainers stated again and again, in at least four
