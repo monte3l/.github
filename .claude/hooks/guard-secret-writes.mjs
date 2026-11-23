@@ -236,8 +236,9 @@ function isHyphenatedName(run) {
 }
 
 // Prefixes of credentials that are tokens whatever else they look like. `key-` is taken only when a digit
-// follows, so a name such as `key-value-store` is not one.
-const TOKEN_PREFIX = /^(?:gh[pousr]_|github_pat_|npm_|AKIA|ASIA|sk-|sk_|rk_|xox[abprs]-|glpat-|AIza|ya29\.|key-(?=[A-Za-z0-9-]*\d))/;
+// follows directly, that is in the part right after the hyphen, so names such as `key-value-store-v2` and
+// `key-manager-v2-prod` are not tokens.
+const TOKEN_PREFIX = /^(?:gh[pousr]_|github_pat_|npm_|AKIA|ASIA|sk-|sk_|rk_|xox[abprs]-|glpat-|AIza|ya29\.|key-(?=[A-Za-z0-9]*\d))/;
 
 /**
  * Whether a run of characters looks like a secret by the same rules as a plain value

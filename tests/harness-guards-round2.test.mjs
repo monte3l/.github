@@ -319,6 +319,9 @@ describe("secret guard: a hyphenated name is a name, and a token shaped like one
       "m3l-design-system-resync",
       "claude-code-plugin",
       "key-value-store-service",
+      "key-value-store-v2",
+      "key-manager-v2-prod",
+      "key-vault-name-s3x",
       "my-app-v2-service",
       "m3l-s3-bucket-name",
       "release-please-config",
@@ -355,5 +358,8 @@ describe("secret guard: a hyphenated name is a name, and a token shaped like one
     allowed("a2-b3-storage-service");
     blocked("a2-b3-c4-storage-service-1234567");
     blocked("my-service-ab123");
+    // Blocked by design, as the README says: three short parts with a digit, or a part that starts with one.
+    blocked("aws-s3-bucket-name-v2-eu1");
+    blocked("key-rotation-job-2024");
   });
 });

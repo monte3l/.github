@@ -1013,15 +1013,17 @@ What the guards read, so a change to them can be judged:
   placeholder (`changeme`, `<token>`, an empty string) or a reference included,
   nothing after it is trusted by its shape: the whole rest of the line is split at
   quotes, operators and delimiters, and a run of 16 or more characters with a
-  token prefix (`ghp_`, `sk-`, `AKIA`, `key-` followed by a digit, ...), or with
-  letters and digits, that is not a placeholder, a path, a URL, a `NAME_LIKE_THIS`
-  or a hyphenated name of lowercase words (`m3l-output-governor`) is a secret. A
-  repository or package name is not one: every part of it starts with a letter and
-  is a plain word or a short part of at most four characters that has a digit
-  (`m3l`, `v2`, `s3`), at most two of those, and one is a plain word of three
-  letters or more. A token has a long part that mixes letters and digits
-  (`key-a1b2c3d4...`), or groups of short ones (`ab12-cd34-ef56`), or a part that
-  starts with a digit, as a UUID does.
+  token prefix (`ghp_`, `sk-`, `AKIA`, `key-` with a digit in the part right after
+  the hyphen, ...), or with letters and digits, that is not a placeholder, a path,
+  a URL, a `NAME_LIKE_THIS` or a hyphenated name of lowercase words
+  (`m3l-output-governor`) is a secret. A repository or package name is not one:
+  every part of it starts with a letter and is a plain word or a short part of at
+  most four characters that has a digit (`m3l`, `v2`, `s3`), at most two of those,
+  and one is a plain word of three letters or more (a part of eight or more
+  letters that are all hex digits, such as `deadbeef`, is not a word). So
+  `key-value-store-v2` and `key-manager-v2-prod` are names. A token has a long
+  part that mixes letters and digits (`key-a1b2c3d4...`), or groups of short ones
+  (`ab12-cd34-ef56`), or a part that starts with a digit, as a UUID does.
   So a list element, a concatenation, a second argument or a JSON sibling after a
   value is read, and a line that holds a placeholder or a reference and a
   secret-looking run is refused. Not covered: a secret split across parts (`"ab" +
@@ -1029,7 +1031,11 @@ What the guards read, so a change to them can be judged:
   only); a lowercase snake_case run, which is read as a name; a lowercase
   hyphenated run of plain words, or one with a short part that has a digit, which
   is read as a name; a token whose shape is only a prefix this list does not know;
-  and a secret written as a path or after a domain-like prefix.
+  and a secret written as a path or after a domain-like prefix. The other way, a
+  real name with three or more short parts that carry a digit and 16 or more
+  characters (`aws-s3-bucket-name-v2-eu1`), or a part that starts with a digit
+  (`key-rotation-job-2024`), is still blocked, by design: it is the shape of a
+  token, and the edit that needs it names it another way.
   `ghp_`, `gho_`, `ghu_`, `ghs_` and `ghr_` tokens are blocked on their own.
   `tests/harness-guards-hardening.test.mjs` runs it over every tracked file of
   this repository and expects no hit, so the guard never refuses the edit that
