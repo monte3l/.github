@@ -70,6 +70,9 @@ does not count them as drift.
 
 ## New repository
 
+The whole path, from the registration pull request to the local checkout, is in
+[Starting a new project](new-project.md). This section covers the script.
+
 `bin/new-repo.sh NAME` creates a repository that starts out following the
 blueprint, so the first baseline check has little to report. It is read-only
 until `--apply`: without it, it renders every file into a temporary directory
