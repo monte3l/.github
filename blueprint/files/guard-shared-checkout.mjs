@@ -337,6 +337,35 @@ export function literalAssignment(words) {
   return m ? { name: m[1], value: m[2] } : null;
 }
 
+const BUILTINS_SETTING = new Set([
+  "unset", "read", "declare", "local", "typeset", "readonly", "export",
+  "printf", "mapfile", "readarray", "getopts", "for", "select", "let",
+  "eval", "source", ".",
+]);
+
+/**
+ * The variable names a simple command may set, change or unset in a form the
+ * parser does not model: `W+=x`, `W=$(..)`, `W=x cmd`, `unset W`, `read W`,
+ * `declare W`, `for W in ...`, `printf -v W`. Deliberately broad: a name
+ * dropped from the map is judged from `cwd`, the safe side.
+ */
+export function touchedNames(words) {
+  const names = new Set();
+  let i = 0;
+  for (; i < words.length; i++) {
+    const m = /^([A-Za-z_][A-Za-z0-9_]*)\+?=/.exec(words[i]);
+    if (!m) break;
+    names.add(m[1]);
+  }
+  if (BUILTINS_SETTING.has(words[i] ?? "")) {
+    for (const w of words.slice(i + 1)) {
+      const m = /^([A-Za-z_][A-Za-z0-9_]*)/.exec(w);
+      if (m) names.add(m[1]);
+    }
+  }
+  return names;
+}
+
 /** `$NAME` and `${NAME}` replaced by a literal value seen earlier; others stay. */
 export function expandVars(word, vars) {
   if (vars.size === 0 || !word.includes("$")) return word;
@@ -410,12 +439,23 @@ if (
       if (pendingVar && topLevel && sep !== "|" && sep !== "&")
         vars.set(pendingVar.name, pendingVar.value);
       if (topLevel) pendingVar = null;
-      const assigned = topLevel && !grouped ? literalAssignment(raw) : null;
+      // Any later command that sets a name in a form not modelled drops it, so
+      // the name is judged from `cwd` again. This runs for nested commands too.
+      for (const name of touchedNames(raw)) vars.delete(name);
+      // A value is recorded only when its assignment runs unconditionally: it
+      // starts the line or follows `;` or a newline, never `&&`, `||`, `|`, `&`.
+      const assigned =
+        topLevel && !grouped && (sep === ";" || sep === "\n")
+          ? literalAssignment(raw)
+          : null;
       if (assigned) {
         pendingVar = assigned;
         continue;
       }
-      const words = raw.map((w) => expandVars(w, vars));
+      // Variables are expanded in top-level commands only: a child shell
+      // (`bash -c`, `eval`, a here-document) does not see a non-exported one.
+      const words =
+        topLevel && !grouped ? raw.map((w) => expandVars(w, vars)) : raw;
       if (pending && topLevel) {
         dirs =
           sep === "&&"

@@ -191,7 +191,43 @@ describe("guard-shared-checkout", () => {
     assert.equal(at(`W=${linked}; cd "$W" && git commit -m x`), 0, "a cd through a resolved variable");
   });
 
+  it("records an assignment only when it runs unconditionally", () => {
+    const at = (command) => run({ tool_name: "Bash", cwd: main, tool_input: { command } }).status;
+    for (const sepr of ["&&", "||", "|", "&"]) {
+      assert.equal(at(`false ${sepr} W=${linked}; git -C $W commit -m x`), 2, `after ${sepr} the assignment may not run`);
+    }
+    assert.equal(at(`true\nW=${linked}\ngit -C $W commit -m x`), 0, "after a newline it does");
+  });
+
+  it("expands variables only in top-level commands, not in a child shell", () => {
+    const at = (command) => run({ tool_name: "Bash", cwd: main, tool_input: { command } }).status;
+    assert.equal(at(`W=${linked}; bash -c 'git -C $W commit -m x'`), 2, "bash -c does not see a non-exported variable");
+    assert.equal(at(`W=${linked}; sh -c "git -C \\$W commit -m x"`), 2, "sh -c");
+    assert.equal(at(`W=${linked}; eval 'git -C $W commit -m x'`), 2, "eval");
+    assert.equal(at(`W=${linked}; bash <<'EOF'\ngit -C $W commit -m x\nEOF`), 2, "a here-document fed to a shell");
+  });
+
+  it("drops a variable a later command changes in a form the parser does not model", () => {
+    const at = (command) => run({ tool_name: "Bash", cwd: main, tool_input: { command } }).status;
+    for (const change of [
+      "W+=x",
+      "unset W",
+      "read W",
+      "declare W=$(pwd)",
+      "local W",
+      "for W in a; do :; done",
+      "export W=$(pwd)",
+      "W=$(pwd)",
+      "W=$OTHER",
+      "printf -v W %s x",
+    ]) {
+      assert.equal(at(`W=${linked}; ${change}; git -C $W commit -m x`), 2, change);
+    }
+    assert.equal(at(`W=${linked}; W=${linked}; git -C $W commit -m x`), 0, "a second literal assignment is still modelled");
+  });
+
   it("checks every git word of a command, and reads a shell fed a here-document", () => {
+
     for (const command of [
       "git status && git log | xargs git commit -m x",
       "echo done; sudo -u me git commit -m x",
