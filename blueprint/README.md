@@ -32,7 +32,7 @@ in `m3l-groundwork`.
 | `issue-types.json`       | The organization's six issue types (Bug, Feature, Task, Gap, Debt, Verify). A record: issue types are an org setting, so nothing applies it |
 | `../.github/workflows/project-backfill.yml`, `../bin/project-backfill.sh` | The weekly run that adds issues the forms could not to the org Project. It adds only, and publishes counts only. See [Tracking work](tracking.md#milestones-and-the-org-project) |
 | `docs-site.md`           | The docs site standard, the Cloudflare one-time setup and the runbook. See [Docs site](#docs-site) |
-| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependency-review-config.yml`, `SECURITY.md` (a starting point with placeholders) and `CODEOWNERS`, and for a docs site `docs.config.mjs`, `deploy-tools/`, `environments.json` (the environment cleanup policy) and `dependency-review-config-docs.yml` (the `sharp` exemptions), `policies.yml` and `scancode-config.yml` (the ScanCode license policy and ignored paths), `dependabot.yml`, `labeler.yml`, `guard-shared-checkout.mjs` (the worktree guard, see [Worktree guard](#worktree-guard)), `require-signoff.sh` (the sign-off guard, see [Sign-off guard](#sign-off-guard)), `guard-secret-writes.mjs`, `guard-double-background.mjs`, `guard-git-push-signed.mjs` and `signed-range.mjs` (see [Other guards](#other-guards)), `check-plugin-metadata.mjs` (a plugin repository's manifest parity check, see [Claude Code plugins](#claude-code-plugins); not bootstrapped), a `README.md` skeleton, `ROADMAP.md` and `decisions/` (the roadmap and decision-record starters), `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
+| `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependency-review-config.yml`, `SECURITY.md` (a starting point with placeholders) and `CODEOWNERS`, and for a docs site `docs.config.mjs`, `deploy-tools/`, `environments.json` (the environment cleanup policy) and `dependency-review-config-docs.yml` (the `sharp` exemptions), `policies.yml` and `scancode-config.yml` (the ScanCode license policy and ignored paths), `dependabot.yml`, `labeler.yml`, `guard-shared-checkout.mjs` (the worktree guard, see [Worktree guard](#worktree-guard)), `require-signoff.sh` (the sign-off guard, see [Sign-off guard](#sign-off-guard)), `guard-secret-writes.mjs`, `guard-double-background.mjs`, `guard-shell-portability.mjs`, `guard-git-push-signed.mjs` and `signed-range.mjs` (see [Other guards](#other-guards)), `check-plugin-metadata.mjs` (a plugin repository's manifest parity check, see [Claude Code plugins](#claude-code-plugins); not bootstrapped), a `README.md` skeleton, `ROADMAP.md` and `decisions/` (the roadmap and decision-record starters), `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
 | `claude/managed-settings.json` | The Claude Code policy for the whole Claude Team organization, pasted into the admin console by an Owner. Never applied by the script. See [Claude Code managed settings](#claude-code-managed-settings) |
 | `../bin/new-repo.sh`, `../bin/bootstrap-render.mjs` | Creates a repository that starts out following this blueprint. See [New repository](#new-repository) |
@@ -349,7 +349,7 @@ A workflow copied from `workflow-templates/` is never updated by GitHub, so a
 change to a template used to reach no repository. `bin/template-sync.mjs`
 compares each consumer's copy with the template, read-only, and
 `freshness.yml` reports the result every Monday in one issue, **Workflow copies
-are behind their templates**. Four verbatim starters are compared the same way,
+are behind their templates**. Eleven verbatim starters are compared the same way,
 see [Starters](#starters).
 
 The template is first **rendered** for the repository: `https://PROJECT.monte3l.com`
@@ -397,11 +397,12 @@ trigger it.
 
 ### Starters
 
-Ten verbatim files from `files/` are compared the same way: `CODEOWNERS`,
+Eleven verbatim files from `files/` are compared the same way: `CODEOWNERS`,
 `editorconfig`, `gitattributes`, `gitleaks.toml`, `guard-shared-checkout.mjs`
 (the worktree guard), `require-signoff.sh` (the sign-off guard),
 `guard-secret-writes.mjs`, `guard-double-background.mjs`,
-`guard-git-push-signed.mjs` and `signed-range.mjs` (its helper), see
+`guard-shell-portability.mjs`, `guard-git-push-signed.mjs` and
+`signed-range.mjs` (its helper), see
 [Claude Code guards](#claude-code-guards). A repository may keep one at
 a few paths (`CODEOWNERS` at `.github/`, the root or `docs/`). They are listed
 under `starters` in `sync.json`, and the first path is where a new repository
@@ -879,6 +880,7 @@ identical apart from its header, as `repair-core-bare.mjs` does.
 | ---- | ------ | ----- |
 | `guard-secret-writes.mjs` | A write (`Write`, `Edit`, `NotebookEdit`) that puts a real secret on disk | Node only; the starter `files/guard-secret-writes.mjs`, see [Other guards](#other-guards) |
 | `guard-double-background.mjs` | A Bash call that backgrounds a command twice (`run_in_background` plus `&` or `nohup`) | Node only; the starter `files/guard-double-background.mjs` |
+| `guard-shell-portability.mjs` | A Bash call that is certain to fail in zsh or on macOS (see [Shell portability guard](#shell-portability-guard)) | Node only; the starter `files/guard-shell-portability.mjs` |
 | `guard-git-push-signed.mjs` | A `git push` with an unsigned outgoing commit, where signing is on | `bin/lib/signed-range.mjs`, the starter `files/signed-range.mjs`; the starter `files/guard-git-push-signed.mjs` |
 | `require-signoff.sh` | A `git commit` without `-s` | `jq` or `perl`; the starter `files/require-signoff.sh`, see [Sign-off guard](#sign-off-guard) |
 | `guard-shared-checkout.mjs` | An edit, a `git commit` or a new branch in a repository's main checkout | Node only; the starter `files/guard-shared-checkout.mjs`, see [Worktree guard](#worktree-guard) |
@@ -923,14 +925,15 @@ repository's own hook, and `tests/harness-signoff.test.mjs` runs it.
 
 ### Other guards
 
-`guard-secret-writes.mjs`, `guard-double-background.mjs` and
-`guard-git-push-signed.mjs` are starters too, with `signed-range.mjs` (the
-helper of the push guard, written to `bin/lib/`). The copy in this repository is
-the one that runs and the one `tests/harness-starter.test.mjs` compares with the
-starter. Wire each in `.claude/settings.json`: the secret guard inside a
-`Write|Edit|NotebookEdit` matcher (a notebook edit names its file `notebook_path`
-and carries `new_source`, which the guard reads like `file_path` and `content`),
-the other two inside `Bash`.
+`guard-secret-writes.mjs`, `guard-double-background.mjs`,
+`guard-shell-portability.mjs` and `guard-git-push-signed.mjs` are starters too,
+with `signed-range.mjs` (the helper of the push guard, written to `bin/lib/`).
+The copy in this repository is the one that runs and the one
+`tests/harness-starter.test.mjs` compares with the starter. Wire each in
+`.claude/settings.json`: the secret guard inside a `Write|Edit|NotebookEdit`
+matcher (a notebook edit names its file `notebook_path` and carries
+`new_source`, which the guard reads like `file_path` and `content`), the other
+three inside `Bash`.
 
 ```json
 {
@@ -941,8 +944,9 @@ the other two inside `Bash`.
 }
 ```
 
-Use the same entry with `guard-double-background.mjs` or
-`guard-git-push-signed.mjs` for the two `Bash` hooks.
+Use the same entry with `guard-double-background.mjs`,
+`guard-shell-portability.mjs` or `guard-git-push-signed.mjs` for the three
+`Bash` hooks.
 
 A guard that can block fails closed: a payload it cannot read as JSON, or one
 that is not an object (`null`, a number, a string, `true` or an array such as `[]`),
@@ -951,10 +955,10 @@ exits 2 with `could not read the hook payload`.
 allow. The push guard keeps one documented exception: when it cannot work out
 the outgoing range it lets the push go, because the `main` ruleset requires
 signed commits anyway. `tests/harness-guards-fail-closed.test.mjs` runs all
-three.
+four.
 
-Failing closed has a cost: two of the guards run on every `Bash` call and the
-third on every file write, so if Claude Code stopped sending a JSON object on
+Failing closed has a cost: three of the guards run on every `Bash` call and the
+fourth on every file write, so if Claude Code stopped sending a JSON object on
 stdin, all of those calls would be refused, and the secret guard would also
 refuse the edit that repairs a hook. Only an unreadable payload blocks. An
 object whose fields changed is judged by the fields it has, as before, so a
@@ -1075,6 +1079,38 @@ What the guards read, so a change to them can be judged:
   and refreshes both when both are stale. A repository that keeps its own helper
   refreshes the pair by hand, or lists the guard under `skip`.
 
+### Shell portability guard
+
+`guard-shell-portability.mjs` blocks a Bash call that is certain to fail in the
+shell Claude Code runs it in. A scan of 12,600 distinct Bash commands from past
+sessions in the org's repositories found about 950 failed calls in 28 days, and
+most were the same few mistakes written for bash or GNU tools. Each cost a turn.
+
+The guard blocks only where the failure is certain, never where it is merely
+possible, because a guard that blocks a command that works is worse than the
+mistake it prevents. It reads the shell from `$SHELL` and the system from
+`process.platform`, so a Linux or bash user never sees it fire.
+
+| Where | What it blocks | Why it always fails |
+| ----- | -------------- | ------------------- |
+| zsh | An unquoted `*` or `?` in a `--flag=value` word, such as `--include=*.ts` or `--format=%G?` | No file is named like that, so zsh stops with `no matches found` and runs nothing |
+| zsh | An unquoted `?name=` in a word, such as `gh api repos/x/y?ref=z` | The same `no matches found` |
+| zsh | A plain path glob that matches nothing in the working directory, such as `docs/*.md` | zsh stops before the command starts. Checked only in the first command of a line with no `cd`, `pushd`, `setopt`, `source` or `noglob`, because a later command may have created the files |
+| zsh | A variable set to a quoted string with spaces, then used unquoted as a command, after `for x in`, or after `set --` | zsh does not split it: the command is not found, the loop runs once, or `$2` is empty |
+| macOS | `sed -i SCRIPT` without a suffix argument | BSD `sed` reads the script as the backup suffix |
+| macOS | `cat -A`, `head -n 0`, `head -n -N` | BSD `cat` has no `-A`, and BSD `head` rejects a count of 0 or less |
+
+One rule is left out on purpose: an unquoted word that starts with `=`
+(`echo =====`). It failed in every session until 19 November 2026 and ran fine
+after, so it depends on a zsh option the guard cannot see.
+
+Replayed over the same commands, the guard flagged 362. Of those, 334 failed
+with the matching shell error. The other 28 misbehaved without one: a `set --
+$pr` loop leaves `$2` empty, and a `for r in $repos` loop runs once. A command
+the parser cannot read is allowed. The entry is the one shown under
+[Other guards](#other-guards), and `tests/harness-guard-shell-portability.test.mjs`
+holds a case for each rule and for what must pass.
+
 ### Worktree guard
 
 Implementation happens in a linked worktree off `origin/main`, never in a
@@ -1178,7 +1214,7 @@ write the right form the first time:
 | Unquoted glob: `--include=*.ts`, `ls dir/FILE*`, `--format=%G?` | zsh stops with `no matches found` before the command starts | Quote it: `--include='*.ts'` |
 | `?` in a URL: `gh api repos/x/y?ref=z` | The same `no matches found` | Quote the whole URL |
 | `C="node cli.js"; $C pack` | zsh looks for a program named `node cli.js` | An array, `${=C}` or a function |
-| `echo == text` | zsh expands `==` as a command lookup | Quote it: `echo '== text'` |
+| `echo == text` | In default zsh, `==` is read as a command lookup and stops with `= not found`. It ran fine after 19 November 2026, so it depends on a zsh option | Quote it: `echo '== text'` |
 | `sed -i 's/a/b/' file` | BSD `sed` reads `s/a/b/` as the backup suffix | Use the `Edit` tool, or `sed -i ''` |
 | `cat -A`, `head -c 0`, `head -n -3` | BSD tools lack these | `od -c`, or `awk` |
 | `pnpm -s`, `pnpm -s knip` | pnpm 12 rejects `-s` | `pnpm --silent` or `pnpm run` |
@@ -1225,7 +1261,7 @@ gives:
 
 | Starter | Path |
 | --- | --- |
-| The worktree guard, the secret guard, the double-background guard, the push guard | `.claude/hooks/guard-shared-checkout.mjs`, `.claude/hooks/guard-secret-writes.mjs`, `.claude/hooks/guard-double-background.mjs`, `.claude/hooks/guard-git-push-signed.mjs` |
+| The worktree guard, the secret guard, the double-background guard, the shell portability guard, the push guard | `.claude/hooks/guard-shared-checkout.mjs`, `.claude/hooks/guard-secret-writes.mjs`, `.claude/hooks/guard-double-background.mjs`, `.claude/hooks/guard-shell-portability.mjs`, `.claude/hooks/guard-git-push-signed.mjs` |
 | The push guard's helper | `bin/lib/signed-range.mjs` |
 | The sign-off guard | `.claude/hooks/require-signoff.sh` |
 | The config files | `.gitattributes`, `.editorconfig`, `.gitleaks.toml`, `CODEOWNERS` (`.github/`, the root or `docs/`) |

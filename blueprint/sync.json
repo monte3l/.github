@@ -66,6 +66,12 @@
         ".claude/hooks/guard-double-background.mjs"
       ]
     },
+    "guard-shell-portability.mjs": {
+      "mode": "managed",
+      "paths": [
+        ".claude/hooks/guard-shell-portability.mjs"
+      ]
+    },
     "guard-git-push-signed.mjs": {
       "mode": "managed",
       "paths": [

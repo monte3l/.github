@@ -61,6 +61,11 @@
       "todo": "wire .claude/hooks/guard-double-background.mjs into .claude/settings.json (blueprint/README.md, \"Other guards\" gives the entry); until then it does nothing"
     },
     {
+      "from": "blueprint/files/guard-shell-portability.mjs",
+      "to": ".claude/hooks/guard-shell-portability.mjs",
+      "todo": "wire .claude/hooks/guard-shell-portability.mjs into .claude/settings.json (blueprint/README.md, \"Other guards\" gives the entry); until then it does nothing"
+    },
+    {
       "from": "blueprint/files/guard-git-push-signed.mjs",
       "to": ".claude/hooks/guard-git-push-signed.mjs",
       "todo": "wire .claude/hooks/guard-git-push-signed.mjs into .claude/settings.json (blueprint/README.md, \"Other guards\" gives the entry); until then it does nothing"
