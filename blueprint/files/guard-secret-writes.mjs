@@ -137,7 +137,7 @@ function through(text, closer, quote) {
  */
 const endsReference = (suffix) =>
   suffix === "" ||
-  /^[\s,;)\]}|&?:]/.test(suffix) ||
+  /^[\s,;)\]}]/.test(suffix) ||
   (suffix[0] === "`" && (suffix.length === 1 || /[\s:.,;)\]}]/.test(suffix[1])));
 
 /**
@@ -177,26 +177,70 @@ function afterAccess(text, call) {
  *  - null when the value does not start with one (`ENV-<token>`, `getenv-<token>`,
  *    `env.<token>` and `os.environ<token>` are values, not references: the head must
  *    be followed by what a lookup is followed by);
- *  - `{ scan, suffix }` when it is one: `scan` is read for any quoted literal (a
- *    default inside the reference), `suffix` is what follows it on the line;
+ *  - `{ scan, suffix, after }` when it is one: `scan` is read for any quoted literal (a
+ *    default inside the reference), `suffix` is what follows it on the line, and
+ *    `after` is everything after the head, which is read for any run that looks
+ *    like a secret;
  *  - "unclosed" when a bracketed reference never closes.
  *
  * @param {string} text
  * @param {string} quote the quote the value opened with, or ""
- * @returns {{ scan: string, suffix: string } | "unclosed" | null}
+ * @returns {{ scan: string, suffix: string, after: string } | "unclosed" | null}
  */
 function afterReference(text, quote) {
   let m;
-  const bracket = (opening, closer) => through(text.slice(opening), closer, quote) ?? "unclosed";
+  const bracket = (opening, closer) => {
+    const closed = through(text.slice(opening), closer, quote);
+    return closed === null ? "unclosed" : { ...closed, after: text.slice(opening) };
+  };
+  const plain = (from, scan = text.slice(from)) => ({ scan, suffix: "", after: text.slice(from) });
   if (text.startsWith("${{")) return bracket(3, "}}");
   if ((m = /^\$\{[A-Za-z_]\w*(?=[}:])/.exec(text))) return bracket(m[0].length, "}");
   if (text.startsWith("$(")) return bracket(2, ")");
-  if ((m = /^\$[A-Za-z_]\w*(?=$|[\s"'`),;}\]])/.exec(text))) return { scan: text.slice(m[0].length), suffix: "" };
-  if ((m = /^(?:secrets|env)\.([A-Za-z_][\w-]*)(?![\w.-])/.exec(text))) return isEnvName(m[1]) ? { scan: text.slice(m[0].length), suffix: "" } : null;
-  let rest = null;
-  if ((m = /^(?:process\.env|os\.environ|ENV)(?=[[.])/.exec(text))) rest = afterAccess(text.slice(m[0].length), false);
-  else if ((m = /^(?:os\.getenv|System\.getenv|getenv)(?=\s*\()/.exec(text))) rest = afterAccess(text.slice(m[0].length), true);
-  return rest === null ? null : { scan: rest, suffix: "" };
+  if ((m = /^\$[A-Za-z_]\w*(?=$|[\s"'`),;}\]])/.exec(text))) return plain(m[0].length);
+  if ((m = /^(?:secrets|env)\.([A-Za-z_][\w-]*)(?![\w.-])/.exec(text))) return isEnvName(m[1]) ? plain(m[0].length) : null;
+  if ((m = /^(?:process\.env|os\.environ|ENV)(?=[[.])/.exec(text))) {
+    const scan = afterAccess(text.slice(m[0].length), false);
+    return scan === null ? null : plain(m[0].length, scan);
+  }
+  if ((m = /^(?:os\.getenv|System\.getenv|getenv)(?=\s*\()/.exec(text))) {
+    const scan = afterAccess(text.slice(m[0].length), true);
+    return scan === null ? null : plain(m[0].length, scan);
+  }
+  return null;
+}
+
+/** A reference to the environment or a CI secret anywhere in a value. */
+const INNER_REFERENCE = /\$\{|\$\(|\$[A-Za-z_]|process\.env|os\.environ|os\.getenv|System\.getenv|\bgetenv\s*\(|\bENV[[.]|\b(?:secrets|env)\.[A-Za-z_]/;
+
+// Prefixes of credentials that are tokens whatever else they look like.
+const TOKEN_PREFIX = /^(?:gh[pousr]_|github_pat_|npm_|AKIA|ASIA|sk-|sk_|rk_|xox[abprs]-|glpat-|AIza|ya29\.)/;
+
+/**
+ * Whether a run of characters looks like a secret by the same rules as a plain value
+ * (16 or more characters, not a placeholder), narrowed so that text around a reference
+ * is not mistaken for one: a token prefix is enough, anything else needs letters and
+ * digits, and a path, a URL, or a NAME_LIKE_THIS identifier is not one.
+ *
+ * @param {string} run
+ * @returns {boolean}
+ */
+function looksLikeSecretRun(run) {
+  if (run.length < 16 || !/^[A-Za-z0-9_\-+/=.~]+$/.test(run)) return false;
+  if (TOKEN_PREFIX.test(run)) return !isPlaceholderValue(run);
+  if (/^(?:[~.]?\/|[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?:\/|$))/.test(run)) return false; // a path or a URL
+  if (/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/.test(run) || /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(run)) return false; // a name
+  if (!/[A-Za-z]/.test(run) || !/\d/.test(run)) return false;
+  return !isPlaceholderValue(run);
+}
+
+/**
+ * Whether anything in `text`, whatever the structure around it (a literal, a list
+ * element, a concatenation, a second argument, a value behind an operator), is a run
+ * that looks like a secret once quotes, operators and delimiters are taken away.
+ */
+function remainderHasSecret(text) {
+  return text.split(/[\s"'`,;()[\]{}|&?:<>=!$@#%^*\\]+/).some(looksLikeSecretRun);
 }
 
 /** The first value of `rest` and what follows it. */
@@ -230,7 +274,9 @@ function valueIsSecret(rest) {
   const ref = afterReference(text.slice(quote.length), quote);
   if (ref === "unclosed" || ref === null) {
     const { value, tail } = valueAndTail(rest);
-    return !isPlaceholderValue(value) || defaultLiterals(tail).some((literal) => !isPlaceholderValue(literal));
+    if (!isPlaceholderValue(value) || defaultLiterals(tail).some((literal) => !isPlaceholderValue(literal))) return true;
+    // A reference somewhere in the value (`["${X}", "<token>"]`): no structure is trusted there either.
+    return INNER_REFERENCE.test(text) && remainderHasSecret(text);
   }
   const shellDefault = /^:?[-=+?]([^}]*)\}/.exec(ref.scan);
   if (shellDefault && !isPlaceholderValue(shellDefault[1])) return true;
@@ -240,9 +286,11 @@ function valueIsSecret(rest) {
   if (!endsReference(ref.suffix)) {
     // More value stuck to the reference: judge the glued run, quotes removed.
     const run = ref.suffix.split(/\s/)[0].replace(/["'`]/g, "").replace(/[,;)\]}]+$/, "");
-    return !isPlaceholderValue(run);
+    if (!isPlaceholderValue(run)) return true;
   }
-  return defaultLiterals(ref.suffix).some((literal) => !isPlaceholderValue(literal));
+  if (defaultLiterals(ref.suffix).some((literal) => !isPlaceholderValue(literal))) return true;
+  // Whatever else follows the reference, in any shape: no structure is trusted.
+  return remainderHasSecret(ref.after);
 }
 
 /**

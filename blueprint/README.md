@@ -978,9 +978,18 @@ What the guards read, so a change to them can be judged:
   `env.<token>`) is a value, not a lookup, and so is a closed reference with more
   value stuck to it (`${X}"<token>"`). A literal after a default operator
   (`|| "<token>"`, `?? '<token>'`, `or "<token>"`) is read after a reference or a
-  plain value. It does
-  not read a second assignment on the same line, a secret built by concatenation,
-  or an unquoted default word other than the shell form.
+  plain value. After a reference (at the start of the value or anywhere in it)
+  nothing is trusted by its shape: the whole rest of the line is split at
+  quotes, operators and delimiters, and a run of 16 or more characters with a
+  token prefix (`ghp_`, `sk-`, `AKIA`, ...), or with letters and digits, that is
+  not a placeholder, a path, a URL or a `NAME_LIKE_THIS` is a secret. So a list
+  element, a concatenation, a second argument or a JSON sibling next to a
+  reference is read, and a line that holds a reference and a secret-looking run
+  is refused. Not covered: a line with no reference at all, where only the first
+  value is read; a secret split across parts (`"ab" + "cd"`) or under 16
+  characters; one with no digit and no token prefix (letters only); a lowercase
+  snake_case run, which is read as a name; and a secret written as a path or
+  after a domain-like prefix.
   `ghp_`, `gho_`, `ghu_`, `ghs_` and `ghr_` tokens are blocked on their own.
   `tests/harness-guards-hardening.test.mjs` runs it over every tracked file of
   this repository and expects no hit, so the guard never refuses the edit that

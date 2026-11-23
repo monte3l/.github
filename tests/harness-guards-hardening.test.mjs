@@ -519,6 +519,32 @@ describe("secret guard", () => {
     }
   });
 
+  it("reads everything after a reference, in any shape, for a run that looks like a secret", () => {
+    // No structure is trusted: an operator, a list element, a concatenation, a second literal, a
+    // second argument or a JSON sibling after a reference are all read the same way.
+    const mixed = "aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bC1d";
+    for (const line of [
+      `${NPM}=\${X}||${value}`,
+      `${NPM}=\${X}?${value}`,
+      `${NPM}=\${X}&${value}`,
+      `${NPM}=\${X}:${value}`,
+      `${NPM}=\${X}|${mixed}`,
+      `${NPM}: \${{ secrets.X }}||${mixed}`,
+      `${NPM}=$(cmd)||${value}`,
+      `${NPM}=["\${X}", "${value}"]`,
+      `${NPM}=["\${X}", ${value}]`,
+      `${NPM}=process.env.X, ${value}`,
+      `${NPM}=process.env.X + "${value}"`,
+      `${NPM}=\${X} + ${value}`,
+      `${NPM}=$X ${value}`,
+      `${NPM}=\${X} sk-${value}`,
+      `{"${NPM}": "\${X}", "other": "${value}"}`,
+      `${NPM}="\${X}" # "${value}" is the old one`,
+    ]) {
+      blocked("a.txt", line);
+    }
+  });
+
   it("still lets a closed reference, quoted or not, with prose or a comment after it through", () => {
     for (const line of [
       `${NPM}: "\${{ secrets.X }}"`,
@@ -527,9 +553,19 @@ describe("secret guard", () => {
       `${NPM}="$(cmd)"`,
       `${NPM}: \${{ secrets.X }}`,
       `${NPM}=\${X}`,
-      `{"${NPM}": "\${X}", "other": "${value}"}`,
-      `${NPM}="\${X}" # "${value}" is the old one`,
+      `{"${NPM}": "\${X}", "other": "short value"}`,
+      `${NPM}="\${X}" # the old one was rotated`,
       `${NPM}: \${{ github.token }}\`: the pull request and the commits`,
+      // Operators and delimiters after a reference are not a value, and a path, a URL or a name is not a secret.
+      `${NPM}=\${X}|grep foo`,
+      `${NPM}=\${X}:80`,
+      `${NPM}=\${X}&& echo done`,
+      `${NPM}: \${{ secrets.${NPM} }}   # see https://docs.github.com/en/actions/security-guides/automatic-token-authentication`,
+      `${NPM}=$(cat /run/secrets/npm_token)`,
+      `${NPM} = os.environ["MY_VERY_LONG_ENV_VARIABLE_NAME_V2"]`,
+      `${NPM} = os.environ["my_very_long_env_variable_name_v2"]`,
+      `${NPM}=\${X} # issue https://github.com/monte3l/.github/issues/144`,
+      `${NPM}: process.env.${NPM} // getDefaultAuthenticationTokenValue`,
     ]) {
       allowed("a.txt", line);
     }
