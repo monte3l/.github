@@ -51,6 +51,25 @@
       "todo": "wire .claude/hooks/require-signoff.sh into .claude/settings.json (blueprint/README.md, \"Sign-off guard\" gives the entry); until then it does nothing"
     },
     {
+      "from": "blueprint/files/guard-secret-writes.mjs",
+      "to": ".claude/hooks/guard-secret-writes.mjs",
+      "todo": "wire .claude/hooks/guard-secret-writes.mjs into .claude/settings.json (blueprint/README.md, \"Other guards\" gives the entry); until then it does nothing"
+    },
+    {
+      "from": "blueprint/files/guard-double-background.mjs",
+      "to": ".claude/hooks/guard-double-background.mjs",
+      "todo": "wire .claude/hooks/guard-double-background.mjs into .claude/settings.json (blueprint/README.md, \"Other guards\" gives the entry); until then it does nothing"
+    },
+    {
+      "from": "blueprint/files/guard-git-push-signed.mjs",
+      "to": ".claude/hooks/guard-git-push-signed.mjs",
+      "todo": "wire .claude/hooks/guard-git-push-signed.mjs into .claude/settings.json (blueprint/README.md, \"Other guards\" gives the entry); until then it does nothing"
+    },
+    {
+      "from": "blueprint/files/signed-range.mjs",
+      "to": "bin/lib/signed-range.mjs"
+    },
+    {
       "from": "blueprint/files/ROADMAP.md",
       "to": "ROADMAP.md",
       "substitute": [

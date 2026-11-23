@@ -153,7 +153,14 @@ if (isEntryPoint()) {
   try {
     input = JSON.parse(raw);
   } catch {
-    process.exit(0);
+    input = null;
+  }
+  // A payload that cannot be read cannot be judged, so fail closed. The hook is
+  // registered with onFailure: "block", which covers a crash but not a
+  // deliberate exit 0, and exit 0 means allow.
+  if (typeof input !== "object" || input === null) {
+    process.stderr.write("[guard-secret-writes] could not read the hook payload; blocking.\n");
+    process.exit(2);
   }
 
   const filePath = input.tool_input?.file_path ?? "";

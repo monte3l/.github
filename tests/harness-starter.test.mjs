@@ -68,3 +68,34 @@ describe("sign-off guard starter", () => {
     assert.match(readme, /"command": "bash \\"\$CLAUDE_PROJECT_DIR\/\.claude\/hooks\/require-signoff\.sh\\"",\n  "timeout": 30,\n  "onFailure": "block"/);
   });
 });
+
+// Each starter is the live copy that runs in this repository: [starter, live path, matcher or null when it is not a hook].
+const GUARDS = [
+  ["guard-secret-writes.mjs", ".claude/hooks/guard-secret-writes.mjs", "Write|Edit"],
+  ["guard-double-background.mjs", ".claude/hooks/guard-double-background.mjs", "Bash"],
+  ["guard-git-push-signed.mjs", ".claude/hooks/guard-git-push-signed.mjs", "Bash"],
+  ["signed-range.mjs", "bin/lib/signed-range.mjs", null],
+];
+
+describe("guard starters", () => {
+  for (const [name, live, matcher] of GUARDS) {
+    it(`${name} is identical to the copy that runs here, and bootstrap.json and sync.json write it to the same path`, () => {
+      assert.equal(read(`blueprint/files/${name}`), read(live));
+      const entry = JSON.parse(read("blueprint/bootstrap.json")).starters.find((s) => s.from === `blueprint/files/${name}`);
+      assert.equal(entry?.to, live);
+      const starter = JSON.parse(read("blueprint/sync.json")).starters[name];
+      assert.equal(starter?.mode, "managed");
+      assert.equal(starter.paths[0], live, "the first sync path is where bootstrap writes it");
+      if (matcher !== null) assert.match(entry.todo, /settings\.json/, "a new repository is told to wire it");
+    });
+
+    if (matcher === null) continue;
+    it(`${name} is wired in settings.json under ${matcher} and the README documents the entry`, () => {
+      const settings = JSON.parse(read(".claude/settings.json"));
+      const wired = settings.hooks.PreToolUse.filter((g) => g.matcher === matcher).flatMap((g) => g.hooks).filter((h) => h.command.includes(name));
+      assert.equal(wired.length, 1);
+      assert.equal(wired[0].onFailure, "block");
+      assert.match(read("blueprint/README.md"), /### Other guards/);
+    });
+  }
+});

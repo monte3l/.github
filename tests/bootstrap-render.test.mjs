@@ -72,13 +72,16 @@ assert.ok(priv.files.some((f) => f.to === ".github/dependency-review-config.yml"
 assert.ok(go({ kind: "simple" }).files.some((f) => f.to === ".github/workflows/scorecard.yml"), "public keeps scorecard");
 // todo
 assert.ok(go({ kind: "simple" }).todo.some((t) => t.startsWith(".github/workflows/verify.yml: replace the placeholder step")));
-// The scaffold defines verify, so there is no todo for it. It ships no ROADMAP and neither guard, so
-// three todos are left: write the sections, and wire both guards into settings.json.
+// The scaffold defines verify, so there is no todo for it. It ships no ROADMAP and none of the guards, so
+// six todos are left: write the sections, and wire the five guard hooks into settings.json.
 const scaffolded = go({ kind: "simple", scaffold: true }).todo;
-assert.equal(scaffolded.length, 3, `only the roadmap and the two guard todos are left, got ${JSON.stringify(scaffolded)}`);
+assert.equal(scaffolded.length, 6, `only the roadmap and the five guard todos are left, got ${JSON.stringify(scaffolded)}`);
 assert.ok(scaffolded.some((t) => t.startsWith("ROADMAP.md:")), "one is the roadmap");
 assert.ok(scaffolded.some((t) => t.startsWith(".claude/hooks/guard-shared-checkout.mjs: wire")), "one is wiring the worktree guard");
 assert.ok(scaffolded.some((t) => t.startsWith(".claude/hooks/require-signoff.sh: wire")), "one is wiring the sign-off guard");
+for (const hook of ["guard-secret-writes", "guard-double-background", "guard-git-push-signed"]) {
+  assert.ok(scaffolded.some((t) => t.startsWith(`.claude/hooks/${hook}.mjs: wire`)), `one is wiring ${hook}`);
+}
 // docs option
 const docs = go({ kind: "simple", docs: true, today: "2026-12-24" });
 const text = (rendered, to) => rendered.files.find((f) => f.to === to)?.text;
