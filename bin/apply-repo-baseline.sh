@@ -372,6 +372,61 @@ else
   ok=$((ok + 1))
 fi
 
+# A local pull request template replaces the org's, the way a local issue form
+# does. Some repositories need their own checks, so a local template is allowed
+# as long as it keeps the three items the org's carries: the sign-off, the
+# Conventional Commit title and the regression test. Several templates in
+# .github/PULL_REQUEST_TEMPLATE/ also replace it. Report only.
+check_pr_template() {
+  local path text="" missing=""
+  if [[ "${repo#*/}" == ".github" ]]; then
+    skip "pull request template: org checklist" "this repository holds the org defaults"
+    return
+  fi
+  for path in .github/pull_request_template.md .github/PULL_REQUEST_TEMPLATE.md pull_request_template.md PULL_REQUEST_TEMPLATE.md docs/pull_request_template.md docs/PULL_REQUEST_TEMPLATE.md; do
+    text="$(file_content "$path" || true)"
+    [[ -z "$text" ]] || break
+  done
+  if [[ -z "$text" ]]; then
+    if gh api "repos/$repo/contents/.github/PULL_REQUEST_TEMPLATE" >/dev/null 2>&1; then
+      drift=$((drift + 1))
+      printf 'DRIFT  pull request template: org checklist: .github/PULL_REQUEST_TEMPLATE/ replaces the org template\n'
+      [[ "$mode" == "check" ]] || printf '         needs a commit in %s: use one .github/pull_request_template.md that keeps the org checklist, or delete the folder\n' "$repo"
+    else
+      printf 'OK     pull request template: org checklist: the org template applies\n'
+      ok=$((ok + 1))
+    fi
+    return
+  fi
+  grep -Eqi 'git commit -s' <<<"$text" || missing+="the sign-off, "
+  grep -Eqi 'Conventional Commit' <<<"$text" || missing+="the Conventional Commit title, "
+  grep -Eqi 'regression test' <<<"$text" || missing+="the regression test, "
+  if [[ -z "$missing" ]]; then
+    printf 'OK     pull request template: org checklist: the local template keeps it\n'
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  pull request template: org checklist: the local template lacks %s\n' "${missing%, }"
+    [[ "$mode" == "check" ]] || printf '         needs a commit in %s: copy those lines from the org template, or delete the local one\n' "$repo"
+  fi
+}
+check_pr_template
+
+# Compiled output is not source: a committed dist/ goes stale against src/ and
+# cannot be reviewed as a diff (OpenSSF Baseline OSPS-QA-05.01 names generated
+# executable artifacts). Release assets and the package are built in CI. Report only.
+check_committed_dist() {
+  if gh api "repos/$repo/contents/dist" >/dev/null 2>&1; then
+    drift=$((drift + 1))
+    printf 'DRIFT  build output: dist not committed: dist/ is in the repository\n'
+    [[ "$mode" == "check" ]] || printf '         needs a commit in %s: git rm -r dist, add it to .gitignore, and build it in CI\n' "$repo"
+  else
+    printf 'OK     build output: dist not committed\n'
+    ok=$((ok + 1))
+  fi
+}
+check_committed_dist
+
 # The checks below look for the control, not a file name: a repository may run
 # it from its own workflow (for example a `reuse lint` step inside `verify.yml`)
 # and a second copy of the template would only duplicate it.

@@ -35,6 +35,8 @@ export const INLINE_ITEMS = [
   "plugin: root CLAUDE.md",
   "plugin: marketplace.json",
   "issue forms: org defaults",
+  "pull request template: org checklist",
+  "build output: dist not committed",
   "OpenSSF Best Practices",
   "Dependabot",
   "env-janitor: branch policy",

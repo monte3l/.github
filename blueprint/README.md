@@ -641,7 +641,7 @@ exceptions are the `env-janitor` branch policy and org-secret access, which
 | Starter placeholders | `security policy: placeholders`, `README: placeholders` | The copy of `SECURITY.md` and of `README.md` has none of the `{...}` prompts of its starter left, and no `{repo}` token or starter comment. The prompts are read from the starter, so a new one is caught without editing the script, and a README's own braces (a JSON example, a template path) are never flagged. `bin/lib/leftover-placeholders.sh` does the comparison | `files/SECURITY.md`, `files/README.md` |
 | Gitleaks config | `Gitleaks config` | `.gitleaks.toml` extends the default rules; the workflow passes it as `GITLEAKS_CONFIG` | `files/gitleaks.toml` |
 | Dependency review config | `dependency review config` | `.github/dependency-review-config.yml`: the packages this repository exempts from the license check by package URL. `workflow-templates/dependency-review.yml` reads it (`config-file`) and fails without it, and the action also fails on an empty file, so it holds at least one key. The allowed licenses stay in the workflow, the same everywhere: an exemption in the workflow would make the copy differ from the template | `files/dependency-review-config.yml` |
-| Line endings and editor | `line endings`, `editor config` | `.gitattributes` with `* text=auto eol=lf`, and `.editorconfig` (utf-8, lf, 2 spaces, final newline). A repository that hashes raw bytes keeps `* -text` instead: see the note below | `files/gitattributes`, `files/editorconfig` |
+| Line endings and editor | `line endings`, `editor config` | `.gitattributes` with `* text=auto eol=lf` (the starter also marks `*.woff2` binary, for the fonts a docs site vendors), and `.editorconfig` (utf-8, lf, 2 spaces, final newline). A repository that hashes raw bytes keeps `* -text` instead: see the note below | `files/gitattributes`, `files/editorconfig` |
 | REUSE | `REUSE`, `REUSE check` | `REUSE.toml` plus `LICENSES/`, checked by `reuse lint` in CI, from any workflow. Required because every repository that vendors m3l-design ships its OFL-1.1 fonts next to MIT files. The copyright holder is `Enrico Lionello (enri3l) and Giulia Montevecchi (giulmonte), monte3l` in `LICENSE` and `REUSE.toml`, and the README badge is the REUSE API one, so register the repository at api.reuse.software | `files/REUSE.toml`, `workflow-templates/reuse.yml` |
 | ScanCode | `ScanCode check`, `ScanCode: last run` | A workflow running `aboutcode-org/scancode-action` with `check-compliance`, and a `policies.yml` listing every license the repository may contain. REUSE trusts what a file declares, so a copied third-party file with only a license notice passes `reuse lint` under the catch-all MIT entry. ScanCode reads the text and fails on any license the policy does not list. Not a required check in the `main` ruleset, because the action is still beta, so the last `push` run of its workflow is reported instead: a red run on `main` blocks nothing and is easy to miss. A license that a file names only as data (a test string, a policy list) goes in `scancode-config.yml` by exact path. See [Why ScanCode and not the other scanners](#why-scancode-and-not-the-other-scanners) | `files/policies.yml`, `files/scancode-config.yml`, `workflow-templates/scancode.yml` |
 | Claude Code plugin | `plugin: validate`, `plugin: root CLAUDE.md`, `plugin: marketplace.json` | Only for a repository with `.claude-plugin/plugin.json`: a workflow runs `claude plugin validate --strict`, there is no `CLAUDE.md` at the root (keep it in `.claude/`), and the repository ships no `marketplace.json`. The rules and their reasons are in [Claude Code plugins](#claude-code-plugins) | `.claude/CLAUDE.md` |
@@ -655,6 +655,8 @@ exceptions are the `env-janitor` branch policy and org-secret access, which
 | Roadmap | `roadmap`, `roadmap: sections` | `ROADMAP.md` in the root or in `docs/`, with the sections Now, Next 12 months, Known limits, Unverified and What this project will not do, in that order, and a `reviewed:` date in its frontmatter. A heading may carry a qualifier (`## Now: the 1.x series`). Where each kind of item goes is in [Tracking work](tracking.md). Age is not judged here: the docs kit's page-freshness report (m3l-design 1.5.0 and later, reaching a repository with its design re-sync) covers a page that has not been reviewed for 180 days | `files/ROADMAP.md` |
 | Decision records | `decision records` | `docs/decisions/README.md`, with one numbered MADR file per decision. `.github` keeps its decisions in `knowledge/`, so `knowledge/README.md` counts there | `files/decisions/` |
 | Issue forms | `issue forms: org defaults` | No `.github/ISSUE_TEMPLATE/` of its own. GitHub gives a repository the org forms only when it has none, so one local file hides all of them, and with them the issue type and the Project that the forms set. `.github` holds the defaults, so it is skipped | The forms in `.github/ISSUE_TEMPLATE/` of this repository |
+| Pull request template | `pull request template: org checklist` | Either no template of its own, so the org's applies, or one that keeps the org's three items: the sign-off (`git commit -s`), the Conventional Commit title and the regression test. A local template replaces the org's the way a local issue form does, so a repository may add its own checks but not drop these. Several templates in `.github/PULL_REQUEST_TEMPLATE/` replace it too. `.github` itself is skipped | `.github/pull_request_template.md` of this repository |
+| Build output | `build output: dist not committed` | No `dist/` in the repository. Compiled output goes stale against `src/` and cannot be reviewed as a diff, and OpenSSF Baseline OSPS-QA-05.01 names generated executable artifacts. The package and the release assets are built in CI | `.gitignore` |
 | Release config | `release: config`, `release: manifest` | `release-please-config.json` and `.release-please-manifest.json`, unless `release.json` exempts the repository | `files/release-please/` |
 | Release workflow | `release: workflow` | `release.yml` calls both shared workflows, each pinned to a full commit SHA | `workflow-templates/release.yml` |
 | Release workflow pin | `release: workflow pin` | Each pinned SHA is a commit on `.github`'s default branch. A commit that lived only on a pull request branch, which a squash merge drops, fails every release that copied it | `workflow-templates/release.yml` |
@@ -906,6 +908,62 @@ the other inside `Write|Edit`:
 
 `tests/harness-starter.test.mjs` keeps the starter identical to this
 repository's own hook, which is the one that runs here.
+
+## Working conventions
+
+Rules that no linter in the standard enforces, written down because the same
+fix kept landing by hand in several repositories. A test or a baseline item
+backs each one where the rule can be checked.
+
+### Shell scripts
+
+A script that runs under `set -e` and `trap 'exit 3' ERR` must not read a
+list from process substitution when a failed call would then read as "nothing
+to do". In `while read ... done < <(gh ...)` the status of the substitution is
+lost, so a failed `gh` call ends the loop with no items and the script reports
+a clean run. Read the list into a variable first, which does reach the trap:
+
+```bash
+repos="$(gh repo list "$OWNER" --json name --jq '.[].name')"
+while IFS= read -r name; do ...; done <<<"$repos"
+```
+
+Where the empty list is the right answer when the call fails, say so with
+`|| true` inside the substitution and a comment. ShellCheck knows the sibling
+problem as SC2155 (`local x=$(cmd)` hides the status of `cmd`), which it
+reports by default. Its optional check for masked returns (SC2312) is not
+enabled: it reports 60 places in these scripts and their tests, nearly all
+fine, which would bury the real ones. `tests/shell-process-substitution.test.mjs` is a ratchet
+instead: it counts the unguarded `< <(` sites per script and fails when a
+script gains one. Convert a site to the variable form and lower its number in
+the test.
+
+### Bash commands that Claude Code runs
+
+On macOS the shell is usually zsh, and zsh does not split an unquoted
+`$variable` into words the way bash does (zsh FAQ, 3.1). `for x in $list` runs
+once with the whole string, and `gh pr view $number` gets an empty argument when
+the variable is unset. Use an array (`"${items[@]}"`), `${=var}` for one
+deliberate split, or write each argument out. This showed up in at least eight
+commands across five repositories before it was written down.
+
+### Files that a tool writes
+
+A file written by the template sync, the design re-sync, release-please or
+pnpm is not formatted by the repository's formatter, so a formatter that
+checks it fails every pull request that tool opens. List such files where the
+formatter looks, once per repository:
+
+| Formatter | How | Official page |
+| --------- | --- | ------------- |
+| Prettier | `.prettierignore` (gitignore syntax) for `design/` and the synced starters. An `overrides` entry with `files` and `"options": { "parser": "json-stringify" }` for the JSON that release-please rewrites, such as `.claude-plugin/plugin.json` and `.release-please-manifest.json`. The parser's whitespace resembles `JSON.stringify()`, which is what release-please writes; that match is observed in two repositories, not documented | prettier.io/docs/ignore, prettier.io/docs/configuration, prettier.io/docs/options |
+| Biome | A negated pattern in `files.includes` (`!design/**`). `!!` also leaves the path out of project analysis | biomejs.dev/guides/configure-biome |
+| editorconfig-checker | `Exclude` in `.editorconfig-checker.json`, a regular expression per entry | github.com/editorconfig-checker/editorconfig-checker |
+
+The files to list are the vendored `design/` copy, the starters the sync
+refreshes (`.claude/hooks/guard-*.mjs`, `bin/lib/signed-range.mjs`,
+`require-signoff.sh`, `.gitattributes`, `.editorconfig`) and the JSON and YAML a
+release or `pnpm` rewrites. A repository without a formatter has nothing to do.
 
 ## Claude Code managed settings
 
