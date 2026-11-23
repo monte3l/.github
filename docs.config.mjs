@@ -19,6 +19,7 @@ export default {
   pages: [
     { src: "profile/README.md", out: "index.html", group: "Start", label: "Overview", summary: "The organization's projects, each with its own docs site" },
     { src: "blueprint/README.md", out: "standard.html", group: "Standard", label: "Engineering standard", summary: "What every repository must have: settings, files, workflows and checks, and how each is applied or only reported" },
+    { src: "blueprint/new-project.md", out: "new-project.html", group: "Standard", label: "Starting a new project", summary: "The step-by-step path from a project name to a registered GitHub repository and a ready local checkout, with every command" },
     { src: "blueprint/tracking.md", out: "tracking.html", group: "Standard", label: "Tracking work", summary: "Where a project records bugs, gaps, known limits, unverified claims, decisions and planned work, and with which tool" },
     { src: "ROADMAP.md", out: "ROADMAP.html", group: "Standard", label: "Roadmap", summary: "What this repository plans next, its known limits, what it has not verified and what it will not do" },
     { src: "blueprint/docs-site.md", out: "docs-site.html", group: "Standard", label: "Docs site runbook", summary: "How the organization docs sites are built and deployed to Cloudflare, and the one-time setup" },
