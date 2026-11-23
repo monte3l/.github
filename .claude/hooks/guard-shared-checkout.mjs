@@ -302,6 +302,9 @@ function gitWriteAt(words, at, cwd) {
     }
   }
   const sub = words[i];
+  // A subcommand that is still an expansion (`git $S`) cannot be read: judge it
+  // as a writing command rather than approve it.
+  if (sub && /[$`]/.test(sub)) return { dir, sub };
   if (!sub || !WRITING.some((re) => re.test(sub))) return null;
   const rest = words.slice(i + 1);
   if (
@@ -317,7 +320,8 @@ function gitWriteAt(words, at, cwd) {
 export function gitWrites(words, cwd) {
   const hits = [];
   words.forEach((word, at) => {
-    if (!isGit(word)) return;
+    // A command word that is an expansion (`$G commit`) may be git.
+    if (!isGit(word) && !(at === 0 && /^\$|`/.test(word))) return;
     const hit = gitWriteAt(words, at, cwd);
     if (hit) hits.push(hit);
   });

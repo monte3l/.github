@@ -226,6 +226,16 @@ describe("guard-shared-checkout", () => {
     assert.equal(at(`W=${linked}; W=${linked}; git -C $W commit -m x`), 2, "a name set twice is not trusted, even to the same value");
   });
 
+  it("judges a command word or subcommand that is still an expansion as a writing command", () => {
+    const at = (command, cwd = main) => run({ tool_name: "Bash", cwd, tool_input: { command } }).status;
+    assert.equal(at("G=git; $G commit -m x"), 2, "the command word is a variable");
+    assert.equal(at("S=commit; git $S -m x"), 2, "the subcommand is a variable");
+    assert.equal(at("git $(echo commit) -m x"), 2, "the subcommand is a substitution");
+    assert.equal(at("G=git; $G commit -m x", linked), 0, "in a linked worktree it is still allowed");
+    assert.equal(at("git log $(git rev-parse HEAD)"), 0, "an expansion as an argument is not a subcommand");
+    assert.equal(at(`W=${linked}; git -C "$W" commit -m x`), 0, "the plain literal assignment still works");
+  });
+
   it("clears every variable at the first doubtful thing in the line", () => {
     const at = (command) => run({ tool_name: "Bash", cwd: main, tool_input: { command } }).status;
     const use = "git -C $W commit -m x";
