@@ -26,9 +26,10 @@ const put = (dir, rel, text) => {
 /**
  * A repository holding the real CLI, a minimal sync.json and two versions of the starter x.toml, and a
  * consumer directory the stub gh serves.
- * @param {{ starters?: object, repo?: object, consumer: Record<string, string> }} options
+ * @param {{ starters?: object, repo?: object, consumer: Record<string, string>, yOld?: string }} options
+ *   `yOld` gives the starter y.cfg an older version too (it has one version, "y\n", otherwise)
  */
-function setup({ starters, repo = { flags: [] }, consumer }) {
+function setup({ starters, repo = { flags: [] }, consumer, yOld }) {
   const dir = mkdtempSync(path.join(tmpdir(), "sync-cli-"));
   git(dir, "init", "-q");
   mkdirSync(path.join(dir, "bin", "lib"), { recursive: true });
@@ -36,7 +37,7 @@ function setup({ starters, repo = { flags: [] }, consumer }) {
   cpSync(path.join(root, "bin", "lib", "template-sync.mjs"), path.join(dir, "bin", "lib", "template-sync.mjs"));
   put(dir, "workflow-templates/t.yml", WORKFLOW);
   put(dir, "blueprint/projects.json", JSON.stringify([{ repo: "m3l-x", site: "https://x.monte3l.com" }]));
-  put(dir, "blueprint/files/y.cfg", "y\n");
+  put(dir, "blueprint/files/y.cfg", yOld ?? "y\n");
   put(dir, "blueprint/files/x.toml", V1);
   const config = {
     flags: {},
@@ -51,6 +52,7 @@ function setup({ starters, repo = { flags: [] }, consumer }) {
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", "v1");
   put(dir, "blueprint/files/x.toml", V2);
+  if (yOld !== undefined) put(dir, "blueprint/files/y.cfg", "y\n");
   git(dir, "commit", "-q", "-am", "v2");
 
   // The consumer's files, and a gh that serves them: a missing file is the 404 the CLI expects.
@@ -173,4 +175,67 @@ test("a refreshed starter is not stale on the next run, so the sync does not ope
 test("a stale starter with no header gets none", () => {
   const env = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW, "conf/x.toml": V1 } });
   assert.equal(runSync(env, "--write", "OUT").written("conf/x.toml"), V2);
+});
+
+// The push guard and its helper are one unit: sync.json `requires` lets a guard be refreshed only beside a helper it can use.
+const PAIR = {
+  "x.toml": { mode: "managed", paths: [".x.toml"], requires: ["y.cfg"] },
+  "y.cfg": { mode: "managed", paths: [".y"] },
+};
+
+test("a stale starter beside a custom starter it requires is held: not written, and the finding says why", () => {
+  const env = setup({ starters: PAIR, consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V1, ".y": "mine\n" } });
+  const r = runSync(env, "--write", "OUT");
+  assert.equal(r.status, 0, r.err);
+  assert.equal(r.written(".x.toml"), null, "the guard is not refreshed beside a helper that is the repository's own");
+  assert.equal(r.written(".y"), null);
+  assert.equal(r.findings, "m3l-x: .x.toml is 1 version behind its starter, but is not refreshed: .y is custom. Refresh the pair together by hand\n");
+  assert.match(r.out, /x\.toml\s+H1/, "shown as held, one version behind");
+});
+
+test("a stale starter whose required starter is missing is held too", () => {
+  const env = setup({ starters: PAIR, consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V1 } });
+  const r = runSync(env, "--write", "OUT");
+  assert.equal(r.written(".x.toml"), null);
+  assert.match(r.findings, /not refreshed: \.y is missing/);
+});
+
+test("a stale starter beside a current starter it requires is refreshed", () => {
+  const env = setup({ starters: PAIR, consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V1, ".y": "y\n" } });
+  const r = runSync(env, "--write", "OUT");
+  assert.equal(r.status, 0, r.err);
+  assert.equal(r.written(".x.toml"), V2);
+  assert.equal(r.findings, "m3l-x: .x.toml is 1 version behind its starter\n");
+});
+
+test("both stale: the pair is refreshed together", () => {
+  const env = setup({ starters: PAIR, yOld: "y0\n", consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V1, ".y": "y0\n" } });
+  const r = runSync(env, "--write", "OUT");
+  assert.equal(r.status, 0, r.err);
+  assert.equal(r.written(".x.toml"), V2);
+  assert.equal(r.written(".y"), "y\n");
+  assert.equal(r.findings, "m3l-x: .x.toml is 1 version behind its starter\nm3l-x: .y is 1 version behind its starter\n");
+});
+
+test("the helper alone may be refreshed beside a guard that is current or custom", () => {
+  const env = setup({ starters: PAIR, yOld: "y0\n", consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": `${V2}extra = true\n`, ".y": "y0\n" } });
+  const r = runSync(env, "--write", "OUT");
+  assert.equal(r.written(".y"), "y\n");
+  assert.equal(r.written(".x.toml"), null);
+});
+
+test("a repository that skips a starter: nothing is read, written or reported for it", () => {
+  const env = setup({ repo: { flags: [], skip: ["x.toml"] }, consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V1, ".y": "y\n" } });
+  const r = runSync(env, "--write", "OUT");
+  assert.equal(r.status, 0, r.err);
+  assert.equal(r.written(".x.toml"), null);
+  assert.equal(r.findings, "");
+  assert.match(r.out, /x\.toml\s+skip/);
+});
+
+test("a skipped required starter holds the one that needs it", () => {
+  const env = setup({ starters: PAIR, repo: { flags: [], skip: ["y.cfg"] }, consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V1, ".y": "y\n" } });
+  const r = runSync(env, "--write", "OUT");
+  assert.equal(r.written(".x.toml"), null);
+  assert.match(r.findings, /not refreshed: \.y is skipped/);
 });

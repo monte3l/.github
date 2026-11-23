@@ -236,16 +236,21 @@ export function jobNames(text) {
  * others are the places the baseline also accepts. A repository whose file lives
  * elsewhere says so in `repos.<name>.paths`.
  *
+ * A repository may also leave a unit out (`repos.<name>.skip`, a list of template or starter
+ * names): it is looked at by nobody and never touched, which is how a repository that keeps its
+ * own version of a file on purpose says so without that copy being reported as a finding forever.
+ *
  * @param {{
  *   templates: Record<string, string>,
- *   starters?: Record<string, { mode: string, paths: string[] }>,
- *   repos?: Record<string, { paths?: Record<string, string> }>,
+ *   starters?: Record<string, { mode: string, paths: string[], requires?: string[] }>,
+ *   repos?: Record<string, { paths?: Record<string, string>, skip?: string[] }>,
  * }} config blueprint/sync.json
  * @param {string} repo
- * @returns {Array<{ name: string, kind: "workflow" | "starter", source: string, managed: boolean, paths: string[] }>}
+ * @returns {Array<{ name: string, kind: "workflow" | "starter", source: string, managed: boolean, paths: string[], requires: string[], skipped: boolean }>}
  */
 export function unitsFor(config, repo) {
   const override = config.repos?.[repo]?.paths ?? {};
+  const skip = new Set(config.repos?.[repo]?.skip ?? []);
   const byName = ([a], [b]) => (a < b ? -1 : a > b ? 1 : 0);
   const workflows = Object.entries(config.templates)
     .sort(byName)
@@ -255,6 +260,8 @@ export function unitsFor(config, repo) {
       source: `workflow-templates/${name}.yml`,
       managed: mode === "managed",
       paths: [override[name] ?? `.github/workflows/${name}.yml`],
+      requires: [],
+      skipped: skip.has(name),
     }));
   const starters = Object.entries(config.starters ?? {})
     .sort(byName)
@@ -264,8 +271,48 @@ export function unitsFor(config, repo) {
       source: `blueprint/files/${name}`,
       managed: entry.mode === "managed",
       paths: override[name] ? [override[name]] : entry.paths,
+      requires: entry.requires ?? [],
+      skipped: skip.has(name),
     }));
   return [...workflows, ...starters];
+}
+
+/**
+ * A starter that needs another one (`requires` in sync.json: the push guard imports
+ * `signed-range.mjs`, and a guard refreshed beside a helper that is its own, older or missing
+ * cannot work) is refreshed only when every starter it needs, in the same repository, is current
+ * or is refreshed in the same run. Otherwise it is HELD: the rows say why, nothing is written for
+ * it, and the findings say that a person refreshes the pair together.
+ *
+ * @param {Array<{ template: string, kind: string, managed: boolean, state: string, path: string }>} rows
+ *   one repository's rows
+ * @param {{ starters?: Record<string, { requires?: string[] }> }} config
+ * @returns {Array<object>} the rows, a held one with `state: "HELD"` and `reason`
+ */
+export function holdUncoupled(rows, config) {
+  const byName = new Map(rows.map((row) => [row.template, row]));
+  const ready = (need) =>
+    need.state === "IDENTICAL" || need.state === "EQUIVALENT" || (need.state === "STALE" && need.managed);
+  return rows.map((row) => {
+    if (row.kind !== "starter" || !row.managed || row.state !== "STALE") return row;
+    for (const name of config.starters?.[row.template]?.requires ?? []) {
+      const need = byName.get(name);
+      if (need && ready(need)) continue;
+      const why = !need || need.state === "MISSING" ? "is missing" : need.state === "CUSTOM" ? "is custom" : need.state === "SKIPPED" ? "is skipped" : "is not managed";
+      return { ...row, state: "HELD", reason: `${need?.path ?? name} ${why}` };
+    }
+    return row;
+  });
+}
+
+/**
+ * The finding for a refresh that is held back by a starter it needs.
+ *
+ * @param {{ repo: string, path: string, back: number, reason: string }} row
+ * @returns {string}
+ */
+export function describeHeld(row) {
+  return `${row.repo}: ${row.path} is ${row.back} version${row.back === 1 ? "" : "s"} behind its starter, but is not refreshed: ${row.reason}. Refresh the pair together by hand`;
 }
 
 /**

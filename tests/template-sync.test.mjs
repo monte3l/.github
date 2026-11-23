@@ -3,7 +3,7 @@
 
 // The template sync classifier: render, lenient and strict comparison, and what may never be called stale.
 // Run with: node --test "tests/*.test.mjs"
-const { classify, render, lenient, strict, jobNames, unitsFor, describeStale, keepHeader } = await import(new URL("../bin/lib/template-sync.mjs", import.meta.url).href);
+const { classify, render, lenient, strict, jobNames, unitsFor, describeStale, keepHeader, holdUncoupled, describeHeld } = await import(new URL("../bin/lib/template-sync.mjs", import.meta.url).href);
 let failed = 0;
 const eq = (name, got, want) => { const ok = JSON.stringify(got) === JSON.stringify(want); console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : `\n       got  ${JSON.stringify(got)}\n       want ${JSON.stringify(want)}`}`); if (!ok) failed++; };
 const throws = (name, fn, re) => { let msg = null; try { fn(); } catch (e) { msg = e.message; } const ok = msg !== null && re.test(msg); console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : `\n       got ${msg}`}`); if (!ok) failed++; };
@@ -172,5 +172,27 @@ eq("a blank line inside the header run does not end it", classify(`# SPDX-FileCo
 eq("and the refresh keeps that header as it is", keepHeader(scanNew, `# SPDX-FileCopyrightText: a\n\n# SPDX-License-Identifier: MIT\n\n${scanOld}`), `# SPDX-FileCopyrightText: a\n\n# SPDX-License-Identifier: MIT\n\n${scanNew}`);
 eq("the header's own spacing is kept (no blank line after it stays none)", keepHeader(scanNew, `${GW}${scanOld}`), `${GW}${scanNew}`);
 eq("CRLF in the repository's file does not leak a carriage return", keepHeader(scanNew, groundwork.replace(/\n/g, "\r\n")), `${GW}\n${scanNew}`);
+
+console.log("--- a starter that needs another is refreshed only beside it, and a repository may skip a unit");
+const pair = { starters: { "guard.mjs": { mode: "managed", paths: [".g"], requires: ["helper.mjs"] }, "helper.mjs": { mode: "managed", paths: [".h"] } } };
+const row = (template, state, extra = {}) => ({ repo: "m3l-x", template, kind: "starter", managed: true, path: template === "guard.mjs" ? ".g" : ".h", state, ...extra });
+const held = (helperState, extra = {}) => holdUncoupled([row("guard.mjs", "STALE", { back: 4 }), row("helper.mjs", helperState, extra)], pair).map((r) => r.state);
+eq("a guard beside a custom helper is HELD", held("CUSTOM"), ["HELD", "CUSTOM"]);
+eq("a guard beside a missing helper is HELD", held("MISSING"), ["HELD", "MISSING"]);
+eq("a guard beside a helper the repository skips is HELD", held("SKIPPED"), ["HELD", "SKIPPED"]);
+eq("a guard beside an unmanaged stale helper is HELD, since nothing refreshes it", held("STALE", { managed: false, back: 1 }), ["HELD", "STALE"]);
+eq("a guard beside a current helper is refreshed", held("IDENTICAL"), ["STALE", "IDENTICAL"]);
+eq("a guard beside an equivalent helper is refreshed", held("EQUIVALENT"), ["STALE", "EQUIVALENT"]);
+eq("a guard and a helper that are both stale are refreshed together", held("STALE", { back: 2 }), ["STALE", "STALE"]);
+eq("a guard that is current is never held, whatever the helper is", holdUncoupled([row("guard.mjs", "IDENTICAL"), row("helper.mjs", "CUSTOM")], pair).map((r) => r.state), ["IDENTICAL", "CUSTOM"]);
+eq("a custom guard is left alone", holdUncoupled([row("guard.mjs", "CUSTOM"), row("helper.mjs", "CUSTOM")], pair).map((r) => r.state), ["CUSTOM", "CUSTOM"]);
+eq("a starter with no requires is never held", holdUncoupled([row("helper.mjs", "STALE", { back: 1 })], pair).map((r) => r.state), ["STALE"]);
+eq("a held row keeps how far behind it is, and says what it needs", holdUncoupled([row("guard.mjs", "STALE", { back: 4 }), row("helper.mjs", "CUSTOM")], pair)[0], row("guard.mjs", "HELD", { back: 4, reason: ".h is custom" }));
+eq("the finding for a held guard says why and that a person does the pair", describeHeld({ repo: "m3l-x", path: ".g", back: 4, reason: "bin/lib/signed-range.mjs is custom" }), "m3l-x: .g is 4 versions behind its starter, but is not refreshed: bin/lib/signed-range.mjs is custom. Refresh the pair together by hand");
+eq("the same for one version", describeHeld({ repo: "m3l-x", path: ".g", back: 1, reason: "x is missing" }).includes("is 1 version behind"), true);
+const skipConfig = { templates: { a: "managed" }, starters: pair.starters, repos: { "m3l-x": { skip: ["a", "guard.mjs"] }, "m3l-y": {} } };
+eq("a skipped template and starter are flagged for that repository", unitsFor(skipConfig, "m3l-x").filter((u) => u.skipped).map((u) => u.name), ["a", "guard.mjs"]);
+eq("another repository skips nothing", unitsFor(skipConfig, "m3l-y").filter((u) => u.skipped).length, 0);
+eq("a unit carries what it requires", unitsFor(skipConfig, "m3l-y").find((u) => u.name === "guard.mjs").requires, ["helper.mjs"]);
 
 console.log(failed ? `\n${failed} FAILED` : "\nALL CLASSIFIER CASES BEHAVE"); process.exit(failed ? 1 : 0);
