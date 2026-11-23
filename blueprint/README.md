@@ -949,7 +949,8 @@ Use the same entry with `guard-double-background.mjs`,
 `Bash` hooks.
 
 A guard that can block fails closed: a payload it cannot read as JSON, or one
-that is not an object, exits 2 with `could not read the hook payload`.
+that is not an object (`null`, a number, a string, `true` or an array such as `[]`),
+exits 2 with `could not read the hook payload`.
 `onFailure: "block"` covers a crash but not a deliberate `exit 0`, and `0` means
 allow. The push guard keeps one documented exception: when it cannot work out
 the outgoing range it lets the push go, because the `main` ruleset requires
@@ -1013,7 +1014,24 @@ What the guards read, so a change to them can be judged:
   `env.<token>`) is a value, not a lookup, and so is a closed reference with more
   value stuck to it (`${X}"<token>"`). A literal after a default operator
   (`|| "<token>"`, `?? '<token>'`, `or "<token>"`) is read after a reference or a
-  plain value. Whatever the first value is, a
+  plain value. A JavaScript template literal's interpolation of names and numbers
+  (`${randomToken()}`, `${makeToken(32)}`, `${tokens.make(len, kind)}`,
+  `${process.env.NPM_TOKEN}`) is a reference too, so test code that builds a token at run
+  time is not refused. The body must match a strict grammar: a path of names, called
+  or not with names and numbers, where a name has at most 32 characters (letters, digits
+  and underscores, not starting with a digit) and a number at most 4 digits. A string, a
+  template, an operator, a `$`, a nested call, a longer name or a longer number
+  (`${X || "<token>"}`, `${fn("<token>")}`, `${a.b.<token>}`, `${make(12345678901234567890)}`)
+  is outside it and is read as a value. Inside it, every name must also be a name: not
+  spelled like a token (`${ghp_...}`) and not a run of 16 or more letters and digits that
+  looks like a secret, and a short name with a digit and capitals (`accessToken2`) is a
+  name. `$NAME` and a bare `${NAME}` are a reference only when NAME is
+  a name: at most 40 characters, not beginning like a token (`ghp_`, `sk_`, `AKIA`, ...,
+  unless it is a short snake_case name of letters such as `npm_config_cache`), and an
+  environment variable's name (`GITHUB_TOKEN`, `npm_config_x`) or letters and underscores
+  (`githubTokenForTests`). Anything else after a dollar sign (`$ghp_<token>`, a long
+  random run) is a value.
+  Whatever the first value is, a
   placeholder (`changeme`, `<token>`, an empty string) or a reference included,
   nothing after it is trusted by its shape: the whole rest of the line is split at
   quotes, operators and delimiters, and a run of 16 or more characters with a
@@ -1035,11 +1053,17 @@ What the guards read, so a change to them can be judged:
   only); a lowercase snake_case run, which is read as a name; a lowercase
   hyphenated run of plain words, or one with a short part that has a digit, which
   is read as a name; a token whose shape is only a prefix this list does not know;
-  and a secret written as a path or after a domain-like prefix. The other way, a
-  real name with three or more short parts that carry a digit and 16 or more
-  characters (`aws-s3-bucket-name-v2-eu1`), or a part that starts with a digit
-  (`key-rotation-job-2024`), is still blocked, by design: it is the shape of a
-  token, and the edit that needs it names it another way.
+  a name inside an interpolation that is a random run of fewer than 16 characters, or of
+  letters only (a longer body is outside the grammar and read as a value); a short body
+  outside the grammar, which a value of fewer than 16 characters passes whatever it is
+  (a bare `${accessToken2}` is allowed only because the value is shorter than 16
+  characters, not as a reference);
+  and a secret written as a path or after a domain-like prefix. The other way, a real name with three or more short
+  parts that carry a digit and 16 or more characters (`aws-s3-bucket-name-v2-eu1`),
+  a part that starts with a digit (`key-rotation-job-2024`), and a long camelCase name
+  that has a digit inside an interpolation (`${ctx.runner.accessToken2Value}`) are
+  still blocked, by design: each is the shape of a token, and the edit that needs it
+  names it another way.
   `ghp_`, `gho_`, `ghu_`, `ghs_` and `ghr_` tokens are blocked on their own.
   `tests/harness-guards-hardening.test.mjs` runs it over every tracked file of
   this repository and expects no hit, so the guard never refuses the edit that
