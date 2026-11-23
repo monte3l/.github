@@ -953,19 +953,32 @@ What the guards read, so a change to them can be judged:
   (`HEAD:refs/heads/x`, `+branch`, `--all`) are what it vets, not only `HEAD`. A
   push option whose value looks like a flag (`-o -n`) is not a dry run. A long
   option is read by its unique prefix as git does (`--mir`, `--dry`), and one the
-  guard does not know vets every branch. A tag sent as a tag, and a deletion, are
-  not vetted; a tag sent to a branch (`refs/tags/v1:refs/heads/y`) is vetted as
-  its commit. Git runs only in the repository the hook runs in, its worktrees and
+  guard does not know vets every branch. A plain tag ref sent to a tag
+  (`refs/tags/v1`, `refs/tags/v1:refs/tags/x`), and a deletion, are not vetted;
+  any other destination, a branch or a bare name such as `main` that git matches
+  against the remote's refs, and any source that is a revision (`refs/tags/v1~1`),
+  is vetted as its commit. Git runs only in the repository the hook runs in, its worktrees and
   `CLAUDE_PROJECT_DIR`, and with `gpg.program`, `core.fsmonitor` and the other
   program settings of the repository overridden, because a repository's own config
   can name programs git then runs. A push from any other directory goes unvetted
   here, like a range the guard cannot work out; the signed-commits ruleset holds.
-- **Secret guard.** A key may be quoted (`"NPM_TOKEN": "..."`) and in any case.
-  A value is a placeholder only when it starts with a reference (`${X}`, `$X`,
-  `process.env.X`, `secrets.X`) or has a marker word set off by a delimiter
-  (`your_token`, `example-key`); a marker inside a longer run (`s3cr3tfake...`)
-  does not make a real value one. `ghp_`, `gho_`, `ghu_`, `ghs_` and `ghr_` tokens
-  are blocked on their own.
+- **Secret guard.** A key may be quoted (`"NPM_TOKEN": "..."`) and in any case; a
+  key in backticks is prose about it. The value is the quoted string, or the run
+  up to a space, comma or bracket, so what follows on the line is not read. It is a
+  placeholder only when it is only dots, starts with a reference (`${X}`, `$X`,
+  `process.env.X`, `os.environ[...]`, `ENV[...]`, `getenv(...)`, `secrets.X`) or
+  has a marker word set off by a delimiter (`your_token`, `example-key`); a
+  marker inside a longer run (`s3cr3tfake...`) does not make a real value one.
+  `ghp_`, `gho_`, `ghu_`, `ghs_` and `ghr_` tokens are blocked on their own.
+  `tests/harness-guards-hardening.test.mjs` runs it over every tracked file of
+  this repository and expects no hit, so the guard never refuses the edit that
+  repairs a file the repository already holds.
+- **Push guard and its helper are one unit.** `guard-git-push-signed.mjs` loads
+  `bin/lib/signed-range.mjs`, and the template sync refreshes each file on its
+  own. A guard beside a helper that is missing or older does not crash (under
+  `onFailure: "block"` that would refuse every `Bash` call): it blocks a command
+  that looks like a push, saying to refresh both files, and lets any other command
+  through. Refresh both together: they sit side by side in `sync.json`.
 
 ### Worktree guard
 

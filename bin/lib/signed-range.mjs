@@ -300,6 +300,9 @@ const PUSH_LONG_OPTIONS = new Map([
   ["ipv6", "none"],
 ]);
 
+/** `refs/tags/NAME` with nothing that makes it a revision expression: no `^`, `~`, `@{`, `{`, `:` or glob. */
+const PLAIN_TAG_REF = /^refs\/tags\/[^^~:@{}*?[\\\s]+$/;
+
 /** Short options of `git push`; `o` takes a value. */
 const PUSH_SHORT_OPTIONS = new Set("fnuqvd46o");
 
@@ -459,10 +462,12 @@ function pushTips(refspecs, all, deleting, unknown = false) {
       const src = colon === -1 ? spec : spec.slice(0, colon);
       const dst = colon === -1 ? "" : spec.slice(colon + 1);
       if (src === "" || src.startsWith("-")) continue;
-      // A tag source goes to a tag when the destination is absent, bare (git gives
-      // it the type of the source) or under refs/tags/; any other full name, such
-      // as refs/heads/y, is a branch.
-      if (src.startsWith("refs/tags/") && (!dst.startsWith("refs/") || dst.startsWith("refs/tags/"))) continue;
+      // A tag goes to a tag only when the source is a plain tag ref name (not
+      // `refs/tags/v1^{commit}` or `refs/tags/v1~1`, which name a commit) and the
+      // destination is absent or under refs/tags/. Any other destination, a bare
+      // short name included (git matches it against the remote's existing refs,
+      // which may be a branch), puts the source's commits somewhere that counts.
+      if (PLAIN_TAG_REF.test(src) && (dst === "" || dst.startsWith("refs/tags/"))) continue;
       tips.push(src.includes("*") ? "--branches" : src);
     }
   }

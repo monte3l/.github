@@ -65,10 +65,16 @@ const TOKEN_LITERALS = [
 function isPlaceholderValue(value) {
   const v = value.trim().replace(/^["'`]|["'`]$/g, "");
   if (v.length === 0) return true;
+  if (/^[.…]+$/.test(v)) return true; // "..." or an ellipsis: text that elides the value
   // A reference starts the value: `${X}`, `$(cmd)`, `$X`, `process.env.X`,
-  // `secrets.X`, `env.X`. Matching it anywhere would let a real token that merely
-  // contains `env.` through.
-  if (/^(?:\$\{|\$\(|\$[A-Za-z_]|process\.env\b|secrets\.|env\.)/.test(v)) return true;
+  // `os.environ[...]`, `ENV[...]`, `getenv(...)`, `secrets.X`, `env.X`. Matching
+  // it anywhere would let a real token that merely contains `env.` through.
+  if (
+    /^(?:\$\{|\$\(|\$[A-Za-z_]|process\.env\b|os\.environ\b|os\.getenv\b|ENV\[|ENV\.|System\.getenv\b|getenv\(|secrets\.|env\.)/.test(
+      v,
+    )
+  )
+    return true;
   if (/^<.*>$/.test(v)) return true; // <your-token>
   // A dummy is a marker word set off from the rest by a delimiter (or the whole
   // value), such as `your_token_here` or `example-token`. A marker buried inside
@@ -81,6 +87,21 @@ function isPlaceholderValue(value) {
     return true;
   // Too short / low-entropy to be a real token.
   return v.length < 16;
+}
+
+/**
+ * The value an assignment gives: a quoted string up to its closing quote, else
+ * the run up to a space, comma, semicolon or closing bracket. What follows on the
+ * line (a comment, the rest of a JSON object, a sentence) is not the value.
+ *
+ * @param {string} rest the text after the `=` or `:`
+ * @returns {string}
+ */
+function firstValue(rest) {
+  const text = rest.trim();
+  const quoted = /^(["'`])(.*?)\1/.exec(text);
+  if (quoted) return quoted[2];
+  return /^[^\s,;)\]}]*/.exec(text)?.[0] ?? "";
 }
 
 /**
@@ -108,11 +129,12 @@ export function findSecrets(content) {
 
   for (const key of SECRET_KEYS) {
     // KEY = value, KEY: value or KEY => value (env, yaml, toml, ruby, ...), with
-    // the key itself optionally quoted ("KEY": "v", 'KEY' = 'v'), in any case.
-    // The value runs to the end of the line.
-    const re = new RegExp(`\\b${key}\\b["'\`]?\\s*(?:=>|[:=])\\s*(.+)`, "gi");
+    // the key itself optionally quoted ("KEY": "v", 'KEY' = 'v'), in any case. A
+    // key in backticks (prose such as `GITHUB_TOKEN`: the pull request) is text
+    // about the key, not an assignment.
+    const re = new RegExp(`\\b${key}\\b["']?\\s*(?:=>|[:=])\\s*(.+)`, "gi");
     for (const m of content.matchAll(re)) {
-      if (!isPlaceholderValue(m[1]))
+      if (!isPlaceholderValue(firstValue(m[1])))
         hits.push(`${key} assigned a literal value`);
     }
   }

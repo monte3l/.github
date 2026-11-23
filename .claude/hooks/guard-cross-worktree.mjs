@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * PreToolUse guard (Write|Edit): asks before editing a file that another
- * worktree of the same repository has modified and not yet committed.
+ * PreToolUse guard (Write|Edit|NotebookEdit): asks before editing a file (a
+ * notebook's `notebook_path` too) that another worktree of the same repository
+ * has modified and not yet committed.
  *
  * Two sessions working on the same repository from separate worktrees collide
  * on shared files (for example `bin/lib/upsert-issue.sh`). The hook answers
@@ -78,7 +79,7 @@ if (isEntryPoint()) {
   } catch {
     process.exit(0);
   }
-  const filePath = input.tool_input?.file_path ?? "";
+  const filePath = input.tool_input?.file_path ?? input.tool_input?.notebook_path ?? "";
   if (filePath) {
     const cwd = input.cwd ?? process.cwd();
     const hits = collisions(path.resolve(cwd, filePath));

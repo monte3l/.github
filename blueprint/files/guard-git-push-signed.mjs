@@ -37,15 +37,29 @@ import process from "node:process";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import {
-  parseGitPushes,
-  outgoingCommits,
-  unsignedCommits,
-  signingEnabled,
-  gitRunner,
-  trustedRoots,
-  isTrustedDir,
-} from "../../bin/lib/signed-range.mjs";
+
+// The helper this guard needs. The template sync refreshes each file on its own,
+// so a repository can hold this guard beside an older (or its own changed)
+// signed-range.mjs; a static import of a missing name would crash the hook, and
+// under `onFailure: "block"` refuse EVERY Bash call. It is loaded here instead,
+// and when it cannot serve this guard the hook degrades (see below).
+const HELPER_EXPORTS = [
+  "parseGitPushes",
+  "outgoingCommits",
+  "unsignedCommits",
+  "signingEnabled",
+  "gitRunner",
+  "trustedRoots",
+  "isTrustedDir",
+];
+async function loadHelper() {
+  try {
+    const lib = await import("../../bin/lib/signed-range.mjs");
+    return HELPER_EXPORTS.every((name) => typeof lib[name] === "function") ? lib : null;
+  } catch {
+    return null;
+  }
+}
 
 async function readStdin() {
   const chunks = [];
@@ -87,6 +101,24 @@ if (isEntryPoint()) {
 
   const command = input.tool_input?.command;
   const cwd = typeof input.cwd === "string" && input.cwd !== "" ? input.cwd : process.cwd();
+
+  // This guard and bin/lib/signed-range.mjs are one unit (sync.json refreshes
+  // them as two files). If the helper is missing or older than the guard, the
+  // push cannot be judged: a command that looks like a push is blocked with the
+  // way out, any other command passes, so one stale file refuses no other call.
+  const lib = await loadHelper();
+  if (lib === null) {
+    if (/\bgit\b[^;&|\n]*\bpush\b/.test(typeof command === "string" ? command : "")) {
+      process.stderr.write(
+        "[guard-git-push-signed] bin/lib/signed-range.mjs is missing or older than this guard; " +
+          "refresh both files together (template sync, or copy them from blueprint/files/). Blocking the push.\n",
+      );
+      process.exit(2);
+    }
+    process.stderr.write("[guard-git-push-signed] bin/lib/signed-range.mjs is missing or older than this guard; not checking.\n");
+    process.exit(0);
+  }
+  const { parseGitPushes, outgoingCommits, unsignedCommits, signingEnabled, gitRunner, trustedRoots, isTrustedDir } = lib;
 
   // Every real push in the command line (a chain, a subshell, `bash -c`, a
   // `git -C DIR`, a `cd DIR` before it), each vetted where it runs and for the

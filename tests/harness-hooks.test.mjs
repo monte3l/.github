@@ -147,6 +147,10 @@ describe("verify-on-stop planning", () => {
     assert.deepEqual(plan(["knowledge/wiki/x.md"]).names.sort(), ["knowledge-parity", "knowledge-report"]);
     assert.ok(plan(["workflow-templates/dco.yml"]).names.includes("template-sync"));
     assert.deepEqual(plan(["bin/new-repo.sh"]).names, ["new-repo"]);
+    // The push guard's helper and the guard starters are what the harness tests run.
+    assert.ok(plan(["bin/lib/signed-range.mjs"]).names.includes("harness-"));
+    const starter = plan(["blueprint/files/guard-secret-writes.mjs"]).names;
+    assert.ok(starter.includes("harness-") && starter.includes("bootstrap-parity"));
     assert.equal(plan(["docs/ROADMAP.md"]).check, true);
     const root = path.resolve(hooks, "../..");
     const files = testFiles(root, plan([".claude/hooks/x.mjs"]).names);

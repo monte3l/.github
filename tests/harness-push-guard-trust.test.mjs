@@ -127,15 +127,24 @@ describe("push guard: a tag refspec", () => {
   const tips = (command) => parseGitPushes(command)[0].tips;
 
   it("is skipped only when it sends a tag", () => {
-    for (const command of ["git push origin tag v1", "git push origin refs/tags/v1", "git push origin refs/tags/v1:refs/tags/v2", "git push origin refs/tags/v1:v2", "git push origin +refs/tags/v1"]) {
+    for (const command of ["git push origin tag v1", "git push origin refs/tags/v1", "git push origin refs/tags/v1:refs/tags/v2", "git push origin +refs/tags/v1"]) {
       assert.deepEqual(tips(command), [], command);
     }
   });
 
-  it("keeps the source when the destination is a branch", () => {
+  it("keeps the source when the destination is a branch or a bare name, which git matches against the remote's refs", () => {
     assert.deepEqual(tips("git push origin refs/tags/v1:refs/heads/y"), ["refs/tags/v1"]);
     assert.deepEqual(tips("git push origin +refs/tags/v1:refs/heads/y"), ["refs/tags/v1"]);
+    assert.deepEqual(tips("git push origin refs/tags/v1:main"), ["refs/tags/v1"]);
+    assert.deepEqual(tips("git push origin refs/tags/v1:v2"), ["refs/tags/v1"]);
     assert.deepEqual(tips("git push origin v1:refs/heads/y"), ["v1"]);
+  });
+
+  it("keeps a tag-looking source that is a revision expression, even for a tag destination", () => {
+    assert.deepEqual(tips("git push origin refs/tags/v1~1:refs/tags/x"), ["refs/tags/v1~1"]);
+    assert.deepEqual(tips("git push origin refs/tags/v1^{commit}:refs/tags/x"), ["refs/tags/v1^{commit}"]);
+    assert.deepEqual(tips("git push origin refs/tags/v1^:refs/tags/x"), ["refs/tags/v1^"]);
+    assert.deepEqual(tips("git push origin refs/tags/v1@{0}:refs/tags/x"), ["refs/tags/v1@{0}"]);
   });
 });
 
@@ -173,6 +182,9 @@ describe("push guard: a tag source with a branch destination is vetted as its co
     const blocked = push("git push origin refs/tags/v1:refs/heads/y");
     assert.equal(blocked.status, 2, blocked.stderr);
     assert.match(blocked.stderr, new RegExp(unsigned.slice(0, 12)));
+    assert.equal(push("git push origin refs/tags/v1:main").status, 2);
+    assert.equal(push("git push origin refs/tags/v1^{commit}:refs/tags/x").status, 2);
+    assert.equal(push("git push origin refs/tags/v1:refs/tags/x").status, 0);
     assert.equal(push("git push origin tag v1").status, 0);
     assert.equal(push("git push origin refs/tags/v1").status, 0);
   });

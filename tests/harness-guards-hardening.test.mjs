@@ -207,6 +207,74 @@ describe("push guard: the range it vets", () => {
   });
 });
 
+describe("push guard beside a helper it does not match", () => {
+  // The template sync refreshes the guard and the helper as two files, so a repository can hold the new guard
+  // beside a missing or older helper. That must not crash the hook: under onFailure: block a crash refuses
+  // every Bash call.
+  let tmp;
+  const install = (helper) => {
+    const dir = fs.mkdtempSync(path.join(tmp, "unit-"));
+    fs.mkdirSync(path.join(dir, ".claude/hooks"), { recursive: true });
+    fs.mkdirSync(path.join(dir, "bin/lib"), { recursive: true });
+    fs.copyFileSync(path.join(root, ".claude/hooks/guard-git-push-signed.mjs"), path.join(dir, ".claude/hooks/guard-git-push-signed.mjs"));
+    if (helper !== null) fs.writeFileSync(path.join(dir, "bin/lib/signed-range.mjs"), helper);
+    return dir;
+  };
+  const run = (dir, command) =>
+    spawnSync("node", [path.join(dir, ".claude/hooks/guard-git-push-signed.mjs")], {
+      input: JSON.stringify({ tool_name: "Bash", cwd: dir, tool_input: { command } }),
+      encoding: "utf8",
+      env,
+    });
+
+  before(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "push-unit-")));
+  });
+  after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  const OLD_HELPER = "export function parseGitPush() { return { isPush: false, dryRun: false }; }\nexport function outgoingCommits() { return []; }\n";
+
+  it("blocks what looks like a push, and says to refresh both files", () => {
+    for (const helper of [null, OLD_HELPER, "this is not javascript {"]) {
+      const dir = install(helper);
+      const r = run(dir, "git push origin HEAD");
+      assert.equal(r.status, 2, String(helper));
+      assert.match(r.stderr, /signed-range\.mjs is missing or older than this guard/);
+      assert.match(r.stderr, /refresh both files together/);
+      assert.equal(run(dir, "git -C x push").status, 2);
+    }
+  });
+
+  it("lets every other command through, so one stale file refuses no other call", () => {
+    for (const helper of [null, OLD_HELPER]) {
+      const dir = install(helper);
+      // Anything that does not look like a push: the fallback reads text, so it also blocks a command that
+      // merely mentions `git ... push`, which is the safe side while the helper is out of step.
+      for (const command of ["ls", "git status", "git commit -s -m 'fix the build'", "echo hi && pnpm test"]) {
+        assert.equal(run(dir, command).status, 0, `${command} with ${helper === null ? "no helper" : "an old helper"}`);
+      }
+    }
+  });
+
+  it("still fails closed on an unreadable payload", () => {
+    const dir = install(null);
+    const r = spawnSync("node", [path.join(dir, ".claude/hooks/guard-git-push-signed.mjs")], { input: "nope", encoding: "utf8", env });
+    assert.equal(r.status, 2);
+  });
+
+  it("is one unit for the sync: the guard and its helper are both managed starters, written side by side", () => {
+    const sync = JSON.parse(fs.readFileSync(path.join(root, "blueprint/sync.json"), "utf8"));
+    const guard = sync.starters["guard-git-push-signed.mjs"];
+    const helper = sync.starters["signed-range.mjs"];
+    assert.equal(guard?.mode, "managed");
+    assert.equal(helper?.mode, "managed");
+    assert.deepEqual([guard.paths[0], helper.paths[0]], [".claude/hooks/guard-git-push-signed.mjs", "bin/lib/signed-range.mjs"]);
+    // The relative import the guard loads is the helper's path from the guard's.
+    const text = fs.readFileSync(path.join(root, ".claude/hooks/guard-git-push-signed.mjs"), "utf8");
+    assert.ok(text.includes('import("../../bin/lib/signed-range.mjs")'));
+  });
+});
+
 describe("worktree guard: a substitution as the command", () => {
   let tmp;
   let main;
@@ -271,6 +339,49 @@ describe("protected paths: NotebookEdit", () => {
   });
 });
 
+describe("the two guards that only ask also read a notebook", () => {
+  let tmp;
+  let main;
+  let linked;
+  const notebook = (cells) => JSON.stringify({ cells, metadata: {}, nbformat: 4, nbformat_minor: 5 });
+  const markdown = (id, source) => ({ id, cell_type: "markdown", metadata: {}, source: [source] });
+
+  before(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ask-notebook-")));
+    main = path.join(tmp, "repo");
+    linked = path.join(tmp, "repo.wt");
+    fs.mkdirSync(main);
+    git(main, "init", "-q", "-b", "main");
+    fs.writeFileSync(path.join(main, "a.ipynb"), notebook([markdown("m1", "# Notes\n**Reviewed:** 2026-01-01\n")]));
+    git(main, "add", "a.ipynb");
+    git(main, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "init");
+    git(main, "worktree", "add", "-q", linked, "-b", "side");
+  });
+  after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  it("guard-review-dates asks when a notebook cell changes only its review date", () => {
+    const edit = (file, new_source, extra = {}) =>
+      hook("guard-review-dates.mjs", { tool_name: "NotebookEdit", cwd: main, tool_input: { notebook_path: file, new_source, ...extra } });
+    const file = path.join(main, "a.ipynb");
+    const bumped = edit(file, "# Notes\n**Reviewed:** 2026-11-23\n", { cell_id: "m1" });
+    assert.equal(bumped.status, 0);
+    assert.match(bumped.stdout, /"permissionDecision":"ask"/);
+    assert.equal(edit(file, "# Notes\n**Reviewed:** 2026-11-23\n", { cell_number: 0 }).stdout.includes('"ask"'), true);
+    assert.equal(edit(file, "# Other text\n**Reviewed:** 2026-11-23\n", { cell_id: "m1" }).stdout, "");
+    assert.equal(edit(file, "# Notes\n**Reviewed:** 2026-11-23\n", { cell_id: "gone" }).stdout, "");
+    assert.equal(edit(file, "# Notes\n**Reviewed:** 2026-11-23\n", { cell_id: "m1", edit_mode: "insert" }).stdout, "");
+    assert.equal(edit(path.join(main, "missing.ipynb"), "x").stdout, "");
+  });
+
+  it("guard-cross-worktree asks when another worktree has the notebook modified", () => {
+    fs.writeFileSync(path.join(main, "a.ipynb"), notebook([markdown("m1", "# Changed in the main worktree\n")]));
+    const r = hook("guard-cross-worktree.mjs", { tool_name: "NotebookEdit", cwd: linked, tool_input: { notebook_path: path.join(linked, "a.ipynb"), new_source: "1" } });
+    assert.equal(r.status, 0);
+    assert.match(r.stdout, /"permissionDecision":"ask"/);
+    assert.match(r.stdout, /uncommitted changes in another worktree/);
+  });
+});
+
 describe("secret guard", () => {
   const write = (file, content, tool = "Write") =>
     hook("guard-secret-writes.mjs", { tool_name: tool, cwd: root, tool_input: { file_path: path.join(root, file), content } });
@@ -306,6 +417,27 @@ describe("secret guard", () => {
     allowed("a.md", `${NPM}=short`);
   });
 
+  it("lets prose about a key, an elided value and a code reference through", () => {
+    // Lines that exist in this repository's own files and docs.
+    allowed("a.yml", `# Why an App token and not \`${GITHUB}\`: the pull request and the commits on it must trigger the checks`);
+    allowed("a.md", `A key may be quoted (\`"${NPM}": "..."\`) and in any case.`);
+    allowed("a.md", `${NPM}: "…"`);
+    allowed("a.py", `${GITHUB.toLowerCase()} = os.environ["${GITHUB}"]`);
+    allowed("a.py", `${GITHUB.toLowerCase()} = os.getenv("${GITHUB}")`);
+    allowed("a.rb", `${GITHUB.toLowerCase()} = ENV["${GITHUB}"]`);
+    allowed("a.rb", `${GITHUB.toLowerCase()} = ENV.fetch("${GITHUB}")`);
+    allowed("a.java", `String t = System.getenv("${GITHUB}"); // ${GITHUB}: set in CI`);
+    allowed("a.sh", `${NPM}="$(cat /run/secrets/npm)" # ${NPM}: from the secret mount`);
+    allowed("a.md", `${NPM} is a long description of what this variable is for and how to set it`);
+  });
+
+  it("still blocks a real value with something after it on the line", () => {
+    blocked("a.sh", `${NPM}=${value} # ${NPM}: set in CI`);
+    blocked("a.json", `{"${NPM}": "${value}", "other": "..."}`);
+    blocked("a.yml", `${GH}: ${value}   # not a placeholder`);
+    blocked("a.py", `${GITHUB.toLowerCase()} = "${value}"  # os.environ["${GITHUB}"] is better`);
+  });
+
   it("blocks every GitHub token prefix and still the others", () => {
     for (const prefix of ["ghp", "gho", "ghu", "ghs", "ghr"]) blocked("a.txt", `t = ${prefix}_${forty}`);
     blocked("a.txt", `t = github_pat_${"A".repeat(30)}`);
@@ -326,6 +458,35 @@ describe("secret guard", () => {
       const r = spawnSync("node", [path.join(root, ".claude/hooks/guard-secret-writes.mjs")], { input: stdin, encoding: "utf8", env });
       assert.equal(r.status, 2, JSON.stringify(stdin));
     }
+  });
+});
+
+describe("secret guard over this repository", () => {
+  it("finds nothing in any tracked text file, so editing one is never refused", async () => {
+    // A guard that blocks a write of a file the repository already holds refuses the very edit that
+    // repairs it (the README that documents the guard, a workflow comment about GITHUB_TOKEN).
+    const { isSecretWrite } = await import(path.join(root, ".claude/hooks/guard-secret-writes.mjs"));
+    const listed = spawnSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8", env, maxBuffer: 64 * 1024 * 1024 });
+    assert.equal(listed.status, 0, listed.stderr);
+    const hits = [];
+    let scanned = 0;
+    for (const file of listed.stdout.split("\0").filter(Boolean)) {
+      const full = path.join(root, file);
+      let text;
+      try {
+        if (fs.statSync(full).size > 1024 * 1024) continue;
+        const buffer = fs.readFileSync(full);
+        if (buffer.includes(0)) continue; // binary
+        text = buffer.toString("utf8");
+      } catch {
+        continue; // a symlink or a file that is not there in this checkout
+      }
+      scanned++;
+      const reasons = isSecretWrite(full, text);
+      if (reasons.length > 0) hits.push(`${file}: ${reasons.join("; ")}`);
+    }
+    assert.ok(scanned > 100, `only ${scanned} files scanned`);
+    assert.deepEqual(hits, []);
   });
 });
 

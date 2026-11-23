@@ -146,7 +146,7 @@ Each step below is confirmed on its own.
 5. **Leftovers in that worktree**, from the script's list:
    - Wire `.claude/hooks/guard-shared-checkout.mjs` into
      `.claude/settings.json`. Copy the two entries (a `Bash` one with
-     `"if": "Bash(git *)"`, and one under `Write|Edit`) from
+     `"if": "Bash(git *)"`, and one under `Write|Edit|NotebookEdit`) from
      `blueprint/README.md`, "Worktree guard". Until then the hook does nothing.
    - Fill the placeholders the script listed, and the five ROADMAP sections
      (`blueprint/tracking.md` says what each holds). Ask the user for the
