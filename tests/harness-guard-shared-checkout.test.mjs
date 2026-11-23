@@ -176,7 +176,101 @@ describe("guard-shared-checkout", () => {
     assert.equal(at(`bash -c 'cd ${linked} && git commit -m x'`), 2, "a nested cd is not trusted");
   });
 
+  it("resolves a literal VAR=value assignment of the same command line", () => {
+    const at = (command, cwd = main) => run({ tool_name: "Bash", cwd, tool_input: { command } }).status;
+    assert.equal(at(`W=${linked}; git -C "$W" commit -m x`), 0, "assignment, then git -C $W into a worktree");
+    assert.equal(at(`W=${linked} && git -C \${W} commit -m x`), 0, "the braced form");
+    assert.equal(at(`export W=${linked}; git -C $W commit -m x`), 0, "export");
+    assert.equal(at(`W=${linked}\ngit -C $W commit -m x`), 0, "assignment on its own line");
+    assert.equal(at(`W=${main}; git -C "$W" commit -m x`, linked), 2, "a variable that names the main checkout still blocks");
+    assert.equal(at(`W=${linked}; W=${main}; git -C $W commit -m x`, main), 2, "a name set twice is not trusted: judged from cwd");
+    assert.equal(at('git -C "$W" commit -m x'), 2, "an unset variable is judged from cwd");
+    assert.equal(at(`W=$(pwd); git -C $W commit -m x`), 2, "a value built by substitution is not literal");
+    assert.equal(at(`W=${linked} | git -C $W commit -m x`), 2, "an assignment in a pipeline does not carry over");
+    assert.equal(at(`(W=${linked}); git -C $W commit -m x`), 2, "a subshell assignment does not carry over");
+    assert.equal(at(`W=${linked}; cd "$W" && git commit -m x`), 0, "a cd through a resolved variable");
+  });
+
+  it("records an assignment only when it runs unconditionally", () => {
+    const at = (command) => run({ tool_name: "Bash", cwd: main, tool_input: { command } }).status;
+    for (const sepr of ["&&", "||", "|", "&"]) {
+      assert.equal(at(`false ${sepr} W=${linked}; git -C $W commit -m x`), 2, `after ${sepr} the assignment may not run`);
+    }
+    assert.equal(at(`true\nW=${linked}\ngit -C $W commit -m x`), 0, "after a newline it does");
+  });
+
+  it("expands variables only in top-level commands, not in a child shell", () => {
+    const at = (command) => run({ tool_name: "Bash", cwd: main, tool_input: { command } }).status;
+    assert.equal(at(`W=${linked}; bash -c 'git -C $W commit -m x'`), 2, "bash -c does not see a non-exported variable");
+    assert.equal(at(`W=${linked}; sh -c "git -C \\$W commit -m x"`), 2, "sh -c");
+    assert.equal(at(`W=${linked}; eval 'git -C $W commit -m x'`), 2, "eval");
+    assert.equal(at(`W=${linked}; bash <<'EOF'\ngit -C $W commit -m x\nEOF`), 2, "a here-document fed to a shell");
+  });
+
+  it("drops a variable a later command changes in a form the parser does not model", () => {
+    const at = (command) => run({ tool_name: "Bash", cwd: main, tool_input: { command } }).status;
+    for (const change of [
+      "W+=x",
+      "unset W",
+      "read W",
+      "declare W=$(pwd)",
+      "local W",
+      "for W in a; do :; done",
+      "export W=$(pwd)",
+      "W=$(pwd)",
+      "W=$OTHER",
+      "printf -v W %s x",
+    ]) {
+      assert.equal(at(`W=${linked}; ${change}; git -C $W commit -m x`), 2, change);
+    }
+    assert.equal(at(`W=${linked}; W=${linked}; git -C $W commit -m x`), 2, "a name set twice is not trusted, even to the same value");
+  });
+
+  it("judges a command word or subcommand that is still an expansion as a writing command", () => {
+    const at = (command, cwd = main) => run({ tool_name: "Bash", cwd, tool_input: { command } }).status;
+    assert.equal(at("G=git; $G commit -m x"), 2, "the command word is a variable");
+    assert.equal(at("S=commit; git $S -m x"), 2, "the subcommand is a variable");
+    assert.equal(at("git $(echo commit) -m x"), 2, "the subcommand is a substitution");
+    assert.equal(at("G=git; $G commit -m x", linked), 0, "in a linked worktree it is still allowed");
+    assert.equal(at("git log $(git rev-parse HEAD)"), 0, "an expansion as an argument is not a subcommand");
+    assert.equal(at(`W=${linked}; git -C "$W" commit -m x`), 0, "the plain literal assignment still works");
+  });
+
+  it("clears every variable at the first doubtful thing in the line", () => {
+    const at = (command) => run({ tool_name: "Bash", cwd: main, tool_input: { command } }).status;
+    const use = "git -C $W commit -m x";
+    for (const doubt of [
+      "while read W; do :; done </dev/null",
+      "if read W; then :; fi",
+      "true && read W",
+      "time read W",
+      "command read W",
+      "builtin read W",
+      "exec read W",
+      "! read W",
+      "{ read W; }",
+      "env W=x true",
+      "W[0]=x",
+      "source ./x.sh",
+      ". ./x.sh",
+      "eval \"$cmd\"",
+      "declare -n W=other",
+      "typeset -n W=other",
+      "until read W; do :; done",
+      "select W in a; do break; done",
+      "coproc true",
+      "mapfile W </dev/null",
+      "echo $W",
+      "X=y",
+    ]) {
+      const status = at(`W=${linked}; ${doubt}; ${use}`);
+      if (doubt === "X=y") assert.equal(status, 0, "another plain literal does not matter");
+      else assert.equal(status, 2, doubt);
+    }
+  });
+
   it("checks every git word of a command, and reads a shell fed a here-document", () => {
+
     for (const command of [
       "git status && git log | xargs git commit -m x",
       "echo done; sudo -u me git commit -m x",

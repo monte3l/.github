@@ -377,8 +377,13 @@ clean result.
 Keep per-repository data out of a template. A package allow-list or a URL in the
 file turns every copy custom. A URL is a parameter (`PROJECT`), an optional step
 is a `sync:if` block, and data belongs in a config file the workflow reads.
-`workflow-templates/docs-live.yml` has the one block today: `--metadata` fails
+`workflow-templates/docs-live.yml` has one block (`manifest`): `--metadata` fails
 when `docs.config.mjs` has no `manifest`, so only a repository with one takes it.
+`workflow-templates/release.yml` has another (`assets`, the tarball job), but it
+is `unmanaged`, so nothing renders it per repository: it reaches a repository only
+when a person copies the file and removes the markers. A copy made through
+Actions, New workflow keeps the markers as comments, which is why that job also
+tests a repository variable at run time (see [Releases](#releases)).
 
 `verify.yml` and `release.yml` are `unmanaged`: their lanes and inputs belong to
 each repository, and no `sync:if` flag can say which lanes a repository has.
@@ -569,7 +574,10 @@ error that names neither.
    manifest to the current version.
 2. Copy `workflow-templates/release.yml` and `commit-lint.yml`.
 3. Set `notify` in `release.yml` to the repositories that consume this one.
-4. Put any repository-specific job between `prepare` and `finalize`.
+4. Put any repository-specific job between `prepare` and `finalize`. A repository that ships a source tarball can use the `assets` block of `release.yml`: it checks the tag through the API with the token (so a private repository works), runs `git archive`, runs `scripts/release-sbom.mjs` if the repository has one (it writes `<tarball>.cdx.json`) and uploads to the draft. It attests nothing: `finalize` attests every asset on the draft by glob, and `actions/attest` takes one literal file for `sbom-path`, never a glob, which is why a spelled-out SBOM path broke releases. The SBOM is then a signed asset, not a predicate of the tarball. A repository that wants that keeps its own job and sets `attest: false`.
+   - **Opt-in twice.** The job runs only when the repository variable `RELEASE_ASSETS` is `true`, so a copy made through Actions, New workflow, which keeps the `# sync:if assets` / `# sync:end` markers as comments and so contains the job, skips it and still publishes (`finalize` uses `!failure()` so that a skipped job does not skip it). It also needs a `.node-version` file. Set the variable, and drop the marker lines.
+   - **No effect by itself.** `release` is `unmanaged` and `bin/lib/bootstrap.mjs` renders with no flags, so the `assets` flag reaches a repository only when a person copies the block.
+5. Keep `exclude-paths` in a root package's configuration (the `plugin.json` and `simple.json` starters carry `.claude`, `.github`, `LICENSES` and `docs`). release-please releases a `fix:` or `feat:` commit, and a commit that changes only those paths would cut a release with nothing new in it. List the repository's other non-payload folders (`bin`, `tests`, `tools`) too. The `library.json` starter has none: its packages live under `packages/`, so a change outside them is not in any package.
 
 | Starter | For | Tag |
 | ------- | --- | --- |
@@ -943,7 +951,12 @@ checkout, and allows `git pull` and `git worktree add`. It is stricter than
 `guard-branch-isolation.mjs`, which only blocks `src/` and `tests/` writes while
 a checkout is on `main`, so a repository keeps both. It reads the directory from
 the hook input's `cwd`, because `CLAUDE_PROJECT_DIR` stays at the folder the
-session started in even after it enters a worktree.
+session started in even after it enters a worktree. A `git -C "$W"` or `cd "$W"`
+is judged in the directory `W` names when the same command line set it to a
+literal value once, unconditionally, and the name appears nowhere else on the line except as the operand of that `git -C` or `cd` (`W=../wt; git -C "$W" commit`); one doubtful word (`read`, `eval`, `source`, a loop, another `=`) drops every variable of the line, and a variable it cannot resolve is
+judged from `cwd`, and a `cd` followed by `;` still counts both places, because
+the `cd` may have failed. It fails open on a payload it cannot read, and
+`onFailure: "block"` covers a crash.
 
 The file is a starter: a new repository gets it from `bootstrap.json`, and the
 template sync refreshes a copy that is an older version of it (`sync.json`,
@@ -1011,6 +1024,20 @@ the variable is unset. Use an array (`"${items[@]}"`), `${=var}` for one
 deliberate split, or write each argument out. This showed up in at least eight
 commands across five repositories before it was written down.
 
+### Working with Claude Code
+
+Two habits the maintainers stated again and again, in at least four
+repositories, and that were only in memory files. They are org policy, not
+Anthropic guidance, and no check enforces them.
+
+- **Create and edit skills through `/skill-creator`.** Do not hand-write a
+  `SKILL.md`: the skill-creator plugin interviews, drafts and tests it. Its use
+  is optional in Anthropic's documentation; here it is the rule.
+- **Verify a fact against the official source before acting on it.** For
+  Claude Code, the Claude API, GitHub, a tool or a standard, read the vendor's
+  current page and cite it in the pull request, or say that none exists. Do not
+  rely on recalled behaviour, and say "unverified" where a page did not load.
+
 ### Files that a tool writes
 
 A file written by the template sync, the design re-sync, release-please or
@@ -1028,6 +1055,15 @@ The files to list are the vendored `design/` copy, the starters the sync
 refreshes (`.claude/hooks/guard-*.mjs`, `bin/lib/signed-range.mjs`,
 `require-signoff.sh`, `.gitattributes`, `.editorconfig`) and the JSON and YAML a
 release or `pnpm` rewrites. A repository without a formatter has nothing to do.
+
+### Lines two pull requests both edit
+
+A list that every change touches is a merge conflict waiting to happen: the one line that names every script in `verify.yml` was edited by most pull requests that added a script (`.github` had six reported conflicts, most there). Two rules remove the common cases.
+
+- **Check scripts by glob, not by name.** `bash -n` reads one script and takes the rest as arguments, so a list on one line checked only the first. Loop over `bin/**/*.sh` with `shopt -s globstar nullglob` and pass the same array to `shellcheck`. Fail when a glob matches nothing, so a moved folder cannot turn the check into a pass. `.github/workflows/verify.yml` is the example.
+- **A file that only grows at its end can merge by union.** In `.gitattributes`, `docs/log.md merge=union` keeps both sides' added lines instead of conflicting. Git does not order them, so use it only where a check or a reader copes with that (`knowledge/log.md` here, whose entries `bin/knowledge-parity.mjs` checks for date order). The `gitattributes` starter carries the line as a comment, because a path other repositories lack would be noise.
+
+A merge queue would remove the remaining catch-up merges. It is not adopted: every required workflow needs a `merge_group` trigger first.
 
 ## Claude Code managed settings
 
@@ -1054,7 +1090,7 @@ here by pull request and paste the result, never edit the console alone.
 | `strictKnownMarketplaces`, `extraKnownMarketplaces` | `anthropics/claude-plugins-official`, `monte3l/m3l-plugins`, `skills-dir` | One identity per marketplace. `skills-dir` keeps plugins under `~/.claude/skills/` loading |
 | `autoMode.environment` | `$defaults` plus the monte3l context | The classifier treats `github.com/monte3l`, `*.monte3l.com` and the publish environments as known. Without `$defaults` the built-in rules are lost |
 | `permissions.disableBypassPermissionsMode` | `disable` | No `--dangerously-skip-permissions`. Auto mode stays available |
-| `permissions.deny` | Secrets, force-push, `--no-verify`, `--admin`, `gh repo delete` | The secrets list is the union of the repository lists, in the recursive form. The git rules are standing rules in every repository. The force-push rules end in a space before the `*` (`git push --force *`), so `--force-with-lease` is not denied and reaches its `ask` rule: deny is checked first, and `--force*` would also match it (`tests/managed-settings.test.mjs`) |
+| `permissions.deny` | Secrets, force-push, `--no-verify`, `--admin`, `gh repo delete`, `Edit` of lockfiles and `.git/**` | The secrets list is the union of the repository lists, in the recursive form. The git rules are standing rules in every repository. The `Edit` denies for `pnpm-lock.yaml`, `package-lock.json`, `yarn.lock` and `.git/**` are local policy, not Anthropic guidance (its examples deny only `.env` and `secrets/**`): a lockfile is changed by `pnpm install`, not by hand. Deny rules from every scope add up and a lower scope cannot override one, so a repository that carried the same four entries can drop them. The rule covers Claude's file tools and the Bash commands Claude Code recognizes as writing a file (`sed`, `tee`, a redirect); `pnpm install`, `npm install` and Dependabot are not affected. The force-push rules end in a space before the `*` (`git push --force *`), so `--force-with-lease` is not denied and reaches its `ask` rule: deny is checked first, and `--force*` would also match it (`tests/managed-settings.test.mjs`) |
 | `permissions.ask` | `gh api` writes, `gh secret`, `gh pr merge`, releases and publishing, `git push origin main`, `git reset --hard`, `sudo`, global installs, a bare `chezmoi apply` | The actions the auto mode classifier blocked most often, now a prompt instead of a block |
 | `permissions.allow` | Read-only `git`, `gh`, shell commands and the documentation domains | The read-only commands that dominate real usage, so they stop prompting |
 | `companyAnnouncements` | One line | The short version of the rules above |
