@@ -1,6 +1,10 @@
 # ScanCode project settings. Paths are matched with shell-style wildcards.
 # Ignore only files that name a license without being licensed under it, or
 # whose license ScanCode cannot know. Never ignore a path to hide a finding.
+# When the ScanCode job fails, its log and job summary list the flagged files.
+# Add one here only if it names a license as data (a test string, a policy
+# list), by its exact path: a wildcard such as "tests/*" would hide the next
+# real finding in that folder.
 ignored_patterns:
   # The license texts themselves.
   - "LICENSES/*"
