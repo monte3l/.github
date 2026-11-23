@@ -17,6 +17,18 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+// `import.meta.url` is symlink-resolved and percent-encoded, `process.argv[1]`
+// is neither, so comparing them as strings is false under a symlinked or spaced
+// path: the hook would never run and silently fail open (exit 0).
+function isEntryPoint() {
+  try {
+    return fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
 
 const DATE = "\\d{4}-\\d{2}-\\d{2}";
 const FRONTMATTER_MARKER = new RegExp(`(^|\\n)(reviewed:[ \\t]*)${DATE}`, "gi");
@@ -48,7 +60,7 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isEntryPoint()) {
   let input;
   try {
     input = JSON.parse(await readStdin());
