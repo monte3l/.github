@@ -27,8 +27,11 @@
  * It reads the command line the way a shell does (`bin/lib/signed-range.mjs`):
  * a push inside `&&`, `|`, a subshell, `$(...)` or `bash -c` counts, `git -C DIR`
  * and a `cd DIR` before it name the repository, and the refs a refspec names
- * (`HEAD:refs/heads/x`, `+branch`, `--all`) are what is vetted. It is a local,
- * best-effort check, not a security boundary.
+ * (`HEAD:refs/heads/x`, `+branch`, `--all`) are what is vetted; a long option is
+ * read by its unique prefix as git does, and one it does not know vets every
+ * branch. Git runs with the repository's program settings overridden, and only
+ * in the repository the hook runs in, its worktrees or CLAUDE_PROJECT_DIR. It is
+ * a local, best-effort check, not a security boundary.
  */
 import process from "node:process";
 import { realpathSync } from "node:fs";
@@ -40,6 +43,8 @@ import {
   unsignedCommits,
   signingEnabled,
   gitRunner,
+  trustedRoots,
+  isTrustedDir,
 } from "../../bin/lib/signed-range.mjs";
 
 async function readStdin() {
@@ -86,11 +91,17 @@ if (isEntryPoint()) {
   // Every real push in the command line (a chain, a subshell, `bash -c`, a
   // `git -C DIR`, a `cd DIR` before it), each vetted where it runs and for the
   // refs it names, not for `HEAD` of whatever directory the hook started in.
+  // A directory the command line names is vetted only if it is the repository the
+  // hook runs in, one of its worktrees, or inside CLAUDE_PROJECT_DIR: another
+  // repository's own config can name programs that git would run. A push from
+  // anywhere else goes unvetted here, like a range the guard cannot work out.
+  const roots = trustedRoots(cwd, process.env.CLAUDE_PROJECT_DIR);
   const bad = [];
   const seen = new Set();
   for (const push of parseGitPushes(typeof command === "string" ? command : "")) {
     if (push.dryRun || push.tips.length === 0) continue;
     for (const dir of new Set(push.dirs.map((d) => path.resolve(cwd, d)))) {
+      if (!isTrustedDir(dir, roots)) continue;
       const runGit = gitRunner(dir);
       if (!signingEnabled(runGit)) continue;
       try {

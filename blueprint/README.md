@@ -951,8 +951,15 @@ What the guards read, so a change to them can be judged:
   `&&`, `|`, a subshell, `$(...)` or `bash -c` counts, `git -C DIR` and a literal
   `cd DIR` before it name the repository, and the refs a refspec names
   (`HEAD:refs/heads/x`, `+branch`, `--all`) are what it vets, not only `HEAD`. A
-  push option whose value looks like a flag (`-o -n`) is not a dry run. Tags and
-  deletions are not vetted.
+  push option whose value looks like a flag (`-o -n`) is not a dry run. A long
+  option is read by its unique prefix as git does (`--mir`, `--dry`), and one the
+  guard does not know vets every branch. A tag sent as a tag, and a deletion, are
+  not vetted; a tag sent to a branch (`refs/tags/v1:refs/heads/y`) is vetted as
+  its commit. Git runs only in the repository the hook runs in, its worktrees and
+  `CLAUDE_PROJECT_DIR`, and with `gpg.program`, `core.fsmonitor` and the other
+  program settings of the repository overridden, because a repository's own config
+  can name programs git then runs. A push from any other directory goes unvetted
+  here, like a range the guard cannot work out; the signed-commits ruleset holds.
 - **Secret guard.** A key may be quoted (`"NPM_TOKEN": "..."`) and in any case.
   A value is a placeholder only when it starts with a reference (`${X}`, `$X`,
   `process.env.X`, `secrets.X`) or has a marker word set off by a delimiter

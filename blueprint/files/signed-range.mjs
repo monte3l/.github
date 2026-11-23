@@ -5,6 +5,7 @@
  * hook that inspects a `git push` Bash command before it runs.
  */
 import { execFileSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -17,22 +18,115 @@ import path from "node:path";
  */
 const VALID_SIGNATURE_CODES = new Set(["G", "U"]);
 
+/** A git setting from the user's own scopes (global, then system), never a repository's. */
+function userSetting(key) {
+  for (const scope of ["--global", "--system"]) {
+    try {
+      const value = execFileSync("git", ["config", scope, "--get", key], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+      if (value) return value;
+    } catch {
+      // not set in this scope
+    }
+  }
+  return null;
+}
+
+let overrides;
+
+/**
+ * `-c` overrides for every git call. A repository's own config can name
+ * programs that git then runs (`gpg.program` and its `gpg.ssh.program` and
+ * `gpg.x509.program` siblings when a signature is checked, `core.fsmonitor`,
+ * `core.hooksPath`), and the guard asks git about repositories that a command
+ * line names. A `-c` setting wins over every config file, so the programs are
+ * the ones the user's global or system config names, or the defaults, and the
+ * rest are off.
+ */
+function safeOverrides() {
+  overrides ??= [
+    "-c", "core.fsmonitor=false",
+    "-c", "core.hooksPath=/dev/null",
+    "-c", `gpg.program=${userSetting("gpg.program") ?? "gpg"}`,
+    "-c", `gpg.openpgp.program=${userSetting("gpg.openpgp.program") ?? userSetting("gpg.program") ?? "gpg"}`,
+    "-c", `gpg.ssh.program=${userSetting("gpg.ssh.program") ?? "ssh-keygen"}`,
+    "-c", `gpg.x509.program=${userSetting("gpg.x509.program") ?? "gpgsm"}`,
+  ];
+  return overrides;
+}
+
 /**
  * Git runner for the repository at `dir` (the hook's own directory when
  * omitted); returns stdout as a string. Injectable for tests. stderr is
  * discarded so expected failures while probing candidate bases (e.g. "no
  * upstream configured") don't leak into the hook's output -- the throw is what
- * callers act on.
+ * callers act on. Every call carries {@link safeOverrides}.
  *
  * @param {string} [dir]
  * @returns {(args: string[]) => string}
  */
 export function gitRunner(dir) {
   return (args) =>
-    execFileSync("git", dir ? ["-C", dir, ...args] : args, {
+    execFileSync("git", [...safeOverrides(), ...(dir ? ["-C", dir] : []), ...args], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     });
+}
+
+/**
+ * The directories whose repositories the guard may ask git about: the
+ * top level of the repository the hook runs in, its worktrees, and
+ * `projectDir` (CLAUDE_PROJECT_DIR) when given. A directory a command line
+ * names that lies elsewhere is somebody else's repository: the guard does not
+ * run git in it, and the push goes unvetted here, like a range it cannot work
+ * out (the signed-commits ruleset on the remote still holds).
+ *
+ * @param {string} cwd
+ * @param {string} [projectDir]
+ * @param {(args: string[]) => string} [runGit] git in `cwd`
+ * @returns {string[]} real paths
+ */
+export function trustedRoots(cwd, projectDir, runGit = gitRunner(cwd)) {
+  const roots = new Set();
+  const add = (dir) => {
+    try {
+      roots.add(realpathSync(dir));
+    } catch {
+      // gone, or not a path
+    }
+  };
+  try {
+    add(runGit(["rev-parse", "--show-toplevel"]).trim());
+    for (const line of runGit(["worktree", "list", "--porcelain"]).split("\n")) {
+      if (line.startsWith("worktree ")) add(line.slice("worktree ".length));
+    }
+  } catch {
+    // not in a repository
+  }
+  if (projectDir) add(projectDir);
+  return [...roots];
+}
+
+/**
+ * Whether `dir` is one of `roots` or inside one.
+ *
+ * @param {string} dir
+ * @param {string[]} roots from {@link trustedRoots}
+ * @returns {boolean}
+ */
+export function isTrustedDir(dir, roots) {
+  let real;
+  try {
+    real = realpathSync(dir);
+  } catch {
+    return false;
+  }
+  return roots.some((root) => {
+    const rel = path.relative(root, real);
+    return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  });
 }
 
 const defaultRunGit = gitRunner();
@@ -171,17 +265,63 @@ const GLOBAL_OPTS_WITH_ARG = new Set([
   "--exec-path",
 ]);
 
-// `git push` options that take the next token as their value (`-o -n` pushes the
-// option string "-n", it is not a dry run). A long option given as `--name=value`
-// carries its own value.
-const PUSH_OPTS_WITH_ARG = new Set([
-  "-o",
-  "--push-option",
-  "--repo",
-  "--receive-pack",
-  "--exec",
-  "--recurse-submodules",
+// The long options of `git push`, with whether each takes a value. Git matches a
+// long option by any unique prefix (`--mir`, `--dry`), and `--no-NAME` negates
+// one. A value is the next token (`-o -n` pushes the option string "-n", it is
+// not a dry run) unless the option was written `--name=value`; an optional value
+// is only ever attached with `=`.
+const PUSH_LONG_OPTIONS = new Map([
+  ["all", "none"],
+  ["branches", "none"],
+  ["mirror", "none"],
+  ["delete", "none"],
+  ["tags", "none"],
+  ["follow-tags", "none"],
+  ["prune", "none"],
+  ["atomic", "none"],
+  ["dry-run", "none"],
+  ["porcelain", "none"],
+  ["force", "none"],
+  ["force-with-lease", "optional"],
+  ["force-if-includes", "none"],
+  ["thin", "none"],
+  ["verbose", "none"],
+  ["quiet", "none"],
+  ["progress", "none"],
+  ["verify", "none"],
+  ["set-upstream", "none"],
+  ["signed", "optional"],
+  ["recurse-submodules", "required"],
+  ["push-option", "required"],
+  ["repo", "required"],
+  ["receive-pack", "required"],
+  ["exec", "required"],
+  ["ipv4", "none"],
+  ["ipv6", "none"],
 ]);
+
+/** Short options of `git push`; `o` takes a value. */
+const PUSH_SHORT_OPTIONS = new Set("fnuqvd46o");
+
+/**
+ * The long option `name` (no dashes, no `=value`) stands for: an exact name, or
+ * a unique prefix of one, with `no-` for a negation. Null when it is unknown or
+ * ambiguous (git refuses both, so a push using one does not happen, but the
+ * guard must not take it for something harmless).
+ *
+ * @param {string} name
+ * @returns {{ name: string, takes: string, negated: boolean } | null}
+ */
+function resolveLongOption(name) {
+  if (PUSH_LONG_OPTIONS.has(name)) return { name, takes: PUSH_LONG_OPTIONS.get(name), negated: false };
+  const negated = name.startsWith("no-");
+  const bare = negated ? name.slice(3) : name;
+  if (bare === "") return null;
+  if (negated && PUSH_LONG_OPTIONS.has(bare)) return { name: bare, takes: "none", negated };
+  const hits = [...PUSH_LONG_OPTIONS.keys()].filter((option) => option.startsWith(bare));
+  if (hits.length !== 1) return null;
+  return { name: hits[0], takes: negated ? "none" : PUSH_LONG_OPTIONS.get(hits[0]), negated };
+}
 
 const isGitWord = (w) => w === "git" || w.endsWith("/git");
 
@@ -247,6 +387,8 @@ function pushArguments(args) {
   let all = false;
   let deleting = false;
   let repoOption = false;
+  // An option the guard cannot place: vet every branch rather than ignore it.
+  let unknown = false;
   const positional = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -255,14 +397,21 @@ function pushArguments(args) {
       break;
     }
     if (arg.startsWith("--")) {
-      const name = arg.split("=")[0];
-      if (name === "--dry-run") dryRun = true;
-      else if (name === "--all" || name === "--mirror") all = true;
-      else if (name === "--delete") deleting = true;
-      if (name === "--repo") repoOption = true;
-      if (PUSH_OPTS_WITH_ARG.has(name) && !arg.includes("=")) i++;
+      const equals = arg.indexOf("=");
+      const option = resolveLongOption(equals === -1 ? arg.slice(2) : arg.slice(2, equals));
+      if (!option) {
+        unknown = true;
+        continue;
+      }
+      const on = !option.negated;
+      if (option.name === "dry-run") dryRun = on;
+      else if (option.name === "all" || option.name === "branches" || option.name === "mirror") all = on;
+      else if (option.name === "delete") deleting = on;
+      else if (option.name === "repo") repoOption = on;
+      if (option.takes === "required" && equals === -1) i++;
     } else if (arg.startsWith("-") && arg.length > 1) {
       for (let j = 1; j < arg.length; j++) {
+        if (!PUSH_SHORT_OPTIONS.has(arg[j])) unknown = true;
         if (arg[j] === "n") dryRun = true;
         if (arg[j] === "d") deleting = true;
         if (arg[j] === "o") {
@@ -276,36 +425,48 @@ function pushArguments(args) {
   }
   // The first operand is the remote, unless `--repo` named it.
   const refspecs = repoOption ? positional : positional.slice(1);
-  return { dryRun, tips: pushTips(refspecs, all, deleting) };
+  return { dryRun, tips: pushTips(refspecs, all, deleting, unknown) };
 }
 
 /**
  * The refs whose commits a push sends: the source of each refspec, `HEAD` when
- * none is given, every branch for `--all` and `--mirror`. A deletion
- * (`:branch`, `--delete`) sends nothing, and a tag is not vetted (an old tag
- * may name history that is already public).
+ * none is given, every branch for `--all` and `--mirror`, and also every branch
+ * when an option is not one the guard knows (`unknown`). A deletion
+ * (`:branch`, `--delete`) sends nothing. A tag sent as a tag is not vetted (an
+ * old tag may name history that is already public), but a tag sent to a branch
+ * (`refs/tags/v1:refs/heads/y`) puts its commits on that branch, so its source
+ * is a tip like any other.
  *
  * @param {string[]} refspecs
  * @param {boolean} all
  * @param {boolean} deleting
+ * @param {boolean} [unknown]
  * @returns {string[]}
  */
-function pushTips(refspecs, all, deleting) {
-  if (deleting) return [];
-  if (all) return ["--branches"];
-  if (refspecs.length === 0) return ["HEAD"];
+function pushTips(refspecs, all, deleting, unknown = false) {
   const tips = [];
-  for (let i = 0; i < refspecs.length; i++) {
-    if (refspecs[i] === "tag") {
-      i++; // `git push origin tag v1`
-      continue;
+  if (all) {
+    tips.push("--branches");
+  } else if (!deleting) {
+    if (refspecs.length === 0) tips.push("HEAD");
+    for (let i = 0; i < refspecs.length; i++) {
+      if (refspecs[i] === "tag") {
+        i++; // `git push origin tag v1` is refs/tags/v1:refs/tags/v1
+        continue;
+      }
+      const spec = refspecs[i].replace(/^\+/, "");
+      const colon = spec.indexOf(":");
+      const src = colon === -1 ? spec : spec.slice(0, colon);
+      const dst = colon === -1 ? "" : spec.slice(colon + 1);
+      if (src === "" || src.startsWith("-")) continue;
+      // A tag source goes to a tag when the destination is absent, bare (git gives
+      // it the type of the source) or under refs/tags/; any other full name, such
+      // as refs/heads/y, is a branch.
+      if (src.startsWith("refs/tags/") && (!dst.startsWith("refs/") || dst.startsWith("refs/tags/"))) continue;
+      tips.push(src.includes("*") ? "--branches" : src);
     }
-    const spec = refspecs[i].replace(/^\+/, "");
-    const colon = spec.indexOf(":");
-    const src = colon === -1 ? spec : spec.slice(0, colon);
-    if (src === "" || src.startsWith("-") || src.startsWith("refs/tags/")) continue;
-    tips.push(src.includes("*") ? "--branches" : src);
   }
+  if (unknown) tips.push("--branches");
   return [...new Set(tips)];
 }
 
@@ -349,7 +510,9 @@ export function outgoingCommits(runGit = defaultRunGit, tips = ["HEAD"]) {
     }
   };
 
-  const usable = tips.filter((tip) => tip === "--branches" || (!tip.startsWith("-") && resolves(tip)));
+  // A tip names a commit, an annotated tag included: `^{commit}` peels it.
+  const peeled = (tip) => (tip === "--branches" ? tip : `${tip}^{commit}`);
+  const usable = tips.filter((tip) => tip === "--branches" || (!tip.startsWith("-") && resolves(peeled(tip))));
   if (usable.length === 0) return [];
 
   const excludeRefs = ["@{upstream}", "origin/main"].filter(resolves);
@@ -364,12 +527,12 @@ export function outgoingCommits(runGit = defaultRunGit, tips = ["HEAD"]) {
         const out =
           tip === "--branches"
             ? runGit(["for-each-ref", "--format=%(objectname)", "refs/heads/"])
-            : runGit(["rev-parse", tip]);
+            : runGit(["rev-parse", peeled(tip)]);
         shas.push(...out.split("\n").map((s) => s.trim()).filter(Boolean));
       }
       return [...new Set(shas)];
     }
-    const out = runGit(["rev-list", ...usable, "--not", ...excludeRefs]);
+    const out = runGit(["rev-list", ...usable.map(peeled), "--not", ...excludeRefs]);
     return out
       .split("\n")
       .map((s) => s.trim())

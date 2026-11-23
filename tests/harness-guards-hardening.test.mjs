@@ -15,7 +15,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const { parseGitPushes, simpleCommands, outgoingCommits } = await import(path.join(root, "bin/lib/signed-range.mjs"));
 
 // No inherited GIT_* variable may point a test repository somewhere else.
-const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
+const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_") && key !== "CLAUDE_PROJECT_DIR"));
 const hook = (name, payload) =>
   spawnSync("node", [path.join(root, ".claude/hooks", name)], { input: JSON.stringify(payload), encoding: "utf8", env });
 const git = (cwd, ...args) => {
@@ -147,13 +147,19 @@ describe("push guard: the range it vets", () => {
 
   after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
-  const push = (command, cwd) => hook("guard-git-push-signed.mjs", { tool_name: "Bash", cwd, tool_input: { command } });
-  const blocks = (command, cwd = repo) => {
-    const r = push(command, cwd);
+  // The repository a command names must be the hook's own, a worktree of it, or inside CLAUDE_PROJECT_DIR.
+  const push = (command, cwd, projectDir) =>
+    spawnSync("node", [path.join(root, ".claude/hooks/guard-git-push-signed.mjs")], {
+      input: JSON.stringify({ tool_name: "Bash", cwd, tool_input: { command } }),
+      encoding: "utf8",
+      env: projectDir ? { ...env, CLAUDE_PROJECT_DIR: projectDir } : env,
+    });
+  const blocks = (command, cwd = repo, projectDir) => {
+    const r = push(command, cwd, projectDir);
     assert.equal(r.status, 2, `${command}: ${r.stderr}`);
     assert.match(r.stderr, new RegExp(unsigned.slice(0, 12)));
   };
-  const allows = (command, cwd = repo) => assert.equal(push(command, cwd).status, 0, command);
+  const allows = (command, cwd = repo, projectDir) => assert.equal(push(command, cwd, projectDir).status, 0, command);
 
   it("vets the branch a refspec names, not only HEAD", () => {
     // HEAD is `idle`, with nothing new: the unsigned commit is on `topic`.
@@ -167,10 +173,12 @@ describe("push guard: the range it vets", () => {
 
   it("vets the repository git -C and a cd name, not the hook's directory", () => {
     git(repo, "checkout", "-q", "topic");
-    blocks(`git -C ${repo} push`, other);
-    blocks(`cd ${repo} && git push`, other);
-    blocks(`(cd ${repo}; git push origin HEAD)`, other);
-    allows("git push", other);
+    blocks(`git -C ${repo} push`, other, tmp);
+    blocks(`cd ${repo} && git push`, other, tmp);
+    blocks(`(cd ${repo}; git push origin HEAD)`, other, tmp);
+    allows("git push", other, tmp);
+    // Outside the hook's repository, its worktrees and CLAUDE_PROJECT_DIR, it is not vetted at all.
+    allows(`git -C ${repo} push`, other);
     git(repo, "checkout", "-q", "idle");
   });
 
