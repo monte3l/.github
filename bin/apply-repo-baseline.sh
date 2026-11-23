@@ -511,6 +511,8 @@ check_plugin_rules() {
   fi
   report_workflow "plugin: validate" "run claude plugin validate --strict . from a workflow that already runs (the repository's verify), see Claude Code plugins in blueprint/README.md" \
     'claude plugin validate( [^#]*)?--strict'
+  report_workflow "plugin: metadata check" "copy blueprint/files/check-plugin-metadata.mjs to bin/ and run it from the repository's verify, see Claude Code plugins in blueprint/README.md" \
+    'check-plugin-metadata\.mjs'
   if [[ -n "$(file_content CLAUDE.md || true)" ]]; then
     drift=$((drift + 1))
     printf 'DRIFT  plugin: root CLAUDE.md: CLAUDE.md sits at the plugin root\n'
@@ -691,6 +693,87 @@ else
   printf 'OK     Dependabot: no entry under the root .github/\n'
   ok=$((ok + 1))
 fi
+
+# Security updates cover every lockfile, but version updates need an entry: the
+# `directory` option is required, and without it Dependabot cannot open a pull
+# request. `package-ecosystem: npm` also covers pnpm and yarn lockfiles
+# (docs.github.com, Dependabot options reference). A lockfile folder with no npm
+# entry is reported, unless blueprint/dependabot-exemptions.json says why the
+# repository leaves it out. Report only.
+#
+# The awk reads `directory:` and `directories:` values of each npm entry. It
+# assumes `package-ecosystem` is the first key of an entry, as in every
+# repository and in the starter.
+check_dependabot_lockfiles() {
+  local tree path name dir pattern covered entries missing="" exempt="" reason lock_dirs=""
+  tree="$(gh api "repos/$repo/git/trees/HEAD?recursive=1" --jq 'if .truncated then "TRUNCATED" else (.tree[] | select(.type == "blob") | .path) end')"
+  # A failed call is not swallowed: it reaches the ERR trap (exit 3, "could not be checked").
+  if [[ -z "$tree" || "$tree" == "TRUNCATED" ]]; then
+    skip "Dependabot: lockfile folders" "the file list of the repository is empty or too large to read"
+    return
+  fi
+  while IFS= read -r path; do
+    name="${path##*/}"
+    case "$name" in
+      package-lock.json | npm-shrinkwrap.json | pnpm-lock.yaml | yarn.lock) ;;
+      *) continue ;;
+    esac
+    if [[ "$path" == */* ]]; then dir="/${path%/*}"; else dir="/"; fi
+    lock_dirs+="$dir"$'\n'
+  done <<<"$tree"
+  if [[ -z "$lock_dirs" ]]; then
+    printf 'OK     Dependabot: lockfile folders: no lockfile\n'
+    ok=$((ok + 1))
+    return
+  fi
+  # Read into a variable first: a failure inside `< <(...)` never reaches the ERR trap.
+  entries="$(awk '
+    /^[[:space:]]*#/ { next }
+    { sub(/[[:space:]]+#.*/, "") }
+    /^[[:space:]]*-[[:space:]]+package-ecosystem:/ {
+      eco = $0; sub(/.*package-ecosystem:[[:space:]]*/, "", eco); gsub(/["\047[:space:]]/, "", eco)
+      in_list = 0; next
+    }
+    /^[[:space:]]*directory:/ {
+      v = $0; sub(/.*directory:[[:space:]]*/, "", v); gsub(/["\047[:space:]]/, "", v)
+      if (eco == "npm" && v != "") print v
+      in_list = 0; next
+    }
+    /^[[:space:]]*directories:/ { in_list = 1; next }
+    in_list && /^[[:space:]]*-[[:space:]]*/ {
+      v = $0; sub(/^[[:space:]]*-[[:space:]]*/, "", v); gsub(/["\047[:space:]]/, "", v)
+      if (eco == "npm" && v != "") print v
+      next
+    }
+    { in_list = 0 }
+  ' <<<"$dependabot")"
+  lock_dirs="$(sort -u <<<"$lock_dirs")"
+  while IFS= read -r dir; do
+    [[ -n "$dir" ]] || continue
+    covered=""
+    while IFS= read -r pattern; do
+      [[ -n "$pattern" ]] || continue
+      # An entry is a path, or with `directories` a glob.
+      # shellcheck disable=SC2053
+      if [[ "$dir" == $pattern ]]; then covered=1; break; fi
+    done <<<"$entries"
+    [[ -z "$covered" ]] || continue
+    reason="$(jq -r --arg repo "${repo#*/}" --arg dir "$dir" '.[$repo][$dir] // empty' "$here/dependabot-exemptions.json")"
+    if [[ -n "$reason" ]]; then exempt+="$dir, "; else missing+="$dir, "; fi
+  done <<<"$lock_dirs"
+  if [[ -n "$missing" ]]; then
+    drift=$((drift + 1))
+    printf 'DRIFT  Dependabot: lockfile folders: no npm entry for %s\n' "${missing%, }"
+    [[ "$mode" == "check" ]] || printf '         add an npm entry per folder to .github/dependabot.yml in %s, or record the reason in blueprint/dependabot-exemptions.json\n' "$repo"
+  elif [[ -n "$exempt" ]]; then
+    printf 'OK     Dependabot: lockfile folders: %s exempt (blueprint/dependabot-exemptions.json)\n' "${exempt%, }"
+    ok=$((ok + 1))
+  else
+    printf 'OK     Dependabot: lockfile folders\n'
+    ok=$((ok + 1))
+  fi
+}
+check_dependabot_lockfiles
 
 # --- docs site (report only; applies only to a repository that has one) ---
 # docs.config.mjs is the docs kit's config, so its presence is what makes a

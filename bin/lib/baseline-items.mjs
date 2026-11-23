@@ -39,6 +39,7 @@ export const INLINE_ITEMS = [
   "build output: dist not committed",
   "OpenSSF Best Practices",
   "Dependabot",
+  "Dependabot: lockfile folders",
   "env-janitor: branch policy",
   "env-janitor: org secrets",
   "env-janitor: no environment secrets",

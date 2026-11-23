@@ -64,6 +64,7 @@ echo "counts ok=$ok drift=$drift skipped=$skipped"
 
 const PLUGIN = { ".claude-plugin/plugin.json": "{}" };
 const VALIDATE = "      - run: claude plugin validate --strict .\n";
+const METADATA = "      - run: node bin/check-plugin-metadata.mjs\n";
 
 test("a repository that is not a plugin skips the plugin rules and counts no drift", () => {
   const { status, out, err } = run({}, "check_plugin_rules");
@@ -73,22 +74,24 @@ test("a repository that is not a plugin skips the plugin rules and counts no dri
 });
 
 test("a plugin that follows the rules is clean", () => {
-  const { status, out, err } = run(PLUGIN, "check_plugin_rules", { workflows: VALIDATE });
+  const { status, out, err } = run(PLUGIN, "check_plugin_rules", { workflows: VALIDATE + METADATA });
   assert.equal(status, 0, err);
   assert.match(out, /OK     plugin: validate/);
+  assert.match(out, /OK     plugin: metadata check/);
   assert.match(out, /OK     plugin: root CLAUDE.md: none/);
   assert.match(out, /OK     plugin: marketplace.json: none/);
-  assert.match(out, /counts ok=3 drift=0 skipped=0/);
+  assert.match(out, /counts ok=4 drift=0 skipped=0/);
 });
 
-test("a plugin with a root CLAUDE.md, its own marketplace.json and no validate reports all three", () => {
+test("a plugin with a root CLAUDE.md, its own marketplace.json and no validate reports all four", () => {
   const files = { ...PLUGIN, "CLAUDE.md": "# x", ".claude-plugin/marketplace.json": "{}" };
   const { status, out, err } = run(files, "check_plugin_rules", { workflows: "      - run: npm test\n" });
   assert.equal(status, 0, err);
   assert.match(out, /DRIFT  plugin: validate/);
+  assert.match(out, /DRIFT  plugin: metadata check/);
   assert.match(out, /DRIFT  plugin: root CLAUDE.md/);
   assert.match(out, /DRIFT  plugin: marketplace.json/);
-  assert.match(out, /counts ok=0 drift=3 skipped=0/);
+  assert.match(out, /counts ok=0 drift=4 skipped=0/);
 });
 
 test("validate without --strict is not enough", () => {
