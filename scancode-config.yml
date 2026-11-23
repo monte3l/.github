@@ -20,6 +20,10 @@ ignored_patterns:
   # extracts a `json` license from it. They are not licensed under any of them.
   - "tests/bootstrap-render.test.mjs"
   - "tests/new-repo.test.sh"
+  # Fixtures of the ScanCode results the "List the flagged files" step reads:
+  # their `detected_license_expression_spdx` values (GPL-3.0-only) are data. The
+  # first run of that step listed this file, as designed.
+  - "tests/scancode-template.test.mjs"
   - ".github/workflows/dependency-review.yml"
   - "workflow-templates/dependency-review.yml"
   # m3l-design's brand assets declare LicenseRef-MONTE3L-Brand, a custom
