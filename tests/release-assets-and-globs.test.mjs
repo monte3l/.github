@@ -56,6 +56,24 @@ test("the assets job writes no per-repository or per-version path and takes no O
   assert.match(job, /github\.event\.repository\.name/);
 });
 
+test("a copy made through New workflow keeps the markers as comments, and its assets job cannot start by default", () => {
+  // No render: GitHub copies the file as it is.
+  const job = release.slice(release.indexOf("\n  assets:"), release.indexOf("\n  finalize:"));
+  const condition = /^ {4}if: (.*)$/m.exec(job)?.[1] ?? "";
+  assert.match(condition, /vars\.RELEASE_ASSETS == 'true'/, "the job must test an opt-in variable");
+  assert.match(condition, /releases_created == 'true'/);
+  // A skipped assets job must not skip the publish: the implicit success() would.
+  const finalize = release.slice(release.indexOf("\n  finalize:"));
+  assert.match(/^ {4}if: (.*)$/m.exec(finalize)?.[1] ?? "", /!failure\(\) && !cancelled\(\)/);
+});
+
+test("the tag check reads the tag through the API with the token, not an anonymous ls-remote", () => {
+  assert.doesNotMatch(release, /ls-remote/);
+  const job = release.slice(release.indexOf("\n  assets:"), release.indexOf("\n  finalize:"));
+  assert.match(job, /GH_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(job, /git\/ref\/tags\//);
+});
+
 test("the shared finalize workflow still attests every asset by glob, which is what the assets job relies on", () => {
   assert.match(read(".github/workflows/release-finalize.yml"), /subject-path: assets\/\*/);
 });

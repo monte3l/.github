@@ -69,11 +69,17 @@ jobs:
   # The job holds `contents: write` only, runs no repository code except the
   # SBOM script, and must finish before `finalize` publishes: an immutable
   # release takes no new asset.
+  #
+  # It is opt-in at run time too. A copy made through Actions, New workflow
+  # keeps these marker lines as comments, so the job is in every such copy and
+  # would fail in one with no `.node-version`. It runs only when the repository
+  # variable RELEASE_ASSETS is `true` (Settings, Secrets and variables, Actions,
+  # Variables). Otherwise it is skipped, and `finalize` still publishes.
   # sync:if assets
   assets:
     name: Assets
     needs: [prepare]
-    if: needs.prepare.outputs.releases_created == 'true'
+    if: needs.prepare.outputs.releases_created == 'true' && vars.RELEASE_ASSETS == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -91,18 +97,22 @@ jobs:
       # as. A tag anywhere else means the release and the build disagree.
       - name: Check that the release tag points at the commit that was built
         env:
+          GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           TAG: ${{ needs.prepare.outputs.tag_name }}
           BUILT_SHA: ${{ github.sha }}
         run: |
-          # An annotated tag lists its peeled commit last; a lightweight tag has
-          # one line. Anonymous read: the repository is public.
-          tagged="$(git ls-remote "https://github.com/${REPOSITORY}.git" \
-            "refs/tags/${TAG}" "refs/tags/${TAG}^{}" | awk 'END { print $1 }')"
-          if [ -n "$tagged" ] && [ "$tagged" = "$BUILT_SHA" ]; then
+          # Through the API with the token, so a private repository works. An
+          # annotated tag points at a tag object, whose target is the commit.
+          ref="$(gh api "repos/${REPOSITORY}/git/ref/tags/${TAG}" --jq '.object.type + " " + .object.sha')"
+          read -r kind sha <<<"$ref"
+          if [ "$kind" = "tag" ]; then
+            sha="$(gh api "repos/${REPOSITORY}/git/tags/${sha}" --jq '.object.sha')"
+          fi
+          if [ "$sha" = "$BUILT_SHA" ]; then
             exit 0
           fi
-          echo "::error title=Release tag does not match the build::${TAG} points at '${tagged:-nothing}' but the assets were built from ${BUILT_SHA}."
+          echo "::error title=Release tag does not match the build::${TAG} points at '${sha}' but the assets were built from ${BUILT_SHA}."
           exit 1
 
       - name: Build the tarball and its SBOM
@@ -143,7 +153,9 @@ jobs:
       # sync:if assets
       - assets
       # sync:end
-    if: needs.prepare.outputs.releases_created == 'true'
+    # `!failure()` lets a skipped `assets` (its variable is not set) through,
+    # which the implicit `success()` would not.
+    if: ${{ !failure() && !cancelled() && needs.prepare.outputs.releases_created == 'true' }}
     permissions:
       contents: write
       id-token: write
