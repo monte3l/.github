@@ -363,3 +363,103 @@ describe("secret guard: a hyphenated name is a name, and a token shaped like one
     blocked("key-rotation-job-2024");
   });
 });
+
+describe("secret guard: a template literal's interpolation of names and calls is a reference, not a value", () => {
+  // Every key, token and interpolation is built here, so this file passes the guard it tests and holds no
+  // key-like literal for Gitleaks to read.
+  const GH = "GH_" + "TOKEN";
+  const NPM = "NPM_" + "TOKEN";
+  const GITHUB = "GITHUB_" + "TOKEN";
+  const interp = (body) => "$" + "{" + body + "}";
+  const mixed = "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8";
+  const tok = mixed.slice(0, 36);
+  const ghp = ["ghp", tok].join("_");
+  const blocked = (line) => assert.ok(findSecrets(line).length > 0, `should block: ${line}`);
+  const allowed = (line) => assert.deepEqual(findSecrets(line), [], `should allow: ${line}`);
+
+  it("lets a call or a path of names through, which is what test code that builds a token writes", () => {
+    for (const line of [
+      `${GH}: ${interp("randomToken()")}`,
+      `${GH}: ${interp("makeToken(32)")}`,
+      `${GH}: ${interp("makeToken(len, kind)")}`,
+      `${GH}: ${interp("tokens.make(len, 32)")}`,
+      `${GH}: ${interp(" randomToken() ")}`,
+      `${GH}: ${interp("createRandomGithubToken(32)")}`,
+      `${NPM}: ${interp("process.env." + NPM)}`,
+      `${NPM}: ${interp("process.env." + GITHUB + "_FOR_TESTS")}`,
+      `${NPM}: ${interp("config.tokens.npm")}`,
+      `${NPM}: ${interp("ctx.runner.accessToken2Value")}`,
+      `${NPM}=${interp("KEY")}`,
+      `${GITHUB}=${interp("makeToken()")}`,
+    ]) {
+      allowed(line);
+    }
+  });
+
+  it("lets it through inside a template literal, a YAML block in one, and a sentence", () => {
+    for (const line of [
+      "const line = `" + GH + ": " + interp("randomToken()") + "`;",
+      "const line = `" + GH + ": " + interp("token") + "`;",
+      "const workflow = `env:\n  " + GH + ": " + interp("randomToken()") + "\n`;",
+      `${GH}: ${interp("randomToken()")} is built for each test`,
+      `${GH}: ${interp("randomToken()")} so m3l-output-governor can read it`,
+      `${GH}: ${interp("randomToken()")}   # read by m3l-groundwork`,
+    ]) {
+      allowed(line);
+    }
+  });
+
+  it("still blocks a literal next to the interpolation, before it or after it", () => {
+    for (const line of [
+      `${GH}: ${tok}`,
+      `${GH}: ${ghp}`,
+      `${GH}: ${interp("X")}${ghp}`,
+      `${GH}: ${ghp}${interp("X")}`,
+      `${GH}: ${interp("randomToken()")}${ghp}`,
+      `${GH}: ${ghp}${interp("randomToken()")}`,
+      `${GH}: ${interp("randomToken()")} then ${tok}`,
+      `${GH}: ${interp("randomToken()")}"${ghp}"`,
+      `${GH}: ${interp("randomToken()")}||${ghp}`,
+      `${GH}: ${interp("randomToken()")}?${ghp}`,
+      `${GH}: ${interp("randomToken()")} || "${ghp}"`,
+      "const line = `" + GH + ": " + ghp + interp("suffix") + "`;",
+    ]) {
+      blocked(line);
+    }
+  });
+
+  it("still blocks a literal inside the interpolation: a default, a call argument, a template", () => {
+    for (const line of [
+      `${GH}: ${interp(`X || "${ghp}"`)}`,
+      `${GH}: ${interp(`X ?? '${ghp}'`)}`,
+      `${GH}: ${interp(`fn("${ghp}")`)}`,
+      `${GH}: ${interp(`fn('${ghp}')`)}`,
+      `${GH}: ${interp(`fn("${tok}")`)}`,
+      `${GH}: ${interp(`make(fn("${ghp}"))`)}`,
+      `${GH}: ${interp("fn(`" + ghp + "`)")}`,
+    ]) {
+      blocked(line);
+    }
+  });
+
+  it("reads a name that is spelled like a token as one", () => {
+    blocked(`${GH}: ${interp(ghp)}`);
+    blocked(`${GH}: ${interp(`fn(${ghp})`)}`);
+    blocked(`${GH}: ${interp(`tokens.${ghp}`)}`);
+    blocked(`${GH}: ${interp("sk-" + mixed.slice(0, 20))}`);
+  });
+
+  it("takes $NAME and ${NAME} as a reference only when NAME is a name: short, no token prefix, no random mix", () => {
+    for (const name of [GITHUB, NPM, "HOME", "npm_config_cache", "githubTokenForTests", "RUNNER_TEMP"]) {
+      allowed(`${GH}: $${name}`);
+      allowed(`${NPM}=${interp(name)}`);
+    }
+    const aws = ["AKIA", "ABCDEFGHIJKLMNOP"].join("");
+    for (const name of [ghp, ["sk", tok].join("_"), ["ghp", tok.toLowerCase()].join("_"), aws, tok, "A".repeat(60)]) {
+      blocked(`${GH}: $${name}`);
+      blocked(`${NPM}=${interp(name)}`);
+    }
+    // A name longer than a name is a value inside an interpolation of names too.
+    blocked(`${GH}: ${interp(`tokens.${"a".repeat(41)}`)}`);
+  });
+});

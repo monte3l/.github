@@ -945,7 +945,8 @@ Use the same entry with `guard-double-background.mjs` or
 `guard-git-push-signed.mjs` for the two `Bash` hooks.
 
 A guard that can block fails closed: a payload it cannot read as JSON, or one
-that is not an object, exits 2 with `could not read the hook payload`.
+that is not an object (`null`, a number, a string, `true` or an array such as `[]`),
+exits 2 with `could not read the hook payload`.
 `onFailure: "block"` covers a crash but not a deliberate `exit 0`, and `0` means
 allow. The push guard keeps one documented exception: when it cannot work out
 the outgoing range it lets the push go, because the `main` ruleset requires
@@ -1009,7 +1010,19 @@ What the guards read, so a change to them can be judged:
   `env.<token>`) is a value, not a lookup, and so is a closed reference with more
   value stuck to it (`${X}"<token>"`). A literal after a default operator
   (`|| "<token>"`, `?? '<token>'`, `or "<token>"`) is read after a reference or a
-  plain value. Whatever the first value is, a
+  plain value. A JavaScript template literal's interpolation of names and numbers
+  (`${randomToken()}`, `${makeToken(32)}`, `${tokens.make(len, kind)}`,
+  `${process.env.NPM_TOKEN}`) is a reference too, so test code that builds a token at run
+  time is not refused. A string, a template, an operator or a nested call inside it
+  (`${X || "<token>"}`, `${fn("<token>")}`) makes it a value again and is read as
+  one, and so is a name inside it that is spelled like a token (`${ghp_...}`) or is
+  longer than 40 characters. `$NAME` and `${NAME}` are a reference only when NAME is
+  a name: at most 40 characters, not beginning like a token (`ghp_`, `sk_`, `AKIA`, ...,
+  unless it is a short snake_case name of letters such as `npm_config_cache`), and an
+  environment variable's name (`GITHUB_TOKEN`, `npm_config_x`) or letters and underscores
+  (`githubTokenForTests`). Anything else after a dollar sign (`$ghp_<token>`, a long
+  random run) is a value.
+  Whatever the first value is, a
   placeholder (`changeme`, `<token>`, an empty string) or a reference included,
   nothing after it is trusted by its shape: the whole rest of the line is split at
   quotes, operators and delimiters, and a run of 16 or more characters with a
@@ -1031,6 +1044,8 @@ What the guards read, so a change to them can be judged:
   only); a lowercase snake_case run, which is read as a name; a lowercase
   hyphenated run of plain words, or one with a short part that has a digit, which
   is read as a name; a token whose shape is only a prefix this list does not know;
+  a name inside an interpolation that is a random run of letters and digits with no token
+  prefix (`${a1B2c3D4...}`, which an interpolation cannot tell from a long camelCase name);
   and a secret written as a path or after a domain-like prefix. The other way, a
   real name with three or more short parts that carry a digit and 16 or more
   characters (`aws-s3-bucket-name-v2-eu1`), or a part that starts with a digit
