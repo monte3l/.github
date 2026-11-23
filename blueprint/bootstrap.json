@@ -293,7 +293,12 @@
       "what": "the design marker from blueprint/design-system.json: the content tier, or the vendored tier with the docs option"
     }
   ],
-  "excluded": [],
+  "excluded": [
+    {
+      "from": "blueprint/files/check-plugin-metadata.mjs",
+      "reason": "only a Claude Code plugin repository runs it, and a starter can require a kind being set but not the plugin kind in particular: a plugin copies it to bin/ by hand (blueprint/README.md, Claude Code plugins)"
+    }
+  ],
   "orgSecrets": [
     "GITLEAKS_LICENSE",
     {
