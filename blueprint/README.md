@@ -1013,13 +1013,15 @@ What the guards read, so a change to them can be judged:
   plain value. A JavaScript template literal's interpolation of names and numbers
   (`${randomToken()}`, `${makeToken(32)}`, `${tokens.make(len, kind)}`,
   `${process.env.NPM_TOKEN}`) is a reference too, so test code that builds a token at run
-  time is not refused. A string, a template, an operator or a nested call inside it
-  (`${X || "<token>"}`, `${fn("<token>")}`) makes it a value again and is read as
-  one. Every name and argument inside it is judged: a name is a value when it is spelled
-  like a token (`${ghp_...}`), is longer than 40 characters, or is a run of 16 or more
-  letters and digits that looks like a secret (`${a.b.<random run>}`), and a number of
-  16 digits or more is a value. A short name with a digit and capitals (`accessToken2`)
-  is a name. `$NAME` and a bare `${NAME}` are a reference only when NAME is
+  time is not refused. The body must match a strict grammar: a path of names, called
+  or not with names and numbers, where a name has at most 32 characters (letters, digits
+  and underscores, not starting with a digit) and a number at most 4 digits. A string, a
+  template, an operator, a `$`, a nested call, a longer name or a longer number
+  (`${X || "<token>"}`, `${fn("<token>")}`, `${a.b.<token>}`, `${make(12345678901234567890)}`)
+  is outside it and is read as a value. Inside it, every name must also be a name: not
+  spelled like a token (`${ghp_...}`) and not a run of 16 or more letters and digits that
+  looks like a secret, and a short name with a digit and capitals (`accessToken2`) is a
+  name. `$NAME` and a bare `${NAME}` are a reference only when NAME is
   a name: at most 40 characters, not beginning like a token (`ghp_`, `sk_`, `AKIA`, ...,
   unless it is a short snake_case name of letters such as `npm_config_cache`), and an
   environment variable's name (`GITHUB_TOKEN`, `npm_config_x`) or letters and underscores
@@ -1048,8 +1050,9 @@ What the guards read, so a change to them can be judged:
   hyphenated run of plain words, or one with a short part that has a digit, which
   is read as a name; a token whose shape is only a prefix this list does not know;
   a name inside an interpolation that is a random run of fewer than 16 characters, or of
-  letters only, and a number of fewer than 16 digits; and a secret written as a path or
-  after a domain-like prefix. The other way, a real name with three or more short
+  letters only (a longer body is outside the grammar and read as a value); a short body
+  outside the grammar, which a value of fewer than 16 characters passes whatever it is;
+  and a secret written as a path or after a domain-like prefix. The other way, a real name with three or more short
   parts that carry a digit and 16 or more characters (`aws-s3-bucket-name-v2-eu1`),
   a part that starts with a digit (`key-rotation-job-2024`), and a long camelCase name
   that has a digit inside an interpolation (`${ctx.runner.accessToken2Value}`) are

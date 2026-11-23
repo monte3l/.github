@@ -448,25 +448,35 @@ describe("secret guard: a template literal's interpolation of names and calls is
     blocked(`${GH}: ${interp("sk-" + mixed.slice(0, 20))}`);
   });
 
-  it("judges every name and argument inside the interpolation, not only a lone name", () => {
+  it("accepts only a strict grammar as a reference: names of at most 32 characters, numbers of at most 4 digits", () => {
+    // Outside the grammar the body is read as a value: a token, a long name, a long number, a dollar sign.
     for (const line of [
       `${GH}: ${interp(`fn(${ghp})`)}`,
       `${GH}: ${interp(`a.b.${tok}`)}`,
       `${GH}: ${interp(`a.b.${["sk", tok].join("_")}`)}`,
       `${GH}: ${interp("make(" + "12345678901234567890" + ")")}`,
       `${GH}: ${interp("make(32, " + "9".repeat(16) + ")")}`,
+      `${GH}: ${interp("make(" + "9".repeat(15) + ")")}`,
       `${GH}: ${interp(`tokens.make(${tok})`)}`,
       `${GH}: ${interp("a.b." + "c".repeat(41))}`,
+      `${GH}: ${interp("$" + ghp)}`,
+      `${GH}: ${interp("$" + tok)}`,
+      `${GH}: ${interp(`fn($${tok})`)}`,
+      `${GH}: ${interp(`fn(a, $${ghp})`)}`,
+      `${GH}: ${interp(`X || "${ghp}"`)}`,
+      `${GH}: ${interp("{" + ghp + "}")}`,
       // Blocked by design, as the README says: a long camelCase name that has a digit reads as a random run.
       `${NPM}: ${interp("ctx.runner.accessToken2Value")}`,
     ]) {
       blocked(line);
     }
     for (const line of [
-      `${GH}: ${interp("make(" + "9".repeat(15) + ")")}`,
       `${GH}: ${interp("tokens.make(len, 32)")}`,
+      `${GH}: ${interp("make(1234)")}`,
       `${NPM}: ${interp("ctx.runner.accessToken")}`,
       `${NPM}: ${interp("ctx.runner.accessToken2")}`,
+      `${NPM}: ${interp("sha256Hash")}`,
+      `${NPM}: ${interp("process.env.npm_config_cache")}`,
     ]) {
       allowed(line);
     }

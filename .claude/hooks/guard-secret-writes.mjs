@@ -194,15 +194,17 @@ function afterAccess(text, call) {
 /**
  * A JavaScript template literal's interpolation that is a reference and not a value: a name or a
  * dotted path of names (`${token}`, `${process.env.NPM_TOKEN}`), or a call of one whose arguments are
- * names and numbers (`${randomToken()}`, `${makeToken(32)}`, `${tokens.make(len, kind)}`). A string, a
- * template, an operator or a nested call inside it makes it something else, and then it is read as a
- * value (`${X || "<token>"}`, `${fn("<token>")}`).
+ * names and numbers (`${randomToken()}`, `${makeToken(32)}`, `${tokens.make(len, kind)}`). A name has at
+ * most 32 characters and a number at most 4 digits. A body outside this grammar (a string, a template, an
+ * operator, a `$`, a nested call, a longer name or number) is read as a value (`${X || "<token>"}`,
+ * `${fn("<token>")}`, `${a.b.<token>}`).
  */
 const JS_INTERPOLATION = (() => {
-  const name = "[A-Za-z_$][\\w$]*";
-  const path = `${name}(?:\\.${name})*`;
-  const arg = "[\\w$.]+";
-  return new RegExp(`^\\$\\{\\s*${path}(?:\\(\\s*(?:${arg}(?:\\s*,\\s*${arg})*)?\\s*\\))?\\s*\\}`);
+  // A strict grammar, and nothing else: no `$`, no quote, no operator, no nested `${`, no digit run of five or more.
+  const ident = "[A-Za-z_][A-Za-z0-9_]{0,31}";
+  const path = `${ident}(?:\\.${ident})*`;
+  const arg = `(?:${path}|\\d{1,4})`;
+  return new RegExp(`^\\$\\{\\s*(${path})(\\(\\s*(?:${arg}(?:\\s*,\\s*${arg})*)?\\s*\\))?\\s*\\}`);
 })();
 
 /**
@@ -232,14 +234,16 @@ function afterReference(text, quote) {
     // A JavaScript template literal's `${...}` whose body is only names and numbers holds no literal.
     const closed = through(text.slice(2), "}", quote);
     if (closed === null) return "unclosed";
-    // Every name and argument in it is judged: a name is at most 40 characters, is not spelled like a token
-    // and is not a run that looks like a secret (16 or more characters of letters and digits), and a number
-    // is shorter than 16 digits. Otherwise it is no reference and the whole is read as a value. A short name
-    // that has a digit and capitals (`accessToken2`, `sha256Hash`) is a name, as a lone `${NAME}` of letters
-    // or an environment variable's name is.
-    const parts = m[0].slice(2).split(/[\s.,()}]+/).filter((part) => part !== "");
-    const isName = (part) => part.length <= 40 && !spelledLikeToken(part) && (TOKEN_PREFIX.test(part) || !looksLikeSecretRun(part));
-    if (parts.some((part) => (/^\d+$/.test(part) ? part.length >= 16 : !isName(part)))) return null;
+    // The body matched a strict grammar (see JS_INTERPOLATION): a path of names, optionally called with
+    // names and numbers of at most four digits. Each name must also be a name: not spelled like a token and
+    // not a run that looks like a secret (16 or more characters of letters and digits). A lone `${NAME}` is
+    // judged as `${NAME}` is (`isRefName`); a name inside a path or call may be a short camelCase name with
+    // a digit and capitals (`accessToken2`, `sha256Hash`). Otherwise it is no reference and the whole is
+    // read as a value.
+    const names = `${m[1]}.${m[2] ?? ""}`.split(/[\s.,()]+/).filter((part) => part !== "" && !/^\d+$/.test(part));
+    const isName = (part) => !spelledLikeToken(part) && (TOKEN_PREFIX.test(part) || !looksLikeSecretRun(part));
+    if (!names.every(isName)) return null;
+    if (m[2] === undefined && !m[1].includes(".") && !isRefName(m[1])) return null;
     return { ...closed, after: text.slice(m[0].length) };
   }
   if ((m = /^\$\{([A-Za-z_]\w*)(?=[}:])/.exec(text))) return isRefName(m[1]) ? bracket(m[0].length, "}") : null;
