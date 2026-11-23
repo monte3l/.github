@@ -158,7 +158,7 @@ fi
 body="$(
   printf 'Refreshes files in this repository that are an **older version** of their workflow template or starter in `monte3l/.github`:\n\n'
   for path in "${files[@]}"; do printf -- '- `%s`\n' "$path"; done
-  printf '\nA file is refreshed only if it matched, apart from blank lines, the SPDX header and action pins, a version the template or starter really had. A file someone changed on purpose is never touched, and neither is a workflow whose refresh would rename a job (a required check is a job name).\n\n'
+  printf '\nA file is refreshed only if it matched, apart from blank lines, the SPDX header and action pins, a version the template or starter really had, and it keeps the SPDX header it has. A file someone changed on purpose is never touched, and neither is a workflow whose refresh would rename a job (a required check is a job name).\n\n'
   printf 'Each file is the current template or starter for this repository. For a workflow, **the action pins are the template'"'"'s**: a pin can be tied to an input in the same file, so they move together. Dependabot here keeps them current afterwards. Read the diff, as a template change can alter what a workflow does. The required checks run on this pull request as on any other.\n\n'
   printf 'Opened by `template-sync.yml` in `monte3l/.github`. Rules: [Workflow template sync](https://github.com/monte3l/.github/blob/main/blueprint/README.md#workflow-template-sync).\n'
 )"

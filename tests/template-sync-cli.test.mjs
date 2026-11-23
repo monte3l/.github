@@ -149,11 +149,28 @@ test("a starter listed in sync.json but missing from blueprint/files stops the r
   assert.match(r.err, /not in blueprint\/files/);
 });
 
-test("a stale starter that carries its own SPDX header is left alone, because a refresh would drop it", () => {
-  const withHeader = `# SPDX-FileCopyrightText: 2026 someone\n${V1}`;
-  const env = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW, "conf/x.toml": withHeader } });
+test("a stale starter that carries its own SPDX header is refreshed and keeps that header", () => {
+  const header = "# SPDX-FileCopyrightText: 2026 someone\n# SPDX-License-Identifier: MIT\n";
+  const env = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW, "conf/x.toml": `${header}\n${V1}` } });
   const r = runSync(env, "--write", "OUT");
+  assert.equal(r.status, 0, r.err);
+  assert.equal(r.written("conf/x.toml"), `${header}\n${V2}`, "the template text, under the repository's own header and spacing");
+  assert.equal(r.findings, "m3l-x: conf/x.toml is 1 version behind its starter\n");
+});
+
+test("a refreshed starter is not stale on the next run, so the sync does not open the same pull request twice", () => {
+  const header = "# SPDX-FileCopyrightText: 2026 someone\n";
+  const first = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW, "conf/x.toml": `${header}${V1}` } });
+  const written = runSync(first, "--write", "OUT").written("conf/x.toml");
+  assert.equal(written, `${header}${V2}`);
+  const second = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW, "conf/x.toml": written } });
+  const r = runSync(second, "--write", "OUT");
   assert.equal(r.status, 0, r.err);
   assert.equal(r.written("conf/x.toml"), null);
   assert.equal(r.findings, "");
+});
+
+test("a stale starter with no header gets none", () => {
+  const env = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW, "conf/x.toml": V1 } });
+  assert.equal(runSync(env, "--write", "OUT").written("conf/x.toml"), V2);
 });

@@ -32,7 +32,8 @@
  *   CUSTOM      anything else: a person's change, never overwritten
  */
 
-const SPDX_RE = /^\s*#\s*SPDX-/;
+// A header line in either comment form: `#` for a workflow, a shell script or TOML, `//` for a module.
+const SPDX_RE = /^\s*(?:#|\/\/)\s*SPDX-/;
 const SIMPLE_VALUE_RE = /^(\s*(?:-\s+)?[A-Za-z0-9_.-]+:\s+[^\s'"`#]+)\s+#.*$/;
 const USES_COMMENT_RE = /^(\s*(?:-\s+)?uses:\s*\S+)\s+#.*$/;
 // Anchored to the start of the line and never able to cross an `@`, so it is linear.
@@ -123,6 +124,46 @@ export function strict(text) {
 }
 
 const same = (a, b) => a.length === b.length && a.every((line, i) => line === b[i]);
+
+/**
+ * Where a file's SPDX header sits: after a shebang if there is one, the run of `SPDX-` comment lines,
+ * and the blank lines that separate it from the rest. The comparison above ignores exactly these
+ * lines, so reading them here is what keeps the comparison and the refresh in agreement.
+ *
+ * @param {string[]} lines
+ * @returns {{ start: number, end: number, gap: number }} `[start, end)` is the header, `gap` the blank lines after it
+ */
+function headerOf(lines) {
+  const start = lines[0]?.startsWith("#!") ? 1 : 0;
+  let end = start;
+  while (end < lines.length && SPDX_RE.test(lines[end])) end += 1;
+  let gap = 0;
+  if (end > start) while (end + gap < lines.length && lines[end + gap].trim() === "") gap += 1;
+  return { start, end, gap };
+}
+
+/**
+ * The refreshed file, carrying the header the repository's own copy has. A repository decides what
+ * licence header its files carry (REUSE or an inline check of it), so a refresh changes the behaviour
+ * and leaves the header alone: the copy's header is kept as it is, and a copy with none gets none,
+ * even if the template has one.
+ *
+ * @param {string} current the template, rendered for this repository
+ * @param {string} copy the repository's file
+ * @returns {string}
+ */
+export function keepHeader(current, copy) {
+  const next = current.split("\n");
+  const mine = copy.replace(/\r\n/g, "\n").split("\n");
+  const theirs = headerOf(next);
+  const own = headerOf(mine);
+  const ownHeader = mine.slice(own.start, own.end);
+  const body = next.slice(theirs.end + theirs.gap);
+  // A template with no header keeps its text as it is, which also keeps a file with none unchanged.
+  if (theirs.end === theirs.start && ownHeader.length === 0) return current;
+  const gap = ownHeader.length === 0 ? [] : Array(own.gap).fill("");
+  return [...next.slice(0, theirs.start), ...ownHeader, ...gap, ...body].join("\n");
+}
 
 /**
  * @param {string} copy the repository's file
