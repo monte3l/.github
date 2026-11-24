@@ -1003,8 +1003,9 @@ What the guards read, so a change to them can be judged:
   name is read as the command.
 - **Secret guard.** The keys it reads are `NPM_TOKEN`, `GITHUB_TOKEN`, `GH_TOKEN`, the three
   `AWS_*` ones and `API_KEY`. A name that only contains one (`MY_API_KEY`) is not matched: a
-  project that needs one adds it to `SECRET_KEYS`. A key may be quoted (`"NPM_TOKEN": "..."`) and in any case; a
-  key in backticks is prose about it. The value is the quoted string, or the run
+  project that needs one adds it to `SECRET_KEYS`, which makes its copy custom, so
+  `template-sync` stops refreshing it. A key may be quoted (`"NPM_TOKEN": "..."`) and in
+  any case; a key in backticks is prose about it. The value is the quoted string, or the run
   up to a space, comma or bracket. It is a placeholder only when it is only dots, starts with a reference (`${X}`, `$X`,
   `process.env.X`, `os.environ[...]`, `ENV[...]`, `getenv(...)`, `secrets.X`) or
   has a marker word set off by a delimiter (`your_token`, `example-key`); a

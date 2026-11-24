@@ -34,8 +34,9 @@ async function readStdin() {
 }
 
 /**
- * Env-var-name prefixes/exact names whose assigned *value* is a secret we
- * must never persist. Project-specific keys can be appended here.
+ * Exact env-var names whose assigned *value* is a secret we must never
+ * persist. A project-specific key can be appended here, which makes the copy
+ * custom, so template-sync stops refreshing it.
  */
 export const SECRET_KEYS = [
   "NPM_TOKEN",
