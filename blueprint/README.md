@@ -349,8 +349,11 @@ A workflow copied from `workflow-templates/` is never updated by GitHub, so a
 change to a template used to reach no repository. `bin/template-sync.mjs`
 compares each consumer's copy with the template, read-only, and
 `freshness.yml` reports the result every Monday in one issue, **Workflow copies
-are behind their templates**. Eleven verbatim starters are compared the same way,
-see [Starters](#starters).
+are behind their templates**. The issue and the job summary hold **counts only**
+(`--public`): how many copies are behind and in how many repositories, never which
+one. The repository is public and a name would tell an outsider where to aim. Run
+`node bin/template-sync.mjs` with `gh` access for the full comparison. Eleven
+verbatim starters are compared the same way, see [Starters](#starters).
 
 The template is first **rendered** for the repository: `https://PROJECT.monte3l.com`
 becomes its site, and a block between `# sync:if FLAG` and `# sync:end` stays
@@ -416,7 +419,7 @@ Two optional keys keep a refresh from doing harm. A starter may list `requires`
 only when every starter it needs, in the same repository, is current or is
 refreshed in the same run. Beside a helper that is custom, missing or skipped it
 is held back (`H4` in the table, `HELD` in the data), nothing is written for it,
-and the findings say so: `m3l-x: .claude/hooks/guard-git-push-signed.mjs is 4
+and the findings (the local run, never the public issue) say so: `m3l-x: .claude/hooks/guard-git-push-signed.mjs is 4
 versions behind its starter, but is not refreshed: bin/lib/signed-range.mjs is
 custom. Refresh the pair together by hand`. A repository may also leave a
 template or starter out for good with `repos.<name>.skip` (a list of names): it
