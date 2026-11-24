@@ -130,7 +130,8 @@ for (const [repo, entry] of Object.entries(config.repos)) {
   for (const [name, p] of Object.entries(entry.paths ?? {})) if (!safePath(p)) fail(2, `blueprint/sync.json: ${repo} has the path "${p}" for "${name}", which is not a relative path inside the repository`);
   for (const [name, list] of Object.entries(entry.twins ?? {})) {
     if (!(name in (config.starters ?? {}))) fail(2, `blueprint/sync.json: ${repo} has twins of "${name}", which is not a starter`);
-    for (const p of Array.isArray(list) ? list : []) if (!safePath(p)) fail(2, `blueprint/sync.json: ${repo} has the twin path "${p}" for "${name}", which is not a relative path inside the repository`);
+    if (!Array.isArray(list) || list.length === 0) fail(2, `blueprint/sync.json: ${repo} has twins of "${name}" that are not a non-empty list of paths`);
+    for (const p of list) if (!safePath(p)) fail(2, `blueprint/sync.json: ${repo} has the twin path "${p}" for "${name}", which is not a relative path inside the repository`);
   }
 }
 for (const name of only ?? []) if (!(name in config.repos)) fail(2, `${name} is not a consumer in blueprint/sync.json`);

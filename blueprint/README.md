@@ -437,11 +437,20 @@ Each twin is a unit of its own, shown as `STARTER+1`, `STARTER+2` in the table, 
 refreshed exactly like the starter's main copy: the same history decides whether
 it is stale (only an older version is, so a twin that someone edited stays
 custom), it keeps the header it has or none, and `bin/template-sync-pr.sh` sends
-its path because `sync.json` names it. A twin of a starter that `requires` another waits for the
-twin of that one with the same number, or for the main copy when the repository
-has no such twin. Skipping a starter skips its twins. `bin/sync-parity.mjs` fails on
-twins of something that is not a starter, and on a path that leaves the repository or
-is already the path of a starter or of another twin.
+its path because `sync.json` names it.
+
+A twin is refreshed on its own, even when the main copy of the same starter in that
+repository is custom. A repository that pins the two to match (`m3l-groundwork`'s
+`org-guard-starters` test) then sees its CI fail on the sync pull request, which is
+visible and is the point: someone brings the other copy up to date. A twin of a
+starter that `requires` another waits for the twin of that one, and the two are paired
+by position in their lists, so list a guard's twin and its helper's twin at the same
+place; with no twin at that position the main copy is the one it waits for. Skipping a
+starter skips its twins. `bin/sync-parity.mjs` fails on twins of something that is not
+a starter, on a value that is not a non-empty list of paths, and on a path that leaves
+the repository, is already the path of a starter or of another twin, or equals a
+repository `paths` value. `bin/template-sync.mjs` stops with exit 2 on the same
+malformed values.
 
 Most copies are custom on purpose. `m3l-design`'s `.gitattributes` keeps bytes
 exact for its checksums, and `m3l-prompt-optimizer`'s gitleaks config allows its

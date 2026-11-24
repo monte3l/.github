@@ -297,7 +297,8 @@ function twinsFor(config, repo, skip) {
   for (const starter of Object.keys(twins).sort()) {
     const entry = config.starters?.[starter];
     if (!entry) continue;
-    twins[starter].forEach((twinPath, i) => {
+    // A value that is not a list has no twins here: the CLI stops on it first, and parity names it.
+    (Array.isArray(twins[starter]) ? twins[starter] : []).forEach((twinPath, i) => {
       units.push({
         name: `${starter}+${i + 1}`,
         kind: /** @type {const} */ ("starter"),

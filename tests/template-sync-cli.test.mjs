@@ -356,6 +356,15 @@ test("a twin path that leaves the repository, or twins of something that is no s
   assert.match(r.err, /twins of "nope\.toml", which is not a starter/);
 });
 
+test("twins that are not a non-empty list stop the run with exit 2, not a failed read", () => {
+  for (const bad of ["twin/x.toml", [], {}, 7]) {
+    const env = setup({ repo: { flags: [], twins: { "x.toml": bad } }, consumer: { ".github/workflows/t.yml": WORKFLOW } });
+    const r = runSync(env);
+    assert.equal(r.status, 2, JSON.stringify(bad));
+    assert.match(r.err, /not a non-empty list of paths/);
+  }
+});
+
 test("--public counts a stale twin with the other copies and names neither the repository nor the file", () => {
   const env = setup({ repo: TWINNED, consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V2, "twin/x.toml": V1 } });
   const r = runSync(env, "--public", "--check");
