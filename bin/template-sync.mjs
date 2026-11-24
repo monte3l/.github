@@ -8,7 +8,7 @@
  * and says which copies are current, which are stale and which a person has
  * changed.
  *
- *   node bin/template-sync.mjs [--repos a,b] [--owner OWNER] [--json] [--check] [--findings FILE]
+ *   node bin/template-sync.mjs [--repos a,b] [--owner OWNER] [--json] [--check] [--public] [--findings FILE]
  *   node bin/template-sync.mjs --repos NAME --write DIR
  *
  * READ-ONLY toward every repository: it reads files through `gh api` and the
@@ -37,6 +37,13 @@
  * none. With --check the exit code is 1 when there are any. With --json the
  * output is `{ results, mismatches }`.
  *
+ * With --public the output is safe to publish from the public repository: no table,
+ * no finding line and nothing else that names a repository. It prints and writes
+ * counts only (how many copies are behind, in how many repositories, how many are held
+ * back, how many flags disagree). `freshness.yml` uses it, because its issue, its job
+ * summary and its logs are readable by anyone. It cannot be combined with --json or
+ * --write, which carry names.
+ *
  * It must not be able to report "nothing found" by failing quietly, because a
  * workflow closes its tracking issue on that. So it stops with exit 3 when a
  * repository cannot be read in full (private, renamed, missing) and with exit 2
@@ -57,12 +64,13 @@ const fail = (code, message) => {
   console.error(`template-sync: ${message}`);
   process.exit(code);
 };
-const USAGE = "usage: node bin/template-sync.mjs [--repos a,b] [--owner OWNER] [--json] [--check] [--findings FILE]\n       node bin/template-sync.mjs --repos NAME --write DIR";
+const USAGE = "usage: node bin/template-sync.mjs [--repos a,b] [--owner OWNER] [--json] [--check] [--public] [--findings FILE]\n       node bin/template-sync.mjs --repos NAME --write DIR";
 
 let owner = "monte3l";
 let only = null;
 let asJson = false;
 let check = false;
+let publicOutput = false;
 let findingsFile = null;
 let writeDir = null;
 const args = process.argv.slice(2);
@@ -74,12 +82,14 @@ const value = (i) => {
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--json") asJson = true;
   else if (args[i] === "--check") check = true;
+  else if (args[i] === "--public") publicOutput = true;
   else if (args[i] === "--owner") owner = value(i++);
   else if (args[i] === "--repos") only = value(i++).split(",");
   else if (args[i] === "--findings") findingsFile = value(i++);
   else if (args[i] === "--write") writeDir = value(i++);
   else fail(2, `cannot use "${args[i]}"\n${USAGE}`);
 }
+if (publicOutput && (asJson || writeDir !== null)) fail(2, `--public prints counts only, so it cannot be combined with --json or --write\n${USAGE}`);
 if (writeDir !== null && (only === null || only.length !== 1)) fail(2, `--write needs --repos with exactly one repository\n${USAGE}`);
 for (const name of [owner, ...(only ?? [])]) if (!NAME_RE.test(name)) fail(2, `not an owner or repository name: ${name}`);
 
@@ -165,10 +175,10 @@ function assertReadable(repo) {
   try {
     info = JSON.parse(run("gh", ["api", `repos/${owner}/${repo}`, "--jq", "{private, archived}"]));
   } catch (error) {
-    if (missing(error)) fail(3, `${owner}/${repo} does not exist, or this token cannot see it`);
+    if (missing(error)) fail(3, `${publicOutput ? "a repository" : `${owner}/${repo}`} does not exist, or this token cannot see it`);
     throw error;
   }
-  if (info.private) fail(3, `${owner}/${repo} is private, and this token reads public repositories only`);
+  if (info.private) fail(3, `${publicOutput ? "a repository" : `${owner}/${repo}`} is private, and this token reads public repositories only`);
 }
 
 const repos = Object.keys(config.repos).filter((name) => only === null || only.includes(name)).sort();
@@ -242,7 +252,8 @@ try {
     }
   }
 } catch (error) {
-  fail(3, `a read failed: ${String(error.stderr ?? error.message).trim().split("\n")[0]}`);
+  // The message of a failed `gh` call usually holds the repository's path, so a public run leaves it out.
+  fail(3, publicOutput ? "a read failed (run without --public for the detail)" : `a read failed: ${String(error.stderr ?? error.message).trim().split("\n")[0]}`);
 }
 
 const stale = results.filter((r) => r.managed && r.state === "STALE");
@@ -252,9 +263,36 @@ const findings = [
   ...held.map(describeHeld),
   ...mismatches,
 ];
-if (findingsFile) writeFileSync(findingsFile, findings.length === 0 ? "" : `${findings.join("\n")}\n`);
 
-if (asJson) {
+// Counts only, for a public place: how many, never which repository or file.
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const publicSummary = () => {
+  const behind = stale.length + held.length;
+  const lines = [];
+  if (behind > 0) {
+    const inRepos = new Set([...stale, ...held].map((r) => r.repo)).size;
+    lines.push(`${plural(behind, "copy is", "copies are")} behind ${behind === 1 ? "its" : "their"} template or starter, in ${plural(inRepos, "repository", "repositories")}.`);
+  }
+  if (held.length > 0) lines.push(`${plural(held.length, "of them is", "of them are")} held back until a helper ${held.length === 1 ? "it needs is" : "they need are"} refreshed.`);
+  if (mismatches.length > 0) lines.push(`${plural(mismatches.length, "repository has", "repositories have")} a flag that disagrees with its docs.config.mjs.`);
+  return lines;
+};
+if (findingsFile) {
+  const lines = publicOutput ? publicSummary() : findings;
+  writeFileSync(findingsFile, lines.length === 0 ? "" : `${lines.join("\n")}\n`);
+}
+
+const countOf = (rows) => {
+  const tally = {};
+  for (const r of rows) tally[r.state] = (tally[r.state] ?? 0) + 1;
+  return Object.entries(tally).map(([state, n]) => `${state} ${n}`).join(", ");
+};
+if (publicOutput) {
+  console.log(`managed copies: ${countOf(results.filter((r) => r.managed && r.state !== "MISSING"))}`);
+  console.log(`unmanaged copies: ${countOf(results.filter((r) => !r.managed && r.state !== "MISSING"))}`);
+  const summary = publicSummary();
+  console.log(summary.length === 0 ? "\nfindings: none" : `\nfindings:\n${summary.map((line) => `  ${line}`).join("\n")}`);
+} else if (asJson) {
   console.log(JSON.stringify({ results, mismatches }, null, 2));
 } else {
   const cell = (r) => (r.state === "MISSING" ? "-" : r.state === "SKIPPED" ? "skip" : r.state === "STALE" ? `S${r.back}` : r.state === "HELD" ? `H${r.back}` : r.state[0]) + (r.managed ? "" : "*");
@@ -263,13 +301,8 @@ if (asJson) {
     console.log(unit.name.padEnd(20) + repos.map((repo) => cell(results.find((r) => r.repo === repo && r.template === unit.name)).padEnd(12)).join(""));
   }
   console.log("\n* = unmanaged: shown for information, never changed by a sync");
-  const count = (rows) => {
-    const tally = {};
-    for (const r of rows) tally[r.state] = (tally[r.state] ?? 0) + 1;
-    return Object.entries(tally).map(([state, n]) => `${state} ${n}`).join(", ");
-  };
-  console.log(`\nmanaged copies: ${count(results.filter((r) => r.managed && r.state !== "MISSING"))}`);
-  console.log(`unmanaged copies: ${count(results.filter((r) => !r.managed && r.state !== "MISSING"))}`);
+  console.log(`\nmanaged copies: ${countOf(results.filter((r) => r.managed && r.state !== "MISSING"))}`);
+  console.log(`unmanaged copies: ${countOf(results.filter((r) => !r.managed && r.state !== "MISSING"))}`);
   if (findings.length > 0) console.log(`\nfindings:\n${findings.map((line) => `  ${line}`).join("\n")}`);
 }
 process.exitCode = check && findings.length > 0 ? 1 : 0;

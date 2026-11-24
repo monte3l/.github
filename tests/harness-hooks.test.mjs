@@ -147,12 +147,16 @@ describe("verify-on-stop planning", () => {
     assert.deepEqual(plan(["knowledge/wiki/x.md"]).names.sort(), ["knowledge-parity", "knowledge-report"]);
     assert.ok(plan(["workflow-templates/dco.yml"]).names.includes("template-sync"));
     assert.deepEqual(plan(["bin/new-repo.sh"]).names, ["new-repo"]);
+    for (const f of [".github/workflows/freshness.yml", ".github/workflows/template-sync.yml", "bin/template-sync.mjs"]) {
+      assert.ok(plan([f]).names.includes("freshness-public"), f);
+    }
     // The push guard's helper and the guard starters are what the harness tests run.
     assert.ok(plan(["bin/lib/signed-range.mjs"]).names.includes("harness-"));
     const starter = plan(["blueprint/files/guard-secret-writes.mjs"]).names;
     assert.ok(starter.includes("harness-") && starter.includes("bootstrap-parity"));
     assert.equal(plan(["docs/ROADMAP.md"]).check, true);
     const root = path.resolve(hooks, "../..");
+    assert.ok(testFiles(root, ["freshness-public"]).some((f) => f.endsWith("freshness-public.test.mjs")));
     const files = testFiles(root, plan([".claude/hooks/x.mjs"]).names);
     assert.ok(files.every((f) => path.basename(f).startsWith("harness-")));
     assert.ok(files.length >= 2);

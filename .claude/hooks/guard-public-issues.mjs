@@ -5,8 +5,9 @@
  *
  *  - Counts only in the public repository. `monte3l/.github` is public, and its
  *    audit output carries counts, never which repository is out of line. A
- *    body that holds a `DRIFT` line and the name of an org repository is
- *    denied there (exit 2).
+ *    body that holds a `DRIFT` line, or a line saying a copy is N versions
+ *    "behind" (its starter or template), and the name of an org repository is denied there
+ *    (exit 2).
  *  - A suspected vulnerability is not an issue. The tracking policy routes it
  *    to a private report and a security advisory. Text with vulnerability
  *    wording gets `permissionDecision: "ask"`: a documentation change that
@@ -38,6 +39,10 @@ const VULNERABILITY = /vulnerab|\bCVE-\d{4}-\d{3,}|\bexploit|security advisory|z
 // The baseline prints `DRIFT  label`. Match the uppercase word anywhere: an inline --body puts it
 // mid-line, after the flag. It only counts together with an org repository name.
 const DRIFT_LINE = /\bDRIFT\b/;
+// The template sync says `m3l-x: file is 2 versions behind its starter`, and its plan used to print
+// `m3l-x: file, 2 version(s) behind`. Same rule: with an org repository name it says where to aim, so
+// only the count may be published.
+const BEHIND_LINE = /\bversion(?:s|\(s\))? behind\b/;
 
 /** The text a publishing command would send. */
 export function publishedText(command, cwd) {
@@ -80,13 +85,13 @@ export function judge(command, cwd) {
   if (!PUBLISHING.test(command)) return null;
   const text = publishedText(command, cwd);
   const repo = targetRepo(command, cwd);
-  if (repo === "monte3l/.github" && DRIFT_LINE.test(text)) {
+  if (repo === "monte3l/.github" && (DRIFT_LINE.test(text) || BEHIND_LINE.test(text))) {
     const named = orgRepoNames(cwd).find((n) => text.includes(n));
     if (named) {
       return {
         decision: "deny",
         reason:
-          "monte3l/.github is public and its audit output carries counts only. This text has a DRIFT line that names an org repository. Publish the counts, and keep the per-repository detail local (bin/org-audit.sh).",
+          "monte3l/.github is public and its audit output carries counts only. This text has a DRIFT or \"behind its starter\" line that names an org repository. Publish the counts, and keep the per-repository detail local (bin/org-audit.sh).",
       };
     }
   }

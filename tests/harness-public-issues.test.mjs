@@ -60,6 +60,19 @@ describe("guard-public-issues", () => {
     assert.equal(r.status, 2);
   });
 
+  it("denies a per-repository \"behind its starter\" line in the public repository", () => {
+    for (const line of ["m3l-plugins: .claude/hooks/guard-secret-writes.mjs is 3 versions behind its starter", "m3l-design: dco.yml is 1 version behind its template", "- `m3l-plugins`: `.github/workflows/dco.yml`, 2 version(s) behind"]) {
+      const r = run(`gh issue create --title t --body "${line}"`, publicRepo);
+      assert.equal(r.status, 2, line);
+      assert.match(r.stderr, /counts only/);
+    }
+  });
+
+  it("allows the count of copies that are behind, and the same line in a private target", () => {
+    assert.equal(run(`gh issue create --title t --body "5 copies are behind their template or starter, in 3 repositories."`, publicRepo).status, 0);
+    assert.equal(run(`gh pr comment 2 --body "m3l-design: dco.yml is 1 version behind its template"`, otherRepo).status, 0);
+  });
+
   it("allows counts, and a DRIFT line that names no repository", () => {
     assert.equal(run(`gh issue create --title t --body "3 repositories drift in 2 items"`, publicRepo).status, 0);
     assert.equal(run(`gh issue create --title t --body "DRIFT  docs site: parity"`, publicRepo).status, 0);

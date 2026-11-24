@@ -252,3 +252,84 @@ test("a skipped required starter holds the one that needs it", () => {
   assert.equal(r.written(".x.toml"), null);
   assert.match(r.findings, /not refreshed: \.y is skipped/);
 });
+
+// The public repository's issue, job summary and logs are readable by anyone, so what freshness.yml publishes is
+// counts only: --public prints and writes how many, never which repository or which file.
+test("--public prints and writes counts only: no repository, no file, no table", () => {
+  const env = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V1, ".y": "y\n" } });
+  const r = runSync(env, "--public", "--check");
+  assert.equal(r.status, 1, "a finding still exits 1 with --check");
+  assert.equal(r.findings, "1 copy is behind its template or starter, in 1 repository.\n");
+  for (const text of [r.out, r.findings]) {
+    assert.doesNotMatch(text, /m3l-x|x\.toml|\.x\.toml|\.y\b|t\.yml/, "no repository or file name");
+    assert.doesNotMatch(text, /^template\s/m, "no table with a column per repository");
+  }
+  assert.match(r.out, /managed copies: IDENTICAL 2, STALE 1/);
+  assert.match(r.out, /findings:\n {2}1 copy is behind its template or starter, in 1 repository\./);
+});
+
+test("--public counts a held copy, and says nothing when there is nothing to report", () => {
+  const held = setup({ starters: PAIR, consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V1, ".y": "mine\n" } });
+  const h = runSync(held, "--public");
+  assert.equal(h.findings, "1 copy is behind its template or starter, in 1 repository.\n1 of them is held back until a helper it needs is refreshed.\n");
+  assert.doesNotMatch(h.findings + h.out, /m3l-x|\.x\.toml|\.y\b/);
+
+  const clean = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V2, ".y": "y\n" } });
+  const c = runSync(clean, "--public", "--check");
+  assert.equal(c.status, 0);
+  assert.equal(c.findings, "");
+  assert.match(c.out, /findings: none/);
+});
+
+test("--public counts a flag that disagrees with docs.config.mjs without naming the repository", () => {
+  const env = setup({ repo: { flags: ["manifest"] }, consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V2, ".y": "y\n", "docs.config.mjs": "export default {};\n" } });
+  const r = runSync(env, "--public");
+  assert.equal(r.findings, "1 repository has a flag that disagrees with its docs.config.mjs.\n");
+  assert.doesNotMatch(r.findings + r.out, /m3l-x|manifest/);
+});
+
+test("--public refuses --json and --write, which carry names", () => {
+  const env = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V1, ".y": "y\n" } });
+  for (const flag of ["--json", "--write"]) {
+    const r = runSync(env, "--public", flag, ...(flag === "--write" ? ["OUT"] : []));
+    assert.equal(r.status, 2, flag);
+    assert.match(r.err, /counts only/);
+  }
+});
+
+test("--public leaves the repository out of a failure, and a plain run still names it", () => {
+  const env = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V1, ".y": "y\n" } });
+  // A gh that says the repository is private, and fails every other call with a message that holds its path.
+  writeFileSync(
+    path.join(env.bin, "gh"),
+    `#!/usr/bin/env bash
+[[ "$1" == "--version" ]] && { echo "gh version stub"; exit 0; }
+case "$2" in
+  repos/monte3l/m3l-x) printf '{"private":true,"archived":false}' ;;
+  *) echo "gh: repos/monte3l/m3l-x/contents/x failed (HTTP 500)" >&2; exit 1 ;;
+esac
+`,
+  );
+  const publicRun = runSync(env, "--public");
+  assert.equal(publicRun.status, 3);
+  assert.match(publicRun.err, /a repository is private/);
+  assert.doesNotMatch(publicRun.err, /m3l-x/, "no repository name on the public run page");
+  const plain = runSync(env);
+  assert.equal(plain.status, 3);
+  assert.match(plain.err, /monte3l\/m3l-x is private/);
+
+  writeFileSync(
+    path.join(env.bin, "gh"),
+    `#!/usr/bin/env bash
+[[ "$1" == "--version" ]] && { echo "gh version stub"; exit 0; }
+case "$2" in
+  repos/monte3l/m3l-x) printf '{"private":false,"archived":false}' ;;
+  *) echo "gh: repos/monte3l/m3l-x/contents/x failed (HTTP 500)" >&2; exit 1 ;;
+esac
+`,
+  );
+  const failed = runSync(env, "--public");
+  assert.equal(failed.status, 3);
+  assert.match(failed.err, /a read failed \(run without --public/);
+  assert.doesNotMatch(failed.err, /m3l-x/);
+});
