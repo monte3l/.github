@@ -191,16 +191,6 @@ function closingParen(line, open) {
 }
 
 /**
- * What the tokenizer learned about a command beyond its words, kept beside the
- * arrays so `simpleCommands` keeps returning plain `string[][]`:
- * `fed` is true when the command's standard input comes from a pipe, a file or
- * a here-string with an expansion in it, `here` the here-string texts.
- *
- * @type {WeakMap<string[], { fed: boolean, here: string[] }>}
- */
-const commandInfo = new WeakMap();
-
-/**
  * Splits a command line into simple commands, each a list of words, the way a
  * shell reads it: quotes group words and are removed, and `&&`, `||`, `;`, `|`,
  * `&`, parentheses and newlines end a command. What a command runs inside
@@ -208,13 +198,6 @@ const commandInfo = new WeakMap();
  * (after the ones of the line itself), so a push in any of them is seen. A
  * comment is skipped. Text that only names a command (`echo 'git push'`) is one
  * word, not a command.
- *
- * A redirection is not a word: `2>/dev/null`, `>>f`, `<f`, `<<<'text'`, `>&2`,
- * `&>f`, `<&3` and `>|f` are each dropped with their target, so
- * `git 2>/dev/null push` has the words `git push`. An operator inside quotes
- * stays text. A target is never read as a command or a directory, but an
- * expansion in it is still scanned like any other. A here-string given to a
- * shell is read as a script.
  *
  * @param {string} line
  * @param {number} [depth] nesting level, to bound the recursion
@@ -227,53 +210,18 @@ export function simpleCommands(line, depth = 0) {
   let words = [];
   let word = null;
   let quote = null;
-  // The word being read had a quote or an expansion in it, so it is not a bare `2` before `>`.
-  let wordIsPlain = true;
-  // After a redirection operator: the next word is its target, not an argument.
-  let target = null;
-  let fed = false;
-  let here = [];
   const endWord = () => {
-    if (word !== null) {
-      if (target === "here") {
-        here.push(word);
-        // Text with an expansion in it is not known; text without is read as a script below.
-        if (/[$`]/.test(word)) fed = true;
-      } else if (target === null) {
-        words.push(word);
-      }
-      target = null;
-    }
+    if (word !== null) words.push(word);
     word = null;
-    wordIsPlain = true;
   };
   const endCommand = () => {
     endWord();
-    if (words.length > 0) {
-      commands.push(words);
-      commandInfo.set(words, { fed, here });
-    }
+    if (words.length > 0) commands.push(words);
     words = [];
-    fed = false;
-    here = [];
-    target = null;
-  };
-  // An operator begins at `i` and is `length` characters long; its target is the next word.
-  const redirect = (kind, input) => {
-    // A bare number right before the operator is the file descriptor it applies to.
-    if (word !== null && wordIsPlain && /^\d+$/.test(word)) {
-      word = null;
-      wordIsPlain = true;
-    } else {
-      endWord();
-    }
-    target = kind;
-    if (input) fed = true;
   };
   const substitution = (open, end, body) => {
     nested.push(body);
     word = (word ?? "") + line.slice(open, end + 1);
-    wordIsPlain = false;
   };
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
@@ -299,15 +247,10 @@ export function simpleCommands(line, depth = 0) {
     if (c === "'" || c === '"') {
       quote = c;
       word ??= "";
-      wordIsPlain = false;
     } else if (c === "\\" && i + 1 < line.length) {
       // A backslash before a newline joins the lines.
-      if (line[i + 1] === "\n") {
-        i++;
-      } else {
-        word = (word ?? "") + line[++i];
-        wordIsPlain = false;
-      }
+      if (line[i + 1] === "\n") i++;
+      else word = (word ?? "") + line[++i];
     } else if (c === " " || c === "\t") {
       endWord();
     } else if (c === "#" && word === null) {
@@ -322,47 +265,10 @@ export function simpleCommands(line, depth = 0) {
       const end = close === -1 ? line.length : close;
       substitution(i, end, line.slice(i + 1, end));
       i = end;
-    } else if ((c === "<" || c === ">") && line[i + 1] === "(") {
-      // Process substitution: the shell sees a path such as /dev/fd/63, and what runs inside is a command.
-      endWord();
-      if (target !== null) target = null;
-      else words.push("/dev/fd/63");
-    } else if (c === ">") {
-      let j = i + 1;
-      if (line[j] === ">" || line[j] === "&" || line[j] === "|") j++;
-      redirect("out", false);
-      i = j - 1;
-    } else if (c === "<") {
-      let j = i + 1;
-      let kind = "in";
-      if (line[j] === "<") {
-        j++;
-        if (line[j] === "<") {
-          j++;
-          kind = "here";
-        } else {
-          if (line[j] === "-") j++;
-          kind = "heredoc";
-        }
-      } else if (line[j] === "&" || line[j] === ">") {
-        j++;
-      }
-      // A here-document's body is read below as commands, and a here-string's text is handed to a shell.
-      redirect(kind, kind === "in");
-      i = j - 1;
-    } else if (c === "&" && line[i + 1] === ">") {
-      redirect("out", false);
-      i += line[i + 2] === ">" ? 2 : 1;
-    } else if (c === "|") {
-      const next = line[i + 1];
-      endCommand();
-      if (next === "|") {
-        i++;
-      } else {
-        if (next === "&") i++;
-        fed = true;
-      }
-    } else if (c === ";" || c === "&" || c === "\n" || c === "(" || c === ")") {
+    } else if (c === "&" && (line[i - 1] === ">" || line[i - 1] === "<" || line[i + 1] === ">")) {
+      // `>&`, `<&` and `&>` are redirection operators, not the end of a command.
+      word = (word ?? "") + c;
+    } else if (c === ";" || c === "&" || c === "|" || c === "\n" || c === "(" || c === ")") {
       endCommand();
     } else {
       word = (word ?? "") + c;
@@ -377,12 +283,6 @@ export function simpleCommands(line, depth = 0) {
       if (flag >= 0 && words[flag + 1] !== undefined) {
         commands.push(...simpleCommands(words[flag + 1], depth + 1));
       }
-    }
-    // The text a here-string gives a shell is its script.
-    const info = commandInfo.get(words);
-    const at = commandWordAt(words);
-    if (info && at >= 0 && SHELL.test(words[at])) {
-      for (const text of info.here) commands.push(...simpleCommands(text, depth + 1));
     }
     const evalAt = words.indexOf("eval");
     if (evalAt >= 0) commands.push(...simpleCommands(words.slice(evalAt + 1).join(" "), depth + 1));
@@ -490,69 +390,21 @@ function commandWordAt(words) {
 /** An expansion (`$G`, a backtick) where the command word is: it may be git. */
 const EXPANSION_WORD = /^(?:\$|`)/;
 
-const baseName = (w) => w.slice(w.lastIndexOf("/") + 1);
-
-/** A script path that is the shell's own input, not a file: `/dev/stdin`, `/dev/fd/N` (a process substitution). */
-const STDIN_SCRIPT = /^\/dev\/(?:stdin|fd\/\d+)$/;
-
-/** `xargs` options that name a replacement string, which can put its input where a word is. */
-const XARGS_REPLACE = /^(?:-[Ii]|-J|--replace)/;
-
-/**
- * Whether a shell is the command and takes its script from somewhere the line
- * does not show: standard input fed by a pipe, a file or a here-string with an
- * expansion (`echo 'git push' | sh`, `sh < f`), `-s` or `-` or `/dev/stdin`, a
- * process substitution (`bash <(...)`), or a `-c` script that `xargs` fills in
- * (`xargs -I{} sh -c {}`). Such a line may push anything, and the guard treats
- * it as a push of every branch. A script the line spells out (`sh -c 'ls'`,
- * `sh script.sh`, a here-string without an expansion) is read, not guessed at.
- *
- * @param {string[]} words
- * @param {number} commandAt index of the command word
- */
-function runsUnseenScript(words, commandAt) {
-  if (commandAt < 0 || !SHELL.test(words[commandAt])) return false;
-  const fed = commandInfo.get(words)?.fed === true;
-  const xargs = words.slice(0, commandAt).some((w) => baseName(w) === "xargs");
-  let command = false;
-  let stdin = false;
-  let operand = -1;
-  for (let i = commandAt + 1; i < words.length; i++) {
-    const a = words[i];
-    if (a === "--") {
-      if (i + 1 < words.length) operand = i + 1;
-      break;
-    }
-    if (a === "-") {
-      stdin = true;
-      break;
-    }
-    if (/^[-+]/.test(a)) {
-      if (/^-[A-Za-z]+$/.test(a)) {
-        if (a.includes("c")) command = true;
-        if (a.includes("s")) stdin = true;
-      }
-      // `-o NAME`, `-O NAME`, `--rcfile FILE` and `--init-file FILE` take the next word.
-      if (/^[-+][A-Za-z]*[oO]$/.test(a) || a === "--rcfile" || a === "--init-file") i++;
-      continue;
-    }
-    operand = i;
-    break;
-  }
-  if (command) {
-    if (!xargs) return false;
-    // `xargs -0 sh -c` has no script of its own: an input line is one.
-    if (operand < 0) return true;
-    const replace = words.slice(0, commandAt).some((w) => XARGS_REPLACE.test(w));
-    return replace || words[operand].includes("{}");
-  }
-  if (stdin) return fed;
-  if (operand >= 0) return STDIN_SCRIPT.test(words[operand]);
-  return fed;
-}
-
 /** `base` plus a directory a `cd` or `-C` names: an absolute one replaces it. */
 const joinDir = (base, dir) => (path.isAbsolute(dir) ? dir : path.join(base || ".", dir));
+
+/**
+ * A word where git's subcommand belongs that is a redirection (`2>/dev/null`, `>f`, `&>f`, `>&2`) or a
+ * `{fd}` descriptor: the push behind it (`git 2>/dev/null push`) is not read, so the line counts as a
+ * possible push. Quotes are gone by now, so `git '2>x' status` is taken for one too.
+ */
+const REDIRECT_SLOT = /^(?:\d*|&)[<>]|^\{[A-Za-z_]\w*\}(?:[<>].*)?$/;
+
+/** A shell or `xargs` as a word of the line: it can run text the line does not spell out. */
+const SHELL_OR_XARGS = /(?:^|[\s;&|(`'"])(?:[^\s;&|()`'"]*\/)?(?:sh|bash|zsh|dash|ksh|xargs)(?=$|[\s;&|)`'"])/;
+
+/** A push of every branch, for a line that may push but whose push the guard cannot read. */
+const everyBranch = (dirs) => ({ dryRun: false, dirs, tips: ["--branches"] });
 
 /**
  * @typedef {object} GitPush
@@ -566,19 +418,20 @@ const joinDir = (base, dir) => (path.isAbsolute(dir) ? dir : path.join(base || "
 /**
  * Every real `git push` in a shell command string, however it is wrapped.
  * Handles `&&`/`||`/`;`/`|`/`&`/newline chains, subshells, `$(...)`, `bash -c`,
- * `eval`, a prefix such as `sudo` or `env`, git global options and a redirection
- * between the words (`git 2>/dev/null push`). A `cd` is followed when it names a
- * literal directory, and both places are kept, because the `cd` may have failed
- * or happened in a subshell.
+ * `eval`, a prefix such as `sudo` or `env`, and git global options. A `cd` is
+ * followed when it names a literal directory, and both places are kept, because
+ * the `cd` may have failed or happened in a subshell.
  *
- * A command that may push what the line does not spell out counts as a push of
- * every branch (`tips: ["--branches"]`): a shell reading its script from a pipe,
- * a file or `/dev/stdin` (`echo 'git push' | sh`), `xargs` supplying a shell
- * script or a git subcommand. The guard then blocks only if some branch has an
- * unsigned commit that is not yet pushed, as it would for the push itself. This
- * is a deliberate whitelist-by-shape and not a parser of everything a shell can
- * do (a script built by a variable, `eval "$X"`, a program that runs git on its
- * own are not read): the signed-commits ruleset on the remote is the backstop.
+ * Two coarse rules fail closed, each counting as a push of every branch
+ * (`tips: ["--branches"]`), so the guard blocks only when some branch holds an
+ * unsigned commit that is not yet pushed: a line with a shell or `xargs` in it and
+ * also the words `git` and `push` anywhere (`echo 'git push' | sh`,
+ * `xargs -I{} sh -c {}`), and a redirection or `{fd}` word where git's subcommand
+ * belongs (`git 2>/dev/null push`) or among a push's operands
+ * (`git push >/dev/null 2>&1`). No state is kept per pipeline and no operand
+ * is analysed. A script built by a variable, `eval "$X"` or a program that runs
+ * git on its own is not read: the signed-commits ruleset on the remote is the
+ * backstop.
  *
  * @param {string} command
  * @returns {GitPush[]}
@@ -593,9 +446,6 @@ export function parseGitPushes(command) {
       continue;
     }
     const commandAt = commandWordAt(words);
-    // A push that cannot be read from the line: vet every branch where it may run.
-    const unseen = (dirs = places) => pushes.push({ dryRun: false, dirs, tips: ["--branches"] });
-    if (runsUnseenScript(words, commandAt)) unseen();
     words.forEach((word, at) => {
       // A command word that is an expansion (`$G push`) may be git, as the worktree guard also reads it.
       if (!isGitWord(word) && !(at === commandAt && EXPANSION_WORD.test(word))) return;
@@ -613,13 +463,14 @@ export function parseGitPushes(command) {
         }
       }
       if (words[i] !== "push") {
-        // `xargs git` and `xargs -I{} git {}` get the subcommand from the input, which the line does not show.
-        const fromInput = words.slice(0, at).some((w) => baseName(w) === "xargs");
-        if (fromInput && (words[i] === undefined || /[{$`]/.test(words[i]))) unseen(dirs);
+        if (words[i] !== undefined && REDIRECT_SLOT.test(words[i])) pushes.push(everyBranch(dirs));
         return;
       }
       pushes.push({ ...pushArguments(words.slice(i + 1)), dirs });
     });
+  }
+  if (SHELL_OR_XARGS.test(command) && /\bgit\b/.test(command) && /\bpush\b/.test(command)) {
+    pushes.push(everyBranch(places));
   }
   return pushes;
 }
@@ -665,6 +516,10 @@ function pushArguments(args) {
           break;
         }
       }
+    } else if (REDIRECT_SLOT.test(arg)) {
+      // A redirection among the operands (`git push >/dev/null 2>&1`) is no remote or refspec, and its
+      // target may be one: vet every branch rather than guess which word is which.
+      unknown = true;
     } else {
       positional.push(arg);
     }

@@ -1001,23 +1001,22 @@ What the guards read, so a change to them can be judged:
   out; the signed-commits ruleset holds. A directory that cannot be placed is not
   "somewhere else": a `-C` or `cd` operand built at run time (`"$W"`, `$(...)`, a
   backtick, `~`) or one that is no directory makes the guard vet the hook's own
-  repository for it. A redirection is not a word: `2>/dev/null`, `>>f`, `<f`,
-  `>&2`, `&>f` and the rest are dropped with their target, so `git 2>/dev/null push`
-  is a push, while the same characters in quotes stay text. A command that may push
-  what the line does not spell out is treated as a push of every branch, so the
-  guard blocks only if some branch holds an unsigned commit that is not yet pushed:
-  a shell that takes its script from a pipe, a file or `/dev/stdin`
-  (`echo 'git push' | sh`, `sh < f`, `bash <(...)`, `bash -s`), and `xargs`
-  supplying a shell script or a git subcommand (`xargs -0 sh -c`,
-  `xargs -I{} git {}`). A here-string given to a shell is read as the script it
-  is, and a script the line spells out (`sh -c 'ls'`, `sh script.sh`) is read, not
-  guessed at, so `echo foo | sh -c 'ls'` and `cat x | xargs ls` pass. Not covered:
-  a command built so that no text of it says git (a sourced script, a variable
-  holding a whole command, `eval "$X"`), an expansion used as the subcommand
-  (`git $S origin`), and an expansion after `sudo -u USER`, whose user name is read
-  as the command. These are deliberate: the guard reads the shapes it can name and
-  fails towards vetting, and stops there. The signed-commits ruleset on the remote
-  and Gitleaks are what hold.
+  repository for it. Two coarse rules fail towards vetting where a push cannot be
+  read, each counting as a push of every branch, so the guard blocks only if some
+  branch holds an unsigned commit that is not yet pushed: a line with a shell
+  (`sh`, `bash`, `zsh`, `dash`, `ksh`) or `xargs` in it that also has the words
+  `git` and `push` anywhere (`echo 'git push' | sh`, `xargs -I{} sh -c {}`), and a
+  redirection or `{fd}` word where git's subcommand or a push's operand belongs
+  (`git 2>/dev/null push`, `git push >/dev/null 2>&1`). They keep no state per
+  pipeline and read no operand, on purpose: every attempt to follow where a
+  script comes from found another shape. `echo foo | sh -c 'ls'`,
+  `cat x | xargs ls` and `git status 2>&1` have no `git` and `push` together, so
+  they pass. Not covered: a command built so that no text of it says git (a
+  sourced script, a variable holding a whole command, `eval "$X"`), a shell fed a
+  script that does not spell out `git push`, an expansion used as the subcommand
+  (`git $S origin`), and an expansion after `sudo -u USER`, whose user name is
+  read as the command. The guard is best-effort: the signed-commits ruleset on the
+  remote and Gitleaks are what hold.
 - **Secret guard.** The keys it reads are `NPM_TOKEN`, `GITHUB_TOKEN`, `GH_TOKEN`, the three
   `AWS_*` ones and `API_KEY`. A name that only contains one (`MY_API_KEY`) is not matched: a
   project that needs one adds it to `SECRET_KEYS`, which makes its copy custom, so
