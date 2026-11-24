@@ -55,10 +55,24 @@ title='ci: refresh workflow copies from the org templates'
 title_mixed='chore: refresh copies of the org templates and starters'
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 max_bytes=1000000
+# In a workflow run the log of this public repository is readable by anyone. Say how many files and
+# bytes, never which files: that is which copy is behind. A run by hand prints the full detail.
+ci=0
+if [[ "${GITHUB_ACTIONS:-}" == true ]]; then ci=1; fi
 
 die() {
   printf 'error: %s\n' "$*" >&2
   exit 1
+}
+
+# A failed `gh` call names the repository, the branch or the pull request title in its message. In a
+# workflow that log is public, so the call's stderr is dropped and the script says only that it failed.
+gh_() {
+  if [[ "$ci" == 1 ]]; then
+    gh "$@" 2>/dev/null || die "a GitHub call failed"
+  else
+    gh "$@"
+  fi
 }
 
 cd "$dir"
@@ -68,7 +82,7 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "$dir is not a git ch
 # checkout holds no credential.
 git add -A
 if git diff --cached --quiet; then
-  printf '%s: every copy is current: nothing to do\n' "$repo"
+  if [[ "$ci" == 1 ]]; then printf 'every copy is current: nothing to do\n'; else printf '%s: every copy is current: nothing to do\n' "$repo"; fi
   exit 0
 fi
 
@@ -89,13 +103,24 @@ while IFS= read -r changed; do
     other+="$changed "
   fi
 done < <(git diff --cached --name-only --no-renames)
-[[ -z "$other" ]] || die "these changes are neither a workflow file nor a starter a sync may refresh, so none is sent: $other"
+if [[ -n "$other" ]]; then
+  if [[ "$ci" == 1 ]]; then
+    die "$(wc -w <<<"$other" | tr -d ' ') change(s) are neither a workflow file nor a starter a sync may refresh, so none is sent"
+  fi
+  die "these changes are neither a workflow file nor a starter a sync may refresh, so none is sent: $other"
+fi
 [[ "$only_workflows" -eq 1 ]] || title="$title_mixed"
 # Only a change to a file the repository already has: a sync refreshes, never adds or removes.
 nonmod="$(git diff --cached --raw --no-renames | awk '$5 != "M" { print $5, $NF }')"
-[[ -z "$nonmod" ]] || die "a sync only modifies existing files, got: $nonmod"
+if [[ -n "$nonmod" ]]; then
+  if [[ "$ci" == 1 ]]; then die "a sync only modifies existing files, got $(wc -l <<<"$nonmod" | tr -d ' ') that are not"; fi
+  die "a sync only modifies existing files, got: $nonmod"
+fi
 bad_mode="$(git diff --cached --raw --no-renames | awk '$2 != "100644" { print $2, $NF }')"
-[[ -z "$bad_mode" ]] || die "these files are not plain 100644 files, so the API cannot commit them: $bad_mode"
+if [[ -n "$bad_mode" ]]; then
+  if [[ "$ci" == 1 ]]; then die "$(wc -l <<<"$bad_mode" | tr -d ' ') file(s) are not plain 100644 files, so the API cannot commit them"; fi
+  die "these files are not plain 100644 files, so the API cannot commit them: $bad_mode"
+fi
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -114,27 +139,39 @@ done < <(git diff --cached --name-only --no-renames -z)
 ((total <= max_bytes)) || die "the change adds $total bytes, over the $max_bytes the API call is kept to"
 # Same files, same content: same branch, so a repeated run finds its own pull request.
 branch="$prefix$(printf '%s' "$fingerprint" | git hash-object --stdin | cut -c1-12)"
-printf '%s: %d file(s), %d bytes: %s\n' "$repo" "${#files[@]}" "$total" "${files[*]}"
+if [[ "$ci" == 1 ]]; then
+  printf '%d file(s), %d bytes\n' "${#files[@]}" "$total"
+else
+  printf '%s: %d file(s), %d bytes: %s\n' "$repo" "${#files[@]}" "$total" "${files[*]}"
+fi
 
 if [[ "$dry_run" == 1 ]]; then
-  git diff --cached --stat --no-renames
-  printf 'dry run: would commit %s to %s and open "%s"\n' "$branch" "$repo" "$title"
+  if [[ "$ci" == 1 ]]; then
+    printf 'dry run: would commit and open a pull request\n'
+  else
+    git diff --cached --stat --no-renames
+    printf 'dry run: would commit %s to %s and open "%s"\n' "$branch" "$repo" "$title"
+  fi
   exit 0
 fi
 
-default="$(gh api "repos/$repo" --jq .default_branch)"
-base="$(gh api "repos/$repo/git/ref/heads/$default" --jq .object.sha)"
+default="$(gh_ api "repos/$repo" --jq .default_branch)"
+base="$(gh_ api "repos/$repo/git/ref/heads/$default" --jq .object.sha)"
 [[ "$(git rev-parse HEAD)" == "$base" ]] || die "$default moved while the run was working: run it again"
 
-existing="$(gh pr list -R "$repo" --head "$branch" --state all --json state --jq 'map(.state) | join(",")')"
+existing="$(gh_ pr list -R "$repo" --head "$branch" --state all --json state --jq 'map(.state) | join(",")')"
 if [[ -n "$existing" ]]; then
-  printf '%s already has a pull request for these files (%s): not opening another\n' "$repo" "$existing"
+  if [[ "$ci" == 1 ]]; then
+    printf 'a pull request for these files already exists (%s): not opening another\n' "$existing"
+  else
+    printf '%s already has a pull request for these files (%s): not opening another\n' "$repo" "$existing"
+  fi
   exit 0
 fi
 # A branch with no pull request is what a run that failed half way leaves.
 gh api -X DELETE "repos/$repo/git/refs/heads/$branch" >/dev/null 2>&1 || true
 
-gh api -X POST "repos/$repo/git/refs" -f "ref=refs/heads/$branch" -f "sha=$base" >/dev/null
+gh_ api -X POST "repos/$repo/git/refs" -f "ref=refs/heads/$branch" -f "sha=$base" >/dev/null
 # shellcheck disable=SC2016 # the dollar signs are GraphQL variables
 query='mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }'
 if ! jq -n \
@@ -146,12 +183,15 @@ if ! jq -n \
     message: {headline: $title, body: $signoff},
     expectedHeadOid: $oid,
     fileChanges: {additions: $additions}}}}' |
-  gh api graphql --input - >"$work/commit.json"; then
+  gh api graphql --input - >"$work/commit.json" 2>"$work/commit.err"; then
   gh api -X DELETE "repos/$repo/git/refs/heads/$branch" >/dev/null 2>&1 || true
+  if [[ "$ci" == 1 ]]; then die "could not commit the files"; fi
+  cat "$work/commit.err" >&2
   die "could not commit to $branch"
 fi
 if jq -e '.errors' "$work/commit.json" >/dev/null 2>&1; then
   gh api -X DELETE "repos/$repo/git/refs/heads/$branch" >/dev/null 2>&1 || true
+  if [[ "$ci" == 1 ]]; then die "the API refused the commit ($(jq '.errors | length' "$work/commit.json") error(s))"; fi
   die "the API refused the commit: $(jq -c '.errors' "$work/commit.json")"
 fi
 
@@ -163,7 +203,7 @@ body="$(
   printf 'Each file is the current template or starter for this repository. For a workflow, **the action pins are the template'"'"'s**: a pin can be tied to an input in the same file, so they move together. Dependabot here keeps them current afterwards. Read the diff, as a template change can alter what a workflow does. The required checks run on this pull request as on any other.\n\n'
   printf 'Opened by `template-sync.yml` in `monte3l/.github`. Rules: [Workflow template sync](https://github.com/monte3l/.github/blob/main/blueprint/README.md#workflow-template-sync).\n'
 )"
-url="$(gh pr create -R "$repo" --head "$branch" --base "$default" --title "$title" --body "$body")"
+url="$(gh_ pr create -R "$repo" --head "$branch" --base "$default" --title "$title" --body "$body")"
 printf 'opened %s\n' "$url"
 new_number="${url##*/}"
 
@@ -171,10 +211,21 @@ new_number="${url##*/}"
 # from the current files, but only when the bot alone committed to it.
 while IFS=$'\t' read -r number; do
   [[ "$number" != "$new_number" ]] || continue
-  authors="$(gh pr view "$number" -R "$repo" --json commits --jq '[.commits[].authors[].login] | unique | join(",")')"
+  authors="$(gh_ pr view "$number" -R "$repo" --json commits --jq '[.commits[].authors[].login] | unique | join(",")')"
   if [[ "$authors" == "$bot" ]]; then
-    gh pr close "$number" -R "$repo" --delete-branch --comment "Superseded by $url, which refreshes the same files from the current templates."
+    if [[ "$ci" == 1 ]]; then
+      # `gh pr close` reports the pull request's title and the deleted branch: say neither in a public log.
+      gh pr close "$number" -R "$repo" --delete-branch --comment "Superseded by $url, which refreshes the same files from the current templates." >/dev/null 2>&1 ||
+        die "could not close an older pull request"
+      printf 'closed an older pull request\n'
+    else
+      gh pr close "$number" -R "$repo" --delete-branch --comment "Superseded by $url, which refreshes the same files from the current templates."
+    fi
   else
-    printf 'left #%s open: it has commits by %s\n' "$number" "$authors"
+    if [[ "$ci" == 1 ]]; then
+      printf 'left an older pull request open: it has commits by someone else\n'
+    else
+      printf 'left #%s open: it has commits by %s\n' "$number" "$authors"
+    fi
   fi
-done < <(gh pr list -R "$repo" --state open --author "app/monte3l-sync" --json number,headRefName --jq ".[] | select(.headRefName | startswith(\"$prefix\")) | .number")
+done < <(gh_ pr list -R "$repo" --state open --author "app/monte3l-sync" --json number,headRefName --jq ".[] | select(.headRefName | startswith(\"$prefix\")) | .number")

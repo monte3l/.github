@@ -147,8 +147,9 @@ describe("verify-on-stop planning", () => {
     assert.deepEqual(plan(["knowledge/wiki/x.md"]).names.sort(), ["knowledge-parity", "knowledge-report"]);
     assert.ok(plan(["workflow-templates/dco.yml"]).names.includes("template-sync"));
     assert.deepEqual(plan(["bin/new-repo.sh"]).names, ["new-repo"]);
-    for (const f of [".github/workflows/freshness.yml", ".github/workflows/template-sync.yml", "bin/template-sync.mjs"]) {
+    for (const f of [".github/workflows/freshness.yml", ".github/workflows/template-sync.yml", "bin/template-sync.mjs", "bin/template-sync-pr.sh"]) {
       assert.ok(plan([f]).names.includes("freshness-public"), f);
+      assert.ok(plan([f]).names.includes("sync-log-public"), f);
     }
     // The push guard's helper and the guard starters are what the harness tests run.
     assert.ok(plan(["bin/lib/signed-range.mjs"]).names.includes("harness-"));
@@ -157,6 +158,7 @@ describe("verify-on-stop planning", () => {
     assert.equal(plan(["docs/ROADMAP.md"]).check, true);
     const root = path.resolve(hooks, "../..");
     assert.ok(testFiles(root, ["freshness-public"]).some((f) => f.endsWith("freshness-public.test.mjs")));
+    assert.ok(testFiles(root, ["sync-log-public"]).some((f) => f.endsWith("sync-log-public.test.mjs")));
     const files = testFiles(root, plan([".claude/hooks/x.mjs"]).names);
     assert.ok(files.every((f) => path.basename(f).startsWith("harness-")));
     assert.ok(files.length >= 2);
