@@ -1010,13 +1010,14 @@ What the guards read, so a change to them can be judged:
   (`git 2>/dev/null push`, `git push >/dev/null 2>&1`). They keep no state per
   pipeline and read no operand, on purpose: every attempt to follow where a
   script comes from found another shape. `echo foo | sh -c 'ls'`,
-  `cat x | xargs ls` and `git status 2>&1` have no `git` and `push` together, so
-  they pass. Not covered: a command built so that no text of it says git (a
+  `cat x | xargs ls` have no `git` and `push` together, and `git status 2>&1`
+  has its redirection after the subcommand, not in its place, so they pass. Not
+  covered: a command built so that no text of it says git (a
   sourced script, a variable holding a whole command, `eval "$X"`), a shell fed a
   script that does not spell out `git push`, an expansion used as the subcommand
   (`git $S origin`), and an expansion after `sudo -u USER`, whose user name is
   read as the command. The guard is best-effort: the signed-commits ruleset on the
-  remote and Gitleaks are what hold.
+  remote is what holds.
 - **Secret guard.** The keys it reads are `NPM_TOKEN`, `GITHUB_TOKEN`, `GH_TOKEN`, the three
   `AWS_*` ones and `API_KEY`. A name that only contains one (`MY_API_KEY`) is not matched: a
   project that needs one adds it to `SECRET_KEYS`, which makes its copy custom, so
