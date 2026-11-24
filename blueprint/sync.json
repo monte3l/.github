@@ -84,7 +84,8 @@
     "signed-range.mjs": {
       "mode": "managed",
       "paths": [
-        "bin/lib/signed-range.mjs"
+        "bin/lib/signed-range.mjs",
+        ".claude/hooks/lib/signed-range.mjs"
       ]
     },
     "require-signoff.sh": {
