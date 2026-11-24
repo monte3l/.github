@@ -467,12 +467,15 @@ test("a --write run in a workflow prints counts only, and still writes the file"
   const r = runSyncInCi(env, "--write", "OUT");
   assert.equal(r.status, 0, r.err);
   assert.equal(r.written("conf/x.toml"), V2, "the refresh is still written");
-  assert.match(r.out, /refreshed 1 copy, left out 0/);
-  assert.match(r.out, /1 copy is behind its template or starter, in 1 repository/);
+  assert.equal(r.out, "refreshed 1 copy\n", "nothing else: not a table, not a count of what is behind");
   for (const secret of ["conf/x.toml", "x.toml", "m3l-x", "version behind", "S1"]) {
     assert.ok(!r.out.includes(secret), `stdout names "${secret}"`);
     assert.ok(!r.err.includes(secret), `stderr names "${secret}"`);
     assert.ok(!r.findings.includes(secret), `the findings file names "${secret}"`);
+  }
+  // The log says nothing about what is behind or held back. The findings file is not a log: it holds counts.
+  for (const hint of ["behind", "left out"]) {
+    assert.ok(!r.out.includes(hint) && !r.err.includes(hint), `the log says "${hint}"`);
   }
 });
 
@@ -485,7 +488,7 @@ test("the same --write run by hand still prints the table and the finding line",
   assert.equal(r.findings, "m3l-x: conf/x.toml is 1 version behind its starter\n");
 });
 
-test("a workflow left out for its job names is named by hand and not in a workflow", () => {
+test("a workflow left out for its job names is said by hand and not mentioned in a workflow", () => {
   const env = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW } });
   // The template now has another job name than the copy, which still matches an older version of it.
   put(env.dir, "workflow-templates/t.yml", "name: t\njobs:\n  a:\n    name: B\n");
@@ -493,9 +496,8 @@ test("a workflow left out for its job names is named by hand and not in a workfl
   const ci = runSyncInCi(env, "--write", "OUT");
   assert.equal(ci.status, 0, ci.err);
   assert.equal(ci.written(".github/workflows/t.yml"), null, "a refresh that renames a job is not written");
-  assert.match(ci.err, /left out a workflow/);
-  assert.ok(!ci.err.includes("m3l-x") && !ci.err.includes("t.yml"), "no repository or file in a workflow");
-  assert.match(ci.out, /left out 1/);
+  assert.equal(ci.err, "", "a rename hold would tell an outsider which repository renamed a required check");
+  assert.equal(ci.out, "refreshed 0 copies\n");
   const hand = runSync(env, "--write", "OUT");
   assert.match(hand.err, /left out m3l-x t\.yml/);
 });
@@ -508,4 +510,44 @@ test("a failed read in a workflow names no repository", () => {
   assert.doesNotMatch(ci.err, /m3l-x/);
   const hand = runSync(env, "--write", "OUT");
   assert.match(hand.err, /m3l-x/);
+});
+
+// Behavioural: every failure the CLI can reach, in a workflow, whatever the options. The stub gh puts a
+// distinctive repository name, path and message into everything it says, so a message that passes `gh`'s text
+// or a name through shows up. The plan job runs the CLI with --json and no --write, so that is covered too.
+const LEAKS = ["ZZLEAK", "m3l-x", "monte3l/m3l-x", "zzleak/path.yml"];
+const ghStub = (body) => `#!/usr/bin/env bash\n[[ "$1" == "--version" ]] && { echo "gh version stub"; exit 0; }\n${body}\n`;
+const assertNoLeak = (r, what) => {
+  for (const leak of LEAKS) {
+    assert.ok(!r.out.includes(leak), `${what}: stdout names "${leak}": ${r.out}`);
+    assert.ok(!r.err.includes(leak), `${what}: stderr names "${leak}": ${r.err}`);
+  }
+};
+
+for (const options of [["--write", "OUT"], ["--json"], ["--check"], []]) {
+  test(`in a workflow a failure names no repository, path or gh text (${options.join(" ") || "no options"})`, () => {
+    const failures = {
+      "a private repository": 'case "$2" in repos/monte3l/m3l-x) printf \'{"private":true,"archived":false}\' ;; *) echo "ZZLEAK private zzleak/path.yml" >&2; exit 1 ;; esac',
+      "a missing repository": 'echo "gh: Not Found (HTTP 404) repos/monte3l/m3l-x ZZLEAK zzleak/path.yml" >&2; exit 1',
+      "a failed read": 'case "$2" in repos/monte3l/m3l-x) printf \'{"private":false,"archived":false}\' ;; *) echo "gh: repos/monte3l/m3l-x/contents/zzleak/path.yml failed (HTTP 500) ZZLEAK" >&2; exit 1 ;; esac',
+    };
+    for (const [what, body] of Object.entries(failures)) {
+      const env = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW } });
+      writeFileSync(path.join(env.bin, "gh"), ghStub(body));
+      const r = runSyncInCi(env, ...options);
+      assert.notEqual(r.status, 0, `${what} stops the run`);
+      assertNoLeak(r, what);
+    }
+  });
+}
+
+test("in a workflow a template that cannot be rendered names no source", () => {
+  const env = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW } });
+  put(env.dir, "workflow-templates/t.yml", "name: t\n# sync:end\njobs:\n  a:\n    name: A\n");
+  git(env.dir, "commit", "-q", "-am", "break the template");
+  const ci = runSyncInCi(env, "--json");
+  assert.equal(ci.status, 3);
+  assert.doesNotMatch(ci.err, /t\.yml|workflow-templates|sync:end/);
+  const hand = runSync(env, "--json");
+  assert.match(hand.err, /workflow-templates\/t\.yml/, "by hand the source and the reason are named");
 });

@@ -47,9 +47,12 @@
  * summary and its logs are readable by anyone. It cannot be combined with --json or
  * --write, which carry names.
  *
- * A --write run in a workflow (GITHUB_ACTIONS=true) prints counts only as well, and
- * says how many copies it refreshed: the log of a public repository must not say
- * which file is how far behind. The same run by hand prints the full table.
+ * In a workflow (GITHUB_ACTIONS=true) the log of a public repository must not say
+ * which file of which repository is behind. So an error message there names no
+ * repository, file or `gh` text, whatever the options (the plan job runs it with
+ * --json), and a --write run prints only how many copies it refreshed. A copy held
+ * back for its job names is not mentioned there either. The same run by hand prints
+ * the full table and the full messages.
  *
  * It must not be able to report "nothing found" by failing quietly, because a
  * workflow closes its tracking issue on that. So it stops with exit 3 when a
@@ -98,12 +101,14 @@ for (let i = 0; i < args.length; i++) {
 }
 if (publicOutput && (asJson || writeDir !== null)) fail(2, `--public prints counts only, so it cannot be combined with --json or --write\n${USAGE}`);
 if (writeDir !== null && (only === null || only.length !== 1)) fail(2, `--write needs --repos with exactly one repository\n${USAGE}`);
-// In a workflow run (GITHUB_ACTIONS=true) a --write leg prints counts only: a public repository's log is
-// readable by anyone, and which file is how far behind must stay out of it. A run by hand keeps the full
-// table, which is the audit view.
-const countsOnly = publicOutput || (writeDir !== null && process.env.GITHUB_ACTIONS === "true");
+// In a workflow run (GITHUB_ACTIONS=true) the log of a public repository is readable by anyone, and which
+// file of which repository is behind must stay out of it. So under CI an error message names no repository,
+// file or `gh` text (`redact`), and a --write leg prints only how many copies it refreshed (`ciWrite`).
+// A run by hand keeps the full table and the full messages, which is the audit view.
+const inCi = process.env.GITHUB_ACTIONS === "true";
+const redact = publicOutput || inCi;
+const ciWrite = writeDir !== null && inCi;
 let written = 0;
-let leftOut = 0;
 for (const name of [owner, ...(only ?? [])]) if (!NAME_RE.test(name)) fail(2, `not an owner or repository name: ${name}`);
 
 const run = (cmd, argv) => execFileSync(cmd, argv, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 16 * 1024 * 1024 });
@@ -193,10 +198,10 @@ function assertReadable(repo) {
   try {
     info = JSON.parse(run("gh", ["api", `repos/${owner}/${repo}`, "--jq", "{private, archived}"]));
   } catch (error) {
-    if (missing(error)) fail(3, `${countsOnly ? "a repository" : `${owner}/${repo}`} does not exist, or this token cannot see it`);
+    if (missing(error)) fail(3, `${redact ? "a repository" : `${owner}/${repo}`} does not exist, or this token cannot see it`);
     throw error;
   }
-  if (info.private) fail(3, `${countsOnly ? "a repository" : `${owner}/${repo}`} is private, and this token reads public repositories only`);
+  if (info.private) fail(3, `${redact ? "a repository" : `${owner}/${repo}`} is private, and this token reads public repositories only`);
 }
 
 const repos = Object.keys(config.repos).filter((name) => only === null || only.includes(name)).sort();
@@ -236,7 +241,7 @@ try {
       try {
         current = render(versions[unit.source].current, params);
       } catch (error) {
-        fail(3, `${unit.source}: ${error.message}`);
+        fail(3, redact ? "a template could not be rendered (run it by hand for the detail)" : `${unit.source}: ${error.message}`);
       }
       const old = [];
       for (const version of versions[unit.source].old) {
@@ -258,10 +263,9 @@ try {
         const { unit, found, current } = copy;
         // Only a workflow has jobs: a starter has no required check to rename.
         if (unit.kind === "workflow" && jobNames(found.text).join("\n") !== jobNames(current).join("\n")) {
-          leftOut++;
-          console.error(countsOnly
-            ? "template-sync: left out a workflow: the refresh would change its job names, which a required check depends on. A person does this one"
-            : `template-sync: left out ${repo} ${unit.name}.yml: the refresh would change its job names, which a required check depends on. A person does this one`);
+          // A copy held back for its job names says so by hand only: in a public log it would tell an outsider
+          // which repository renamed a required check. The pull request body says a rename is never refreshed.
+          if (!redact) console.error(`template-sync: left out ${repo} ${unit.name}.yml: the refresh would change its job names, which a required check depends on. A person does this one`);
           continue;
         }
         const target = path.join(writeDir, found.path);
@@ -276,7 +280,7 @@ try {
   }
 } catch (error) {
   // The message of a failed `gh` call usually holds the repository's path, so a public run leaves it out.
-  fail(3, publicOutput ? "a read failed (run without --public for the detail)" : countsOnly ? "a read failed (run it by hand for the detail)" : `a read failed: ${String(error.stderr ?? error.message).trim().split("\n")[0]}`);
+  fail(3, publicOutput ? "a read failed (run without --public for the detail)" : redact ? "a read failed (run it by hand for the detail)" : `a read failed: ${String(error.stderr ?? error.message).trim().split("\n")[0]}`);
 }
 
 const stale = results.filter((r) => r.managed && r.state === "STALE");
@@ -301,7 +305,7 @@ const publicSummary = () => {
   return lines;
 };
 if (findingsFile) {
-  const lines = countsOnly ? publicSummary() : findings;
+  const lines = publicOutput || ciWrite ? publicSummary() : findings;
   writeFileSync(findingsFile, lines.length === 0 ? "" : `${lines.join("\n")}\n`);
 }
 
@@ -310,12 +314,14 @@ const countOf = (rows) => {
   for (const r of rows) tally[r.state] = (tally[r.state] ?? 0) + 1;
   return Object.entries(tally).map(([state, n]) => `${state} ${n}`).join(", ");
 };
-if (countsOnly) {
+if (publicOutput) {
   console.log(`managed copies: ${countOf(results.filter((r) => r.managed && r.state !== "MISSING"))}`);
   console.log(`unmanaged copies: ${countOf(results.filter((r) => !r.managed && r.state !== "MISSING"))}`);
   const summary = publicSummary();
   console.log(summary.length === 0 ? "\nfindings: none" : `\nfindings:\n${summary.map((line) => `  ${line}`).join("\n")}`);
-  if (writeDir !== null) console.log(`\nrefreshed ${plural(written, "copy", "copies")}, left out ${leftOut}`);
+} else if (ciWrite) {
+  // A leg exists only for a repository with a stale copy, so even a "behind" count would add nothing to say.
+  console.log(`refreshed ${plural(written, "copy", "copies")}`);
 } else if (asJson) {
   console.log(JSON.stringify({ results, mismatches }, null, 2));
 } else {

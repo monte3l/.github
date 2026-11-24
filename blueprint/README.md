@@ -355,15 +355,28 @@ one. The repository is public and a name would tell an outsider where to aim. Ru
 `node bin/template-sync.mjs` with `gh` access for the full comparison. Eleven
 verbatim starters are compared the same way, see [Starters](#starters).
 
-The log of `template-sync.yml` follows the same rule. In a workflow run
-(`GITHUB_ACTIONS=true`) `template-sync.mjs --write` prints the counts and how many
-copies it refreshed, and `template-sync-pr.sh` prints how many files and bytes, never
-which files, which versions or which commit author. Run by hand, both print the full
-detail: that is the audit view. What stays in a public log is only what GitHub or an
-action prints on its own: the name of the repository being refreshed (in the step's
-environment and in the token action's inputs), and the URL of the pull request it
-opened. The repository names are already public in `sync.json` and the pull request is
-public in the other repository. Which file is behind, or by how many versions, is not.
+The log of `template-sync.yml` follows the same rule, and a test drives both scripts
+through every path it can reach to hold it (`tests/sync-log-public.test.mjs`). In a
+workflow run (`GITHUB_ACTIONS=true`):
+
+- `template-sync.mjs --write` prints only `refreshed N copies`. Its error messages, in
+  the plan job too, name no repository, file, template or `gh` text.
+- A copy held back because its refresh would rename a job is not mentioned in the log.
+- `template-sync-pr.sh` prints how many files and bytes, never which files, versions,
+  branch, title or commit author. A refusal says how many changes it refused, and a
+  failed `gh` call says only that it failed, with its own message dropped.
+
+Run by hand, both print the full detail and the full messages: that is the audit view.
+What a public log still shows:
+
+| What | Why |
+| --- | --- |
+| The repository being refreshed | The step environment, the token action's inputs and `actions/checkout` print it, not these scripts. The names are already public in `sync.json`. |
+| That a leg ran for it | A leg exists only for a repository with a stale copy, so its existence says that one is behind. Not which file, how far, or why. |
+| The URL of the pull request it opened | The script prints it, and it holds the repository name. The pull request is public in the other repository. |
+
+A failure that is not one of those cases, such as an uncaught error from `jq`, can still
+print what the tool prints. The script does not trap every exit.
 
 The template is first **rendered** for the repository: `https://PROJECT.monte3l.com`
 becomes its site, and a block between `# sync:if FLAG` and `# sync:end` stays
