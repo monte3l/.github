@@ -881,7 +881,7 @@ identical apart from its header, as `repair-core-bare.mjs` does.
 | `guard-secret-writes.mjs` | A write (`Write`, `Edit`, `NotebookEdit`) that puts a real secret on disk | Node only; the starter `files/guard-secret-writes.mjs`, see [Other guards](#other-guards) |
 | `guard-double-background.mjs` | A Bash call that backgrounds a command twice (`run_in_background` plus `&` or `nohup`) | Node only; the starter `files/guard-double-background.mjs` |
 | `guard-shell-portability.mjs` | A Bash call that is certain to fail in zsh or on macOS (see [Shell portability guard](#shell-portability-guard)) | Node only; the starter `files/guard-shell-portability.mjs` |
-| `guard-git-push-signed.mjs` | A `git push` with an unsigned outgoing commit, where signing is on | `bin/lib/signed-range.mjs`, the starter `files/signed-range.mjs`; the starter `files/guard-git-push-signed.mjs` |
+| `guard-git-push-signed.mjs` | A `git push` with an unsigned outgoing commit, where signing is on | `bin/lib/signed-range.mjs` or `.claude/hooks/lib/signed-range.mjs`, the starter `files/signed-range.mjs`; the starter `files/guard-git-push-signed.mjs` |
 | `require-signoff.sh` | A `git commit` without `-s` | `jq` or `perl`; the starter `files/require-signoff.sh`, see [Sign-off guard](#sign-off-guard) |
 | `guard-shared-checkout.mjs` | An edit, a `git commit` or a new branch in a repository's main checkout | Node only; the starter `files/guard-shared-checkout.mjs`, see [Worktree guard](#worktree-guard) |
 
@@ -927,8 +927,9 @@ repository's own hook, and `tests/harness-signoff.test.mjs` runs it.
 
 `guard-secret-writes.mjs`, `guard-double-background.mjs`,
 `guard-shell-portability.mjs` and `guard-git-push-signed.mjs` are starters too,
-with `signed-range.mjs` (the helper of the push guard, written to `bin/lib/`).
-The copy in this repository is the one that runs and the one
+with `signed-range.mjs` (the helper of the push guard). A new repository gets it
+in `bin/lib/`; the sync also finds and refreshes a copy at `.claude/hooks/lib/`, where
+a repository whose root is a plugin has no `bin/`. The copy in this repository is the one that runs and the one
 `tests/harness-starter.test.mjs` compares with the starter. Wire each in
 `.claude/settings.json`: the secret guard inside a `Write|Edit|NotebookEdit`
 matcher (a notebook edit names its file `notebook_path` and carries
@@ -1072,8 +1073,10 @@ What the guards read, so a change to them can be judged:
   this repository and expects no hit, so the guard never refuses the edit that
   repairs a file the repository already holds.
 - **Push guard and its helper are one unit.** `guard-git-push-signed.mjs` loads
-  `bin/lib/signed-range.mjs`, and the template sync refreshes each file on its
-  own. A guard beside a helper that is missing or older does not crash (under
+  `signed-range.mjs` from `bin/lib/` or, where the root is a plugin and keeps no
+  `bin/`, from `.claude/hooks/lib/` (the first copy that serves it wins). The sync reads
+  only the first copy it finds, so keep one copy, not two. The template sync refreshes
+  each file on its own. A guard beside a helper that is missing or older does not crash (under
   `onFailure: "block"` that would refuse every `Bash` call): it blocks a command
   that looks like a push, saying to refresh both files, and lets any other command
   through. They are refreshed together: `guard-git-push-signed.mjs` lists
@@ -1255,7 +1258,7 @@ formatter looks, once per repository:
 | --------- | --- | ------------- |
 | Prettier | `.prettierignore` (gitignore syntax) for `design/` and the synced starters. An `overrides` entry with `files` and `"options": { "parser": "json-stringify" }` for the JSON that release-please rewrites, such as `.claude-plugin/plugin.json` and `.release-please-manifest.json`. The parser's whitespace resembles `JSON.stringify()`, which is what release-please writes; that match is observed in two repositories, not documented | prettier.io/docs/ignore, prettier.io/docs/configuration, prettier.io/docs/options |
 | Biome | A negated pattern in `files.includes` (`!design/**`). `!!` also leaves the path out of project analysis | biomejs.dev/guides/configure-biome |
-| ESLint | `globalIgnores([".claude/hooks/guard-*.mjs", "bin/lib/signed-range.mjs"])` in `eslint.config.js`, the helper from `eslint/config` that the ESLint page names for ignoring files and directories. Patterns are relative to the config file | eslint.org/docs/latest/use/configure/ignore |
+| ESLint | `globalIgnores([".claude/hooks/guard-*.mjs", "bin/lib/signed-range.mjs"])` (or `".claude/hooks/lib/signed-range.mjs"` where the helper lives there) in `eslint.config.js`, the helper from `eslint/config` that the ESLint page names for ignoring files and directories. Patterns are relative to the config file | eslint.org/docs/latest/use/configure/ignore |
 | editorconfig-checker | `Exclude` in `.editorconfig-checker.json`, a regular expression per entry | github.com/editorconfig-checker/editorconfig-checker |
 
 The files to list are the vendored `design/` copy, the JSON and YAML a release or
@@ -1265,7 +1268,7 @@ gives:
 | Starter | Path |
 | --- | --- |
 | The worktree guard, the secret guard, the double-background guard, the shell portability guard, the push guard | `.claude/hooks/guard-shared-checkout.mjs`, `.claude/hooks/guard-secret-writes.mjs`, `.claude/hooks/guard-double-background.mjs`, `.claude/hooks/guard-shell-portability.mjs`, `.claude/hooks/guard-git-push-signed.mjs` |
-| The push guard's helper | `bin/lib/signed-range.mjs` |
+| The push guard's helper | `bin/lib/signed-range.mjs`, or `.claude/hooks/lib/signed-range.mjs` where the root is a plugin and keeps no `bin/` |
 | The sign-off guard | `.claude/hooks/require-signoff.sh` |
 | The config files | `.gitattributes`, `.editorconfig`, `.gitleaks.toml`, `CODEOWNERS` (`.github/`, the root or `docs/`) |
 

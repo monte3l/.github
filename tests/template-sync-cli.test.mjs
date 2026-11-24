@@ -208,6 +208,19 @@ test("a stale starter beside a current starter it requires is refreshed", () => 
   assert.equal(r.findings, "m3l-x: .x.toml is 1 version behind its starter\n");
 });
 
+test("a required starter kept at its second allowed path counts as present, and is refreshed there", () => {
+  const starters = {
+    "x.toml": { mode: "managed", paths: [".x.toml"], requires: ["y.cfg"] },
+    "y.cfg": { mode: "managed", paths: [".y", "lib/.y"] },
+  };
+  const env = setup({ starters, yOld: "y0\n", consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V1, "lib/.y": "y0\n" } });
+  const r = runSync(env, "--write", "OUT");
+  assert.equal(r.status, 0, r.err);
+  assert.equal(r.written(".x.toml"), V2, "the guard is not held: its helper is at the second path");
+  assert.equal(r.written("lib/.y"), "y\n");
+  assert.equal(r.written(".y"), null, "nothing is written to the first path");
+});
+
 test("both stale: the pair is refreshed together", () => {
   const env = setup({ starters: PAIR, yOld: "y0\n", consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V1, ".y": "y0\n" } });
   const r = runSync(env, "--write", "OUT");

@@ -245,6 +245,58 @@ describe("push guard beside a helper it does not match", () => {
     }
   });
 
+  // A helper that serves every export and reports one unsigned commit whose sha is `ch` repeated, so the
+  // blocked output says which copy of the helper ran.
+  const stub = (ch) =>
+    [
+      "export const parseGitPushes = () => [{ dryRun: false, tips: ['HEAD'], dirs: [] }];",
+      "export const trustedRoots = () => [];",
+      "export const dirsToVet = () => ['x'];",
+      "export const gitRunner = () => () => '';",
+      "export const signingEnabled = () => true;",
+      "export const outgoingCommits = () => [];",
+      `export const unsignedCommits = () => [{ sha: '${ch.repeat(40)}', code: 'N' }];`,
+    ].join("\n");
+  const place = (dir, rel, text) => {
+    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(dir, rel), text);
+  };
+
+  it("finds the helper at .claude/hooks/lib/ when the repository has no bin/lib one", () => {
+    const dir = install(null);
+    place(dir, ".claude/hooks/lib/signed-range.mjs", stub("c"));
+    const r = run(dir, "git push origin HEAD");
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /refusing to push unsigned/);
+    assert.ok(r.stderr.includes("c".repeat(12)), "the helper beside the guard ran");
+    assert.doesNotMatch(r.stderr, /missing or older/);
+  });
+
+  it("skips an older helper in bin/lib and uses the current one in .claude/hooks/lib/", () => {
+    const dir = install(OLD_HELPER);
+    place(dir, ".claude/hooks/lib/signed-range.mjs", stub("c"));
+    const r = run(dir, "git push origin HEAD");
+    assert.equal(r.status, 2);
+    assert.ok(r.stderr.includes("c".repeat(12)));
+  });
+
+  it("prefers a current bin/lib helper when both places have one", () => {
+    const dir = install(stub("b"));
+    place(dir, ".claude/hooks/lib/signed-range.mjs", stub("c"));
+    const r = run(dir, "git push origin HEAD");
+    assert.equal(r.status, 2);
+    assert.ok(r.stderr.includes("b".repeat(12)));
+    assert.ok(!r.stderr.includes("c".repeat(12)));
+  });
+
+  it("names both places when neither has a usable helper", () => {
+    const dir = install(OLD_HELPER);
+    place(dir, ".claude/hooks/lib/signed-range.mjs", OLD_HELPER);
+    const r = run(dir, "git push origin HEAD");
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /looked in bin\/lib\/ and \.claude\/hooks\/lib\//);
+  });
+
   it("lets every other command through, so one stale file refuses no other call", () => {
     for (const helper of [null, OLD_HELPER]) {
       const dir = install(helper);
@@ -269,9 +321,12 @@ describe("push guard beside a helper it does not match", () => {
     assert.equal(guard?.mode, "managed");
     assert.equal(helper?.mode, "managed");
     assert.deepEqual([guard.paths[0], helper.paths[0]], [".claude/hooks/guard-git-push-signed.mjs", "bin/lib/signed-range.mjs"]);
-    // The relative import the guard loads is the helper's path from the guard's.
+    // A repository whose root is a plugin keeps the helper beside the guard instead, and the sync follows it there.
+    assert.deepEqual(helper.paths, ["bin/lib/signed-range.mjs", ".claude/hooks/lib/signed-range.mjs"]);
+    // The relative imports the guard loads are the helper's paths from the guard's.
     const text = fs.readFileSync(path.join(root, ".claude/hooks/guard-git-push-signed.mjs"), "utf8");
     assert.ok(text.includes('import("../../bin/lib/signed-range.mjs")'));
+    assert.ok(text.includes('import("./lib/signed-range.mjs")'));
   });
 });
 
