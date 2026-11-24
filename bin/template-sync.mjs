@@ -47,6 +47,10 @@
  * summary and its logs are readable by anyone. It cannot be combined with --json or
  * --write, which carry names.
  *
+ * A --write run in a workflow (GITHUB_ACTIONS=true) prints counts only as well, and
+ * says how many copies it refreshed: the log of a public repository must not say
+ * which file is how far behind. The same run by hand prints the full table.
+ *
  * It must not be able to report "nothing found" by failing quietly, because a
  * workflow closes its tracking issue on that. So it stops with exit 3 when a
  * repository cannot be read in full (private, renamed, missing) and with exit 2
@@ -94,6 +98,12 @@ for (let i = 0; i < args.length; i++) {
 }
 if (publicOutput && (asJson || writeDir !== null)) fail(2, `--public prints counts only, so it cannot be combined with --json or --write\n${USAGE}`);
 if (writeDir !== null && (only === null || only.length !== 1)) fail(2, `--write needs --repos with exactly one repository\n${USAGE}`);
+// In a workflow run (GITHUB_ACTIONS=true) a --write leg prints counts only: a public repository's log is
+// readable by anyone, and which file is how far behind must stay out of it. A run by hand keeps the full
+// table, which is the audit view.
+const countsOnly = publicOutput || (writeDir !== null && process.env.GITHUB_ACTIONS === "true");
+let written = 0;
+let leftOut = 0;
 for (const name of [owner, ...(only ?? [])]) if (!NAME_RE.test(name)) fail(2, `not an owner or repository name: ${name}`);
 
 const run = (cmd, argv) => execFileSync(cmd, argv, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 16 * 1024 * 1024 });
@@ -183,10 +193,10 @@ function assertReadable(repo) {
   try {
     info = JSON.parse(run("gh", ["api", `repos/${owner}/${repo}`, "--jq", "{private, archived}"]));
   } catch (error) {
-    if (missing(error)) fail(3, `${publicOutput ? "a repository" : `${owner}/${repo}`} does not exist, or this token cannot see it`);
+    if (missing(error)) fail(3, `${countsOnly ? "a repository" : `${owner}/${repo}`} does not exist, or this token cannot see it`);
     throw error;
   }
-  if (info.private) fail(3, `${publicOutput ? "a repository" : `${owner}/${repo}`} is private, and this token reads public repositories only`);
+  if (info.private) fail(3, `${countsOnly ? "a repository" : `${owner}/${repo}`} is private, and this token reads public repositories only`);
 }
 
 const repos = Object.keys(config.repos).filter((name) => only === null || only.includes(name)).sort();
@@ -248,7 +258,10 @@ try {
         const { unit, found, current } = copy;
         // Only a workflow has jobs: a starter has no required check to rename.
         if (unit.kind === "workflow" && jobNames(found.text).join("\n") !== jobNames(current).join("\n")) {
-          console.error(`template-sync: left out ${repo} ${unit.name}.yml: the refresh would change its job names, which a required check depends on. A person does this one`);
+          leftOut++;
+          console.error(countsOnly
+            ? "template-sync: left out a workflow: the refresh would change its job names, which a required check depends on. A person does this one"
+            : `template-sync: left out ${repo} ${unit.name}.yml: the refresh would change its job names, which a required check depends on. A person does this one`);
           continue;
         }
         const target = path.join(writeDir, found.path);
@@ -257,12 +270,13 @@ try {
         // repository that checks its licence headers inline fails on a workflow that lost them.
         const refreshed = keepHeader(current, found.text);
         writeFileSync(target, refreshed.endsWith("\n") ? refreshed : `${refreshed}\n`);
+        written++;
       }
     }
   }
 } catch (error) {
   // The message of a failed `gh` call usually holds the repository's path, so a public run leaves it out.
-  fail(3, publicOutput ? "a read failed (run without --public for the detail)" : `a read failed: ${String(error.stderr ?? error.message).trim().split("\n")[0]}`);
+  fail(3, publicOutput ? "a read failed (run without --public for the detail)" : countsOnly ? "a read failed (run it by hand for the detail)" : `a read failed: ${String(error.stderr ?? error.message).trim().split("\n")[0]}`);
 }
 
 const stale = results.filter((r) => r.managed && r.state === "STALE");
@@ -287,7 +301,7 @@ const publicSummary = () => {
   return lines;
 };
 if (findingsFile) {
-  const lines = publicOutput ? publicSummary() : findings;
+  const lines = countsOnly ? publicSummary() : findings;
   writeFileSync(findingsFile, lines.length === 0 ? "" : `${lines.join("\n")}\n`);
 }
 
@@ -296,11 +310,12 @@ const countOf = (rows) => {
   for (const r of rows) tally[r.state] = (tally[r.state] ?? 0) + 1;
   return Object.entries(tally).map(([state, n]) => `${state} ${n}`).join(", ");
 };
-if (publicOutput) {
+if (countsOnly) {
   console.log(`managed copies: ${countOf(results.filter((r) => r.managed && r.state !== "MISSING"))}`);
   console.log(`unmanaged copies: ${countOf(results.filter((r) => !r.managed && r.state !== "MISSING"))}`);
   const summary = publicSummary();
   console.log(summary.length === 0 ? "\nfindings: none" : `\nfindings:\n${summary.map((line) => `  ${line}`).join("\n")}`);
+  if (writeDir !== null) console.log(`\nrefreshed ${plural(written, "copy", "copies")}, left out ${leftOut}`);
 } else if (asJson) {
   console.log(JSON.stringify({ results, mismatches }, null, 2));
 } else {

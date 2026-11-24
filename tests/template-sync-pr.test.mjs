@@ -27,9 +27,11 @@ const git = (cwd, ...args) =>
  * allowed paths can be varied; `repo` is the repository name it is asked about.
  * @param {Record<string, string>} before
  * @param {Record<string, string | { text: string, mode?: number }>} after
- * @param {{ config?: object | string, repo?: string }} [options]
+ * `ci` runs it as a workflow does (GITHUB_ACTIONS=true), where the log is public. GITHUB_ACTIONS is cleared otherwise,
+ * because these tests also run in a workflow.
+ * @param {{ config?: object | string, repo?: string, ci?: boolean }} [options]
  */
-function sync_(before, after, { config, repo = "m3l-x" } = {}) {
+function sync_(before, after, { config, repo = "m3l-x", ci = false } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), "consumer-"));
   git(dir, "init", "-q");
   const write = (rel, text, mode) => {
@@ -50,7 +52,7 @@ function sync_(before, after, { config, repo = "m3l-x" } = {}) {
     writeFileSync(path.join(tree, "blueprint", "sync.json"), typeof config === "string" ? config : JSON.stringify(config));
     run = path.join(tree, "bin", "template-sync-pr.sh");
   }
-  const result = spawnSync("bash", [run, `monte3l/${repo}`, dir], { encoding: "utf8", env: { ...process.env, DRY_RUN: "1" } });
+  const result = spawnSync("bash", [run, `monte3l/${repo}`, dir], { encoding: "utf8", env: { ...process.env, DRY_RUN: "1", GITHUB_ACTIONS: ci ? "true" : "" } });
   return { status: result.status, out: result.stdout, err: result.stderr };
 }
 
@@ -168,4 +170,33 @@ test("a sync.json that cannot be read stops the script with its own message", ()
   const { status, err } = sync_(BASE, { ".gitleaks.toml": "# new\n" }, { config: "not json" });
   assert.equal(status, 1);
   assert.match(err, /cannot read the allowed paths from blueprint\/sync\.json/);
+});
+
+// The log of a public repository is readable by anyone: in a workflow the script says how many files and bytes,
+// and never which files, since that is which copy is behind. By hand it prints them, for the person auditing.
+test("in a workflow the log has the counts and no file path, repository or title", () => {
+  const { status, out, err } = sync_(BASE, { ".gitleaks.toml": "# new\n", ".editorconfig": "root = false\n" }, { ci: true });
+  assert.equal(status, 0, err);
+  assert.match(out, /^2 file\(s\), \d+ bytes$/m);
+  for (const named of [".gitleaks.toml", ".editorconfig", "m3l-x", "monte3l/", MIXED_TITLE, "chore/template-sync-"]) {
+    assert.ok(!out.includes(named), `the log names "${named}": ${out}`);
+    assert.ok(!err.includes(named), `stderr names "${named}": ${err}`);
+  }
+  assert.match(out, /dry run: would commit and open a pull request/);
+  assert.doesNotMatch(out, /\|\s+\d+ [+-]/, "no `git diff --stat` file table");
+});
+
+test("by hand the log names the repository and every file, and shows the diff stat", () => {
+  const { status, out, err } = sync_(BASE, { ".gitleaks.toml": "# new\n", ".editorconfig": "root = false\n" });
+  assert.equal(status, 0, err);
+  assert.match(out, /monte3l\/m3l-x: 2 file\(s\), \d+ bytes: .*\.gitleaks\.toml/);
+  assert.match(out, /\.editorconfig/);
+  assert.match(out, /would commit chore\/template-sync-\w+ to monte3l\/m3l-x and open "/);
+});
+
+test("in a workflow an unchanged copy says so without naming the repository", () => {
+  const { status, out } = sync_(BASE, {}, { ci: true });
+  assert.equal(status, 0);
+  assert.equal(out, "every copy is current: nothing to do\n");
+  assert.equal(sync_(BASE, {}).out, "monte3l/m3l-x: every copy is current: nothing to do\n");
 });

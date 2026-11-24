@@ -55,6 +55,10 @@ title='ci: refresh workflow copies from the org templates'
 title_mixed='chore: refresh copies of the org templates and starters'
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 max_bytes=1000000
+# In a workflow run the log of this public repository is readable by anyone. Say how many files and
+# bytes, never which files: that is which copy is behind. A run by hand prints the full detail.
+ci=0
+if [[ "${GITHUB_ACTIONS:-}" == true ]]; then ci=1; fi
 
 die() {
   printf 'error: %s\n' "$*" >&2
@@ -68,7 +72,7 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "$dir is not a git ch
 # checkout holds no credential.
 git add -A
 if git diff --cached --quiet; then
-  printf '%s: every copy is current: nothing to do\n' "$repo"
+  if [[ "$ci" == 1 ]]; then printf 'every copy is current: nothing to do\n'; else printf '%s: every copy is current: nothing to do\n' "$repo"; fi
   exit 0
 fi
 
@@ -114,11 +118,19 @@ done < <(git diff --cached --name-only --no-renames -z)
 ((total <= max_bytes)) || die "the change adds $total bytes, over the $max_bytes the API call is kept to"
 # Same files, same content: same branch, so a repeated run finds its own pull request.
 branch="$prefix$(printf '%s' "$fingerprint" | git hash-object --stdin | cut -c1-12)"
-printf '%s: %d file(s), %d bytes: %s\n' "$repo" "${#files[@]}" "$total" "${files[*]}"
+if [[ "$ci" == 1 ]]; then
+  printf '%d file(s), %d bytes\n' "${#files[@]}" "$total"
+else
+  printf '%s: %d file(s), %d bytes: %s\n' "$repo" "${#files[@]}" "$total" "${files[*]}"
+fi
 
 if [[ "$dry_run" == 1 ]]; then
-  git diff --cached --stat --no-renames
-  printf 'dry run: would commit %s to %s and open "%s"\n' "$branch" "$repo" "$title"
+  if [[ "$ci" == 1 ]]; then
+    printf 'dry run: would commit and open a pull request\n'
+  else
+    git diff --cached --stat --no-renames
+    printf 'dry run: would commit %s to %s and open "%s"\n' "$branch" "$repo" "$title"
+  fi
   exit 0
 fi
 
@@ -128,7 +140,11 @@ base="$(gh api "repos/$repo/git/ref/heads/$default" --jq .object.sha)"
 
 existing="$(gh pr list -R "$repo" --head "$branch" --state all --json state --jq 'map(.state) | join(",")')"
 if [[ -n "$existing" ]]; then
-  printf '%s already has a pull request for these files (%s): not opening another\n' "$repo" "$existing"
+  if [[ "$ci" == 1 ]]; then
+    printf 'a pull request for these files already exists (%s): not opening another\n' "$existing"
+  else
+    printf '%s already has a pull request for these files (%s): not opening another\n' "$repo" "$existing"
+  fi
   exit 0
 fi
 # A branch with no pull request is what a run that failed half way leaves.
@@ -175,6 +191,10 @@ while IFS=$'\t' read -r number; do
   if [[ "$authors" == "$bot" ]]; then
     gh pr close "$number" -R "$repo" --delete-branch --comment "Superseded by $url, which refreshes the same files from the current templates."
   else
-    printf 'left #%s open: it has commits by %s\n' "$number" "$authors"
+    if [[ "$ci" == 1 ]]; then
+      printf 'left an older pull request open: it has commits by someone else\n'
+    else
+      printf 'left #%s open: it has commits by %s\n' "$number" "$authors"
+    fi
   fi
 done < <(gh pr list -R "$repo" --state open --author "app/monte3l-sync" --json number,headRefName --jq ".[] | select(.headRefName | startswith(\"$prefix\")) | .number")

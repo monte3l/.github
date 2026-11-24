@@ -355,6 +355,16 @@ one. The repository is public and a name would tell an outsider where to aim. Ru
 `node bin/template-sync.mjs` with `gh` access for the full comparison. Eleven
 verbatim starters are compared the same way, see [Starters](#starters).
 
+The log of `template-sync.yml` follows the same rule. In a workflow run
+(`GITHUB_ACTIONS=true`) `template-sync.mjs --write` prints the counts and how many
+copies it refreshed, and `template-sync-pr.sh` prints how many files and bytes, never
+which files, which versions or which commit author. Run by hand, both print the full
+detail: that is the audit view. What stays in a public log is only what GitHub or an
+action prints on its own: the name of the repository being refreshed (in the step's
+environment and in the token action's inputs), and the URL of the pull request it
+opened. The repository names are already public in `sync.json` and the pull request is
+public in the other repository. Which file is behind, or by how many versions, is not.
+
 The template is first **rendered** for the repository: `https://PROJECT.monte3l.com`
 becomes its site, and a block between `# sync:if FLAG` and `# sync:end` stays
 only in a repository that has that flag in `sync.json`. Then the two are

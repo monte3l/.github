@@ -78,13 +78,18 @@ esac
   return { dir, bin };
 }
 
-function runSync({ dir, bin }, ...args) {
+// A run by hand: GITHUB_ACTIONS is cleared, because these tests also run in a workflow, where it is "true"
+// and a --write run prints counts only.
+const runSync = (setup, ...args) => runSyncIn("", setup, ...args);
+const runSyncInCi = (setup, ...args) => runSyncIn("true", setup, ...args);
+
+function runSyncIn(githubActions, { dir, bin }, ...args) {
   const out = path.join(dir, "out");
   const findings = path.join(dir, "findings.txt");
   const result = spawnSync("node", [path.join(dir, "bin", "template-sync.mjs"), "--repos", "m3l-x", "--findings", findings, ...args.map((a) => (a === "OUT" ? out : a))], {
     cwd: dir,
     encoding: "utf8",
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, GITHUB_ACTIONS: githubActions },
   });
   return { status: result.status, out: result.stdout, err: result.stderr, written: (rel) => (existsSync(path.join(out, rel)) ? readFileSync(path.join(out, rel), "utf8") : null), findings: existsSync(findings) ? readFileSync(findings, "utf8") : null };
 }
@@ -452,4 +457,55 @@ esac
   assert.equal(failed.status, 3);
   assert.match(failed.err, /a read failed \(run without --public/);
   assert.doesNotMatch(failed.err, /m3l-x/);
+});
+
+// The log of a public repository is readable by anyone. A --write run in a workflow (GITHUB_ACTIONS=true) says
+// how many copies it refreshed and never which file is behind or by how many versions. By hand it still
+// prints the full table, which is the audit view.
+test("a --write run in a workflow prints counts only, and still writes the file", () => {
+  const env = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW, "conf/x.toml": V1 } });
+  const r = runSyncInCi(env, "--write", "OUT");
+  assert.equal(r.status, 0, r.err);
+  assert.equal(r.written("conf/x.toml"), V2, "the refresh is still written");
+  assert.match(r.out, /refreshed 1 copy, left out 0/);
+  assert.match(r.out, /1 copy is behind its template or starter, in 1 repository/);
+  for (const secret of ["conf/x.toml", "x.toml", "m3l-x", "version behind", "S1"]) {
+    assert.ok(!r.out.includes(secret), `stdout names "${secret}"`);
+    assert.ok(!r.err.includes(secret), `stderr names "${secret}"`);
+    assert.ok(!r.findings.includes(secret), `the findings file names "${secret}"`);
+  }
+});
+
+test("the same --write run by hand still prints the table and the finding line", () => {
+  const env = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW, "conf/x.toml": V1 } });
+  const r = runSync(env, "--write", "OUT");
+  assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /x\.toml\s+S1/);
+  assert.match(r.out, /m3l-x: conf\/x\.toml is 1 version behind its starter/);
+  assert.equal(r.findings, "m3l-x: conf/x.toml is 1 version behind its starter\n");
+});
+
+test("a workflow left out for its job names is named by hand and not in a workflow", () => {
+  const env = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW } });
+  // The template now has another job name than the copy, which still matches an older version of it.
+  put(env.dir, "workflow-templates/t.yml", "name: t\njobs:\n  a:\n    name: B\n");
+  git(env.dir, "commit", "-q", "-am", "rename the job");
+  const ci = runSyncInCi(env, "--write", "OUT");
+  assert.equal(ci.status, 0, ci.err);
+  assert.equal(ci.written(".github/workflows/t.yml"), null, "a refresh that renames a job is not written");
+  assert.match(ci.err, /left out a workflow/);
+  assert.ok(!ci.err.includes("m3l-x") && !ci.err.includes("t.yml"), "no repository or file in a workflow");
+  assert.match(ci.out, /left out 1/);
+  const hand = runSync(env, "--write", "OUT");
+  assert.match(hand.err, /left out m3l-x t\.yml/);
+});
+
+test("a failed read in a workflow names no repository", () => {
+  const env = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW } });
+  writeFileSync(path.join(env.bin, "gh"), `#!/usr/bin/env bash\n[[ "$1" == "--version" ]] && { echo "gh version stub"; exit 0; }\necho "gh: repos/monte3l/m3l-x failed (HTTP 500)" >&2\nexit 1\n`);
+  const ci = runSyncInCi(env, "--write", "OUT");
+  assert.equal(ci.status, 3);
+  assert.doesNotMatch(ci.err, /m3l-x/);
+  const hand = runSync(env, "--write", "OUT");
+  assert.match(hand.err, /m3l-x/);
 });
