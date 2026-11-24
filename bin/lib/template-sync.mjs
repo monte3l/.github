@@ -274,7 +274,43 @@ export function unitsFor(config, repo) {
       requires: entry.requires ?? [],
       skipped: skip.has(name),
     }));
-  return [...workflows, ...starters];
+  return [...workflows, ...starters, ...twinsFor(config, repo, skip)];
+}
+
+/**
+ * The extra verbatim copies of a starter that one repository keeps (`repos.<name>.twins`, a map from a
+ * starter name to a list of paths): m3l-groundwork emits a project from `templates/core`, which holds a copy of
+ * each guard beside the one the repository runs itself. Each is a unit of its own, named `STARTER+N` (N counts
+ * from 1 in the order of the list), compared and refreshed exactly like the starter's main copy: same source,
+ * same history, same header rule. Skipping the starter skips its twins. A twin of a starter that `requires`
+ * another is held until the twin of that other starter (the one with the same N) is usable, or the main
+ * copy when the repository has no such twin.
+ *
+ * @param {{ starters?: Record<string, { mode: string, requires?: string[] }>, repos?: Record<string, { twins?: Record<string, string[]> }> }} config
+ * @param {string} repo
+ * @param {Set<string>} skip
+ * @returns {Array<{ name: string, kind: "starter", source: string, managed: boolean, paths: string[], requires: string[], skipped: boolean, twinOf: string }>}
+ */
+function twinsFor(config, repo, skip) {
+  const twins = config.repos?.[repo]?.twins ?? {};
+  const units = [];
+  for (const starter of Object.keys(twins).sort()) {
+    const entry = config.starters?.[starter];
+    if (!entry) continue;
+    twins[starter].forEach((twinPath, i) => {
+      units.push({
+        name: `${starter}+${i + 1}`,
+        kind: /** @type {const} */ ("starter"),
+        source: `blueprint/files/${starter}`,
+        managed: entry.mode === "managed",
+        paths: [twinPath],
+        requires: (entry.requires ?? []).map((need) => (twins[need]?.[i] === undefined ? need : `${need}+${i + 1}`)),
+        skipped: skip.has(starter),
+        twinOf: starter,
+      });
+    });
+  }
+  return units;
 }
 
 /**
@@ -295,7 +331,8 @@ export function holdUncoupled(rows, config) {
     need.state === "IDENTICAL" || need.state === "EQUIVALENT" || (need.state === "STALE" && need.managed);
   return rows.map((row) => {
     if (row.kind !== "starter" || !row.managed || row.state !== "STALE") return row;
-    for (const name of config.starters?.[row.template]?.requires ?? []) {
+    // A twin carries its own `requires` (the twin of the helper, not the helper): it is not a key of `starters`.
+    for (const name of row.requires ?? config.starters?.[row.template]?.requires ?? []) {
       const need = byName.get(name);
       if (need && ready(need)) continue;
       const why = !need || need.state === "MISSING" ? "is missing" : need.state === "CUSTOM" ? "is custom" : need.state === "SKIPPED" ? "is skipped" : "is not managed";

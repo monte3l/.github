@@ -143,6 +143,27 @@ test("a starter's own paths are still sent when the repository has an override e
   assert.equal(status, 0, err);
 });
 
+// A twin is an extra copy of a starter that one repository keeps (`repos.<name>.twins`), refreshed like the main copy.
+const TWIN = { starters: { x: { mode: "managed", paths: [".x"] } }, repos: { "m3l-x": { twins: { x: ["core/.x"] } } } };
+const TWIN_BASE = { ...BASE, ".x": "a\n", "core/.x": "a\n" };
+
+test("a twin a repository declares is sent for that repository", () => {
+  const { status, out, err } = sync_(TWIN_BASE, { "core/.x": "b\n" }, { config: TWIN });
+  assert.equal(status, 0, err);
+  assert.match(out, /1 file\(s\)/);
+});
+
+test("the same twin path is refused for a repository that did not declare it", () => {
+  const { status, err } = sync_(TWIN_BASE, { "core/.x": "b\n" }, { config: TWIN, repo: "m3l-y" });
+  assert.equal(status, 1);
+  assert.match(err, /core\/\.x/);
+});
+
+test("a twin and the main copy are sent together", () => {
+  const { status, err } = sync_(TWIN_BASE, { ".x": "b\n", "core/.x": "b\n" }, { config: TWIN });
+  assert.equal(status, 0, err);
+});
+
 test("a sync.json that cannot be read stops the script with its own message", () => {
   const { status, err } = sync_(BASE, { ".gitleaks.toml": "# new\n" }, { config: "not json" });
   assert.equal(status, 1);

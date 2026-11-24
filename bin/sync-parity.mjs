@@ -10,7 +10,8 @@
  * template that is not closed, or names an undeclared flag; or, for a starter, a
  * file that is not in `blueprint/files/`, a path that could leave the repository,
  * or a first path that is not where `bootstrap.json` writes it; a `requires` that
- * names no starter, and a repository `skip` that names neither a template nor a starter.
+ * names no starter, a repository `skip` that names neither a template nor a starter, and a
+ * repository `twins` entry that names no starter or lists a path twice or one already taken.
  *
  * The template sync reads this file to decide what it may touch, so a typo here
  * would quietly widen or narrow that.
@@ -135,6 +136,23 @@ export default async function parity({ root }) {
     for (const [name, value] of Object.entries(entry.paths ?? {})) {
       if (!(name in config.templates) && !(name in starters)) problems.push(`blueprint/sync.json: ${repo} sets a path for "${name}", which is neither a workflow template nor a starter`);
       problems.push(...pathProblems(`blueprint/sync.json: ${repo}, the path for "${name}",`, value));
+    }
+    // `twins` are extra verbatim copies of a starter in one repository. Two units at one path would be written twice.
+    if (entry.twins !== undefined) {
+      const taken = new Set([...Object.values(entry.paths ?? {}), ...Object.values(starters).flatMap((s) => s.paths ?? [])]);
+      for (const [name, list] of Object.entries(entry.twins ?? {})) {
+        const where = `blueprint/sync.json: ${repo}, the twins of "${name}",`;
+        if (!(name in starters)) problems.push(`${where} name something that is not a starter`);
+        if (!Array.isArray(list) || list.length === 0) {
+          problems.push(`${where} are not a non-empty list of paths`);
+          continue;
+        }
+        for (const p of list) {
+          problems.push(...pathProblems(where, p));
+          if (taken.has(p)) problems.push(`${where} include "${p}", which is already the path of a starter or a repository path`);
+          taken.add(p);
+        }
+      }
     }
   }
   return problems;

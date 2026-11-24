@@ -113,6 +113,23 @@
       ],
       "paths": {
         "verify": ".github/workflows/ci.yml"
+      },
+      "twins": {
+        "guard-double-background.mjs": [
+          "templates/core/.claude/hooks/guard-double-background.mjs"
+        ],
+        "guard-git-push-signed.mjs": [
+          "templates/core/.claude/hooks/guard-git-push-signed.mjs"
+        ],
+        "guard-secret-writes.mjs": [
+          "templates/core/.claude/hooks/guard-secret-writes.mjs"
+        ],
+        "guard-shell-portability.mjs": [
+          "templates/packs/harness-extras/files/.claude/hooks/guard-shell-portability.mjs"
+        ],
+        "signed-range.mjs": [
+          "templates/core/bin/lib/signed-range.mjs"
+        ]
       }
     },
     "m3l-output-governor": {
