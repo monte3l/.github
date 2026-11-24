@@ -118,6 +118,98 @@ describe("push guard: what counts as a push", () => {
     outgoingCommits(runGit, ["--output=/tmp/x", "HEAD"]);
     assert.ok(!calls.flat().includes("--output=/tmp/x"));
   });
+
+  it("reads a redirection as no word at all, so it cannot stand where the subcommand is", () => {
+    for (const command of [
+      "git 2>/dev/null push",
+      "git >/dev/null push",
+      "git 2>&1 push",
+      "git &>/dev/null push",
+      "git >>log push",
+      "git 2> /dev/null push",
+      "git <&3 push",
+      "git >|f push",
+      "git 1>&2 push",
+      "git 3>&- push",
+      "2>&1 git push",
+      ">log git push",
+      "git -C x 2>/dev/null push",
+      "git push 2>&1",
+      "git push >/dev/null 2>&1",
+    ]) {
+      assert.equal(real(command), 1, command);
+    }
+    assert.deepEqual(simpleCommands("git push origin x 2>&1 >out"), [["git", "push", "origin", "x"]]);
+    // The target is dropped, not read as a directory or a refspec.
+    assert.deepEqual(parseGitPushes("git push origin x >log")[0].tips, ["x"]);
+  });
+
+  it("keeps an operator inside quotes or after a backslash as text", () => {
+    assert.deepEqual(simpleCommands("git \"2>x\" status"), [["git", "2>x", "status"]]);
+    assert.deepEqual(simpleCommands("echo 'a > b' c"), [["echo", "a > b", "c"]]);
+    assert.deepEqual(simpleCommands("echo a\\>b"), [["echo", "a>b"]]);
+    assert.equal(real("git '2>x' push"), 0);
+    // A number that is an argument, not a file descriptor, stays one.
+    assert.deepEqual(simpleCommands("echo 2 > f"), [["echo", "2"]]);
+    assert.deepEqual(simpleCommands("echo '2'>f"), [["echo", "2"]]);
+  });
+
+  it("still scans an expansion inside a redirection target", () => {
+    assert.equal(real("echo ok > $(git push)"), 1);
+    assert.equal(real("cat <<EOF\ngit push\nEOF"), 1);
+  });
+
+  it("counts a shell that reads a script the line does not show as a push of every branch", () => {
+    for (const command of [
+      "echo 'git push' | sh",
+      "echo x | bash",
+      "cat x | zsh",
+      "echo x | sh -s",
+      "echo x | bash -",
+      "echo x | sh /dev/stdin",
+      "echo x | sh -e",
+      "echo x | bash -o pipefail",
+      "echo x | /bin/bash --norc",
+      "sh < script.sh",
+      "bash <<< \"$CMD\"",
+      "bash <(echo git push)",
+      "echo 'git push' | xargs -0 sh -c",
+      "echo 'git push' | xargs -I{} sh -c {}",
+      "echo push | xargs git",
+      "echo push | xargs -I{} git {}",
+    ]) {
+      const pushes = parseGitPushes(command);
+      assert.ok(pushes.some((p) => !p.dryRun && p.tips.includes("--branches")), command);
+    }
+  });
+
+  it("reads a here-string given to a shell as its script", () => {
+    assert.deepEqual(parseGitPushes("bash <<< 'git push origin x'").map((p) => p.tips), [["x"]]);
+    assert.deepEqual(parseGitPushes("bash <<< 'echo hi'"), []);
+  });
+
+  it("keeps the ordinary commands out of it", () => {
+    for (const command of [
+      "git status 2>&1",
+      "git push --dry-run 2>&1",
+      "echo foo | sh -c 'ls'",
+      "cat x | xargs ls",
+      "echo hi | xargs -n1 echo",
+      "find . | xargs sh -c 'ls \"$@\"' _",
+      "xargs git status",
+      "sh script.sh",
+      "cat f | bash script.sh",
+      "bash -c 'echo hi' 2>/dev/null",
+      "git log > out.txt",
+      "echo $((1>2))",
+      "git diff | less",
+      "ls 2>/dev/null | wc -l",
+      "sh",
+      "sh -s",
+    ]) {
+      assert.equal(real(command), 0, command);
+    }
+  });
 });
 
 describe("push guard: the range it vets", () => {
@@ -196,6 +288,37 @@ describe("push guard: the range it vets", () => {
       allows(command);
     }
     git(repo, "checkout", "-q", "idle");
+  });
+
+  it("blocks a push with a redirection where the subcommand is, and a shell that reads a script it does not show", () => {
+    // HEAD is `idle`, which has nothing new: only the other branch holds the unsigned commit.
+    for (const command of [
+      "git 2>/dev/null push origin topic",
+      "git >/dev/null push origin topic",
+      "git 2>&1 push origin topic",
+      "echo 'git push origin topic' | sh",
+      "echo x | bash -s",
+      "bash <<< \"$CMD\"",
+      "echo 'git push origin topic' | xargs -0 sh -c",
+      "echo push | xargs git",
+    ]) {
+      blocks(command);
+    }
+    blocks("bash <<< 'git push origin topic'");
+  });
+
+  it("lets the ordinary redirections, pipes and shells through", () => {
+    for (const command of [
+      "git status 2>&1",
+      "git push 2>&1",
+      "echo foo | sh -c 'ls'",
+      "cat x | xargs ls",
+      "bash <<< 'echo hi'",
+      "sh script.sh",
+      "ls 2>/dev/null | wc -l",
+    ]) {
+      allows(command);
+    }
   });
 
   it("still blocks the plain push of an unsigned HEAD, and fails closed on an unreadable payload", () => {

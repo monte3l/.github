@@ -33,7 +33,13 @@
  * in the repository the hook runs in, its worktrees or CLAUDE_PROJECT_DIR; a
  * directory built at run time (`-C "$W"`, `~`) cannot be placed, so the hook's
  * own is vetted for it. A command word that is an expansion (`$G push`) is read
- * as a possible git. It is a local, best-effort check, not a security boundary.
+ * as a possible git. A redirection is not a word (`git 2>/dev/null push` is a
+ * push). A shell that takes its script from a pipe, a file or `/dev/stdin`
+ * (`echo 'git push' | sh`), and `xargs` supplying a shell script or a git
+ * subcommand, may push anything: it counts as a push of every branch, so the
+ * hook blocks only when some branch holds an unsigned commit that is not yet
+ * pushed. A script built by a variable, `eval "$X"` or another program that runs
+ * git is not read. It is a local, best-effort check, not a security boundary.
  */
 import process from "node:process";
 import { realpathSync } from "node:fs";
