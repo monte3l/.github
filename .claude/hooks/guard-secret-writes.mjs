@@ -44,6 +44,7 @@ export const SECRET_KEYS = [
   "AWS_SECRET_ACCESS_KEY",
   "AWS_ACCESS_KEY_ID",
   "AWS_SESSION_TOKEN",
+  "API_KEY",
 ];
 
 // High-signal literal shapes -- a match is almost certainly a real credential.
