@@ -323,11 +323,10 @@ describe("push guard beside a helper it does not match", () => {
     assert.deepEqual([guard.paths[0], helper.paths[0]], [".claude/hooks/guard-git-push-signed.mjs", "bin/lib/signed-range.mjs"]);
     // A repository whose root is a plugin keeps the helper beside the guard instead, and the sync follows it there.
     assert.deepEqual(helper.paths, ["bin/lib/signed-range.mjs", ".claude/hooks/lib/signed-range.mjs"]);
-    // A repository whose root is a plugin keeps the helper beside the guard instead, and the sync follows it there.
-    assert.deepEqual(helper.paths, ["bin/lib/signed-range.mjs", ".claude/hooks/lib/signed-range.mjs"]);
-    // The relative import the guard loads is the helper's path from the guard's.
+    // The relative imports the guard loads are the helper's paths from the guard's.
     const text = fs.readFileSync(path.join(root, ".claude/hooks/guard-git-push-signed.mjs"), "utf8");
     assert.ok(text.includes('import("../../bin/lib/signed-range.mjs")'));
+    assert.ok(text.includes('import("./lib/signed-range.mjs")'));
   });
 });
 
