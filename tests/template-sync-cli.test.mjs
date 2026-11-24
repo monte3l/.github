@@ -283,3 +283,40 @@ test("--public refuses --json and --write, which carry names", () => {
     assert.match(r.err, /counts only/);
   }
 });
+
+test("--public leaves the repository out of a failure, and a plain run still names it", () => {
+  const env = setup({ consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V1, ".y": "y\n" } });
+  // A gh that says the repository is private, and fails every other call with a message that holds its path.
+  writeFileSync(
+    path.join(env.bin, "gh"),
+    `#!/usr/bin/env bash
+[[ "$1" == "--version" ]] && { echo "gh version stub"; exit 0; }
+case "$2" in
+  repos/monte3l/m3l-x) printf '{"private":true,"archived":false}' ;;
+  *) echo "gh: repos/monte3l/m3l-x/contents/x failed (HTTP 500)" >&2; exit 1 ;;
+esac
+`,
+  );
+  const publicRun = runSync(env, "--public");
+  assert.equal(publicRun.status, 3);
+  assert.match(publicRun.err, /a repository is private/);
+  assert.doesNotMatch(publicRun.err, /m3l-x/, "no repository name on the public run page");
+  const plain = runSync(env);
+  assert.equal(plain.status, 3);
+  assert.match(plain.err, /monte3l\/m3l-x is private/);
+
+  writeFileSync(
+    path.join(env.bin, "gh"),
+    `#!/usr/bin/env bash
+[[ "$1" == "--version" ]] && { echo "gh version stub"; exit 0; }
+case "$2" in
+  repos/monte3l/m3l-x) printf '{"private":false,"archived":false}' ;;
+  *) echo "gh: repos/monte3l/m3l-x/contents/x failed (HTTP 500)" >&2; exit 1 ;;
+esac
+`,
+  );
+  const failed = runSync(env, "--public");
+  assert.equal(failed.status, 3);
+  assert.match(failed.err, /a read failed \(run without --public/);
+  assert.doesNotMatch(failed.err, /m3l-x/);
+});

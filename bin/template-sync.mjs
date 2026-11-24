@@ -175,10 +175,10 @@ function assertReadable(repo) {
   try {
     info = JSON.parse(run("gh", ["api", `repos/${owner}/${repo}`, "--jq", "{private, archived}"]));
   } catch (error) {
-    if (missing(error)) fail(3, `${owner}/${repo} does not exist, or this token cannot see it`);
+    if (missing(error)) fail(3, `${publicOutput ? "a repository" : `${owner}/${repo}`} does not exist, or this token cannot see it`);
     throw error;
   }
-  if (info.private) fail(3, `${owner}/${repo} is private, and this token reads public repositories only`);
+  if (info.private) fail(3, `${publicOutput ? "a repository" : `${owner}/${repo}`} is private, and this token reads public repositories only`);
 }
 
 const repos = Object.keys(config.repos).filter((name) => only === null || only.includes(name)).sort();
@@ -252,7 +252,8 @@ try {
     }
   }
 } catch (error) {
-  fail(3, `a read failed: ${String(error.stderr ?? error.message).trim().split("\n")[0]}`);
+  // The message of a failed `gh` call usually holds the repository's path, so a public run leaves it out.
+  fail(3, publicOutput ? "a read failed (run without --public for the detail)" : `a read failed: ${String(error.stderr ?? error.message).trim().split("\n")[0]}`);
 }
 
 const stale = results.filter((r) => r.managed && r.state === "STALE");

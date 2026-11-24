@@ -5,8 +5,8 @@
  *
  *  - Counts only in the public repository. `monte3l/.github` is public, and its
  *    audit output carries counts, never which repository is out of line. A
- *    body that holds a `DRIFT` line, or a line saying a copy is "behind its
- *    starter/template", and the name of an org repository is denied there
+ *    body that holds a `DRIFT` line, or a line saying a copy is N versions
+ *    "behind" (its starter or template), and the name of an org repository is denied there
  *    (exit 2).
  *  - A suspected vulnerability is not an issue. The tracking policy routes it
  *    to a private report and a security advisory. Text with vulnerability
@@ -39,9 +39,10 @@ const VULNERABILITY = /vulnerab|\bCVE-\d{4}-\d{3,}|\bexploit|security advisory|z
 // The baseline prints `DRIFT  label`. Match the uppercase word anywhere: an inline --body puts it
 // mid-line, after the flag. It only counts together with an org repository name.
 const DRIFT_LINE = /\bDRIFT\b/;
-// The template sync prints `m3l-x: file is 2 versions behind its starter`. Same rule: with an org repository name
-// it says where to aim, so only the count may be published.
-const BEHIND_LINE = /\bversions? behind its (?:starter|template)\b/;
+// The template sync says `m3l-x: file is 2 versions behind its starter`, and its plan used to print
+// `m3l-x: file, 2 version(s) behind`. Same rule: with an org repository name it says where to aim, so
+// only the count may be published.
+const BEHIND_LINE = /\bversion(?:s|\(s\))? behind\b/;
 
 /** The text a publishing command would send. */
 export function publishedText(command, cwd) {

@@ -61,7 +61,7 @@ describe("guard-public-issues", () => {
   });
 
   it("denies a per-repository \"behind its starter\" line in the public repository", () => {
-    for (const line of ["m3l-plugins: .claude/hooks/guard-secret-writes.mjs is 3 versions behind its starter", "m3l-design: dco.yml is 1 version behind its template"]) {
+    for (const line of ["m3l-plugins: .claude/hooks/guard-secret-writes.mjs is 3 versions behind its starter", "m3l-design: dco.yml is 1 version behind its template", "- `m3l-plugins`: `.github/workflows/dco.yml`, 2 version(s) behind"]) {
       const r = run(`gh issue create --title t --body "${line}"`, publicRepo);
       assert.equal(r.status, 2, line);
       assert.match(r.stderr, /counts only/);

@@ -47,6 +47,8 @@ const TESTS = [
   [/^blueprint\/(bootstrap\.json|files\/)|^bin\/lib\/bootstrap\.mjs$|^bin\/bootstrap-parity\.mjs$/, ["bootstrap-parity", "bootstrap-render"]],
   [/^knowledge\/|^bin\/knowledge-|^bin\/lib\/knowledge\.mjs$/, ["knowledge-parity", "knowledge-report"]],
   [/^blueprint\/sync\.json$|^bin\/(lib\/)?template-sync|^bin\/sync-parity\.mjs$|^workflow-templates\//, ["template-sync", "sync-parity"]],
+  // What the public repository publishes from these must stay counts only.
+  [/^\.github\/workflows\/(freshness|template-sync)\.yml$|^bin\/template-sync\.mjs$/, ["freshness-public"]],
   [/^bin\/new-repo\.sh$/, ["new-repo"]],
   // The guard starters in blueprint/files/ and the push guard's helper are copies of, or used by, the hooks.
   [/^\.claude\/hooks\/|^bin\/lib\/signed-range\.mjs$|^blueprint\/files\//, ["harness-"]],

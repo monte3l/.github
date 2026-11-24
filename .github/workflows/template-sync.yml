@@ -55,6 +55,7 @@ jobs:
       contents: read
     outputs:
       repositories: ${{ steps.plan.outputs.repositories }}
+      indexes: ${{ steps.plan.outputs.indexes }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -87,16 +88,21 @@ jobs:
           node bin/template-sync.mjs "${args[@]}" >plan.json
           repositories="$(jq -c '[.results[] | select(.managed and .state == "STALE") | .repo] | unique' plan.json)"
           printf 'repositories=%s\n' "$repositories" >>"$GITHUB_OUTPUT"
+          # The legs are numbered, not named: a matrix value is shown in the job name on the run page.
+          printf 'indexes=%s\n' "$(jq -c '[range(0; length)]' <<<"$repositories")" >>"$GITHUB_OUTPUT"
+          # This repository is public, so the summary holds counts only, never which repository or file.
           {
             echo '### Stale managed copies'
             echo
-            jq -r '[.results[] | select(.managed and .state == "STALE")] | if length == 0 then "None: every copy is current, or was changed on purpose." else (.[] | "- `\(.repo)`: `\(.path)`, \(.back) version(s) behind") end' plan.json
+            jq -r '[.results[] | select(.managed and .state == "STALE")] | if length == 0 then "None: every copy is current, or was changed on purpose." else "\(length) stale managed copies in \(map(.repo) | unique | length) repositories." end' plan.json
             echo
             echo "Dry run: **$DRY_RUN**"
           } >>"$GITHUB_STEP_SUMMARY"
 
   open:
-    name: Refresh ${{ matrix.repository }}
+    # A neutral name: GitHub shows a matrix value in the job name, so the legs are numbered and the
+    # repository is looked up from the plan inside the job. This repository is public.
+    name: Refresh a repository
     needs: [plan]
     if: ${{ github.repository_owner == 'monte3l' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && needs.plan.outputs.repositories != '[]' }}
     runs-on: ubuntu-latest
@@ -104,10 +110,12 @@ jobs:
     environment: template-sync
     permissions:
       contents: read
+    env:
+      REPOSITORY_NAME: ${{ fromJSON(needs.plan.outputs.repositories)[matrix.index] }}
     strategy:
       fail-fast: false
       matrix:
-        repository: ${{ fromJSON(needs.plan.outputs.repositories) }}
+        index: ${{ fromJSON(needs.plan.outputs.indexes) }}
     steps:
       # Scoped to the one repository this leg changes. The App's key could mint a
       # token for every installed repository, so no other step gets it.
@@ -118,7 +126,7 @@ jobs:
           client-id: ${{ secrets.SYNC_APP_CLIENT_ID }}
           private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-          repositories: ${{ matrix.repository }}
+          repositories: ${{ env.REPOSITORY_NAME }}
           permission-contents: write
           permission-pull-requests: write
           permission-workflows: write
@@ -130,10 +138,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Check out ${{ matrix.repository }}
+      - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: ${{ github.repository_owner }}/${{ matrix.repository }}
+          repository: ${{ github.repository_owner }}/${{ env.REPOSITORY_NAME }}
           token: ${{ steps.app-token.outputs.token }}
           path: consumer
           persist-credentials: false
@@ -146,11 +154,11 @@ jobs:
       - name: Write the current template over each stale copy
         env:
           GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ matrix.repository }}
+          REPOSITORY: ${{ env.REPOSITORY_NAME }}
         run: node tools/bin/template-sync.mjs --repos "$REPOSITORY" --write consumer
 
       - name: Open the pull request
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          REPOSITORY: ${{ github.repository_owner }}/${{ matrix.repository }}
+          REPOSITORY: ${{ github.repository_owner }}/${{ env.REPOSITORY_NAME }}
         run: bash tools/bin/template-sync-pr.sh "$REPOSITORY" consumer
