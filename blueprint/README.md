@@ -428,6 +428,30 @@ that keeps its own version on purpose says so. `bin/sync-parity.mjs` fails on a
 `requires` that names no starter, and on a `skip` that names neither a template
 nor a starter.
 
+A repository may also keep extra verbatim copies of a starter, its twins:
+`m3l-groundwork` emits a project from `templates/core`, which holds a copy of each
+guard and of the push guard's helper beside the one the repository runs itself, and
+its own test requires the two to match. `repos.<name>.twins` maps a starter to a
+list of paths (`"signed-range.mjs": ["templates/core/bin/lib/signed-range.mjs"]`).
+Each twin is a unit of its own, shown as `STARTER+1`, `STARTER+2` in the table, and
+refreshed exactly like the starter's main copy: the same history decides whether
+it is stale (only an older version is, so a twin that someone edited stays
+custom), it keeps the header it has or none, and `bin/template-sync-pr.sh` sends
+its path because `sync.json` names it.
+
+A twin is refreshed on its own, even when the main copy of the same starter in that
+repository is custom. A repository that pins the two to match (`m3l-groundwork`'s
+`org-guard-starters` test) then sees its CI fail on the sync pull request, which is
+visible and is the point: someone brings the other copy up to date. A twin of a
+starter that `requires` another waits for the twin of that one, and the two are paired
+by position in their lists, so list a guard's twin and its helper's twin at the same
+place; with no twin at that position the main copy is the one it waits for. Skipping a
+starter skips its twins. `bin/sync-parity.mjs` fails on twins of something that is not
+a starter, on a value that is not a non-empty list of paths, and on a path that leaves
+the repository, is already the path of a starter or of another twin, or equals a
+repository `paths` value. `bin/template-sync.mjs` stops with exit 2 on the same
+malformed values.
+
 Most copies are custom on purpose. `m3l-design`'s `.gitattributes` keeps bytes
 exact for its checksums, and `m3l-prompt-optimizer`'s gitleaks config allows its
 fake test keys. A custom copy is never reported and never overwritten. Only a

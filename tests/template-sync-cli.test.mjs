@@ -26,10 +26,11 @@ const put = (dir, rel, text) => {
 /**
  * A repository holding the real CLI, a minimal sync.json and two versions of the starter x.toml, and a
  * consumer directory the stub gh serves.
- * @param {{ starters?: object, repo?: object, consumer: Record<string, string>, yOld?: string }} options
- *   `yOld` gives the starter y.cfg an older version too (it has one version, "y\n", otherwise)
+ * @param {{ starters?: object, repo?: object, consumer: Record<string, string>, yOld?: string, xNow?: string }} options
+ *   `yOld` gives the starter y.cfg an older version too (it has one version, "y\n", otherwise);
+ *   `xNow` is the current text of x.toml where it should differ from V2 (a starter with an SPDX header)
  */
-function setup({ starters, repo = { flags: [] }, consumer, yOld }) {
+function setup({ starters, repo = { flags: [] }, consumer, yOld, xNow }) {
   const dir = mkdtempSync(path.join(tmpdir(), "sync-cli-"));
   git(dir, "init", "-q");
   mkdirSync(path.join(dir, "bin", "lib"), { recursive: true });
@@ -51,7 +52,7 @@ function setup({ starters, repo = { flags: [] }, consumer, yOld }) {
   put(dir, "blueprint/sync.json", JSON.stringify(config));
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", "v1");
-  put(dir, "blueprint/files/x.toml", V2);
+  put(dir, "blueprint/files/x.toml", xNow ?? V2);
   if (yOld !== undefined) put(dir, "blueprint/files/y.cfg", "y\n");
   git(dir, "commit", "-q", "-am", "v2");
 
@@ -251,6 +252,125 @@ test("a skipped required starter holds the one that needs it", () => {
   const r = runSync(env, "--write", "OUT");
   assert.equal(r.written(".x.toml"), null);
   assert.match(r.findings, /not refreshed: \.y is skipped/);
+});
+
+// A repository may keep extra verbatim copies of a starter (`twins`: m3l-groundwork emits a project from
+// templates/core, which holds a copy of each guard). Each is compared and refreshed like the main copy.
+const TWINNED = { flags: [], twins: { "x.toml": ["twin/x.toml"] } };
+
+test("a stale twin is refreshed beside a stale main copy, and each is reported", () => {
+  const env = setup({ repo: TWINNED, consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V1, "twin/x.toml": V1 } });
+  const r = runSync(env, "--write", "OUT");
+  assert.equal(r.status, 0, r.err);
+  assert.equal(r.written(".x.toml"), V2);
+  assert.equal(r.written("twin/x.toml"), V2);
+  assert.equal(r.findings, "m3l-x: .x.toml is 1 version behind its starter\nm3l-x: twin/x.toml is 1 version behind its starter\n");
+  assert.match(r.out, /x\.toml\+1\s+S1/, "the twin has a row of its own");
+});
+
+test("a stale twin is refreshed even when the main copy is missing or current", () => {
+  const env = setup({ repo: TWINNED, consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V2, "twin/x.toml": V1 } });
+  const r = runSync(env, "--write", "OUT");
+  assert.equal(r.written("twin/x.toml"), V2);
+  assert.equal(r.written(".x.toml"), null);
+  assert.equal(r.findings, "m3l-x: twin/x.toml is 1 version behind its starter\n");
+});
+
+test("a custom twin is never written or reported, and does not stop the main copy", () => {
+  const env = setup({ repo: TWINNED, consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V1, "twin/x.toml": `${V1}extra = true\n` } });
+  const r = runSync(env, "--write", "OUT");
+  assert.equal(r.status, 0, r.err);
+  assert.equal(r.written("twin/x.toml"), null);
+  assert.equal(r.written(".x.toml"), V2);
+  assert.equal(r.findings, "m3l-x: .x.toml is 1 version behind its starter\n");
+  assert.match(r.out, /x\.toml\+1\s+C/, "shown as custom");
+});
+
+test("a twin that is a copy of no version at all is custom: the rule that only an older version is stale holds", () => {
+  const env = setup({ repo: TWINNED, consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V2, "twin/x.toml": "# some other file\nk = 9\n" } });
+  const r = runSync(env, "--write", "OUT");
+  assert.equal(r.written("twin/x.toml"), null);
+  assert.equal(r.findings, "");
+});
+
+test("a twin keeps its own header, or none: the starter's header is not forced on it", () => {
+  const header = "# SPDX-FileCopyrightText: 2026 the starter\n# SPDX-License-Identifier: MIT\n";
+  const ownHeader = "# SPDX-FileCopyrightText: 2026 someone else\n";
+  const env = setup({
+    xNow: `${header}\n${V2}`,
+    repo: { flags: [], twins: { "x.toml": ["twin/a.toml", "twin/b.toml"] } },
+    consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": `${ownHeader}\n${V1}`, "twin/a.toml": V1, "twin/b.toml": `${ownHeader}${V1}` },
+  });
+  const r = runSync(env, "--write", "OUT");
+  assert.equal(r.status, 0, r.err);
+  assert.equal(r.written(".x.toml"), `${ownHeader}\n${V2}`, "the main copy keeps its own header");
+  assert.equal(r.written("twin/a.toml"), V2, "a twin with no header gets none, though the starter has one");
+  assert.equal(r.written("twin/b.toml"), `${ownHeader}${V2}`, "a twin with a header of its own keeps it");
+});
+
+test("a refreshed twin is not stale on the next run", () => {
+  const first = setup({ repo: TWINNED, consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V2, "twin/x.toml": V1 } });
+  const written = runSync(first, "--write", "OUT").written("twin/x.toml");
+  const second = setup({ repo: TWINNED, consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V2, "twin/x.toml": written } });
+  const r = runSync(second, "--write", "OUT");
+  assert.equal(r.written("twin/x.toml"), null);
+  assert.equal(r.findings, "");
+});
+
+test("a twin of a starter that needs another waits for the twin of that other starter", () => {
+  const twins = { flags: [], twins: { "x.toml": ["twin/x.toml"], "y.cfg": ["twin/y.cfg"] } };
+  const held = runSync(setup({ starters: PAIR, repo: twins, yOld: "y0\n", consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V2, ".y": "y\n", "twin/x.toml": V1, "twin/y.cfg": "mine\n" } }), "--write", "OUT");
+  assert.equal(held.written("twin/x.toml"), null, "its helper twin is the repository's own");
+  assert.match(held.findings, /twin\/x\.toml is 1 version behind its starter, but is not refreshed: twin\/y\.cfg is custom/);
+  const both = runSync(setup({ starters: PAIR, repo: twins, yOld: "y0\n", consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V2, ".y": "y\n", "twin/x.toml": V1, "twin/y.cfg": "y0\n" } }), "--write", "OUT");
+  assert.equal(both.written("twin/x.toml"), V2);
+  assert.equal(both.written("twin/y.cfg"), "y\n");
+});
+
+test("a twin whose starter's helper has no twin here is judged by the main helper", () => {
+  const env = setup({ starters: PAIR, repo: { flags: [], twins: { "x.toml": ["twin/x.toml"] } }, consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V2, ".y": "mine\n", "twin/x.toml": V1 } });
+  const r = runSync(env, "--write", "OUT");
+  assert.equal(r.written("twin/x.toml"), null);
+  assert.match(r.findings, /not refreshed: \.y is custom/);
+});
+
+test("skipping a starter skips its twins", () => {
+  const env = setup({ repo: { ...TWINNED, skip: ["x.toml"] }, consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V1, "twin/x.toml": V1 } });
+  const r = runSync(env, "--write", "OUT");
+  assert.equal(r.written("twin/x.toml"), null);
+  assert.equal(r.written(".x.toml"), null);
+  assert.equal(r.findings, "");
+  assert.match(r.out, /x\.toml\+1\s+skip/, "the twin has a row, and it is skipped");
+});
+
+test("a twin path that leaves the repository, or twins of something that is no starter, stop the run", () => {
+  for (const bad of ["../evil", "/etc/evil"]) {
+    const env = setup({ repo: { flags: [], twins: { "x.toml": [bad] } }, consumer: { ".github/workflows/t.yml": WORKFLOW } });
+    const r = runSync(env);
+    assert.equal(r.status, 2, bad);
+    assert.match(r.err, /not a relative path/);
+  }
+  const env = setup({ repo: { flags: [], twins: { "nope.toml": ["twin/x"] } }, consumer: { ".github/workflows/t.yml": WORKFLOW } });
+  const r = runSync(env);
+  assert.equal(r.status, 2);
+  assert.match(r.err, /twins of "nope\.toml", which is not a starter/);
+});
+
+test("twins that are not a non-empty list stop the run with exit 2, not a failed read", () => {
+  for (const bad of ["twin/x.toml", [], {}, 7]) {
+    const env = setup({ repo: { flags: [], twins: { "x.toml": bad } }, consumer: { ".github/workflows/t.yml": WORKFLOW } });
+    const r = runSync(env);
+    assert.equal(r.status, 2, JSON.stringify(bad));
+    assert.match(r.err, /not a non-empty list of paths/);
+  }
+});
+
+test("--public counts a stale twin with the other copies and names neither the repository nor the file", () => {
+  const env = setup({ repo: TWINNED, consumer: { ".github/workflows/t.yml": WORKFLOW, ".x.toml": V2, "twin/x.toml": V1 } });
+  const r = runSync(env, "--public", "--check");
+  assert.equal(r.status, 1);
+  assert.match(r.out, /1 copy is behind its template or starter, in 1 repository\./);
+  assert.doesNotMatch(r.out + r.findings, /m3l-x|twin|x\.toml/);
 });
 
 // The public repository's issue, job summary and logs are readable by anyone, so what freshness.yml publishes is

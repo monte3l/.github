@@ -9,7 +9,8 @@
 # write step. Nothing here decides what is stale: it commits what is on disk, and
 # only a workflow file under .github/workflows/ or a file at a path that
 # blueprint/sync.json lists: the paths of a starter, or a path that this
-# repository names for a file of its own (`repos.<name>.paths`). That file is also
+# repository names for a file of its own (`repos.<name>.paths`), or one of its twins of a
+# starter (`repos.<name>.twins`). That file is also
 # what says which starters are managed, and the CLI writes where it says, so the
 # two cannot disagree.
 #
@@ -74,7 +75,7 @@ fi
 # The only things this script may send are a workflow file and a starter it was
 # handed, at a path it knows. Anything else in the change set means the checkout
 # is not what the workflow made.
-allowed_paths="$(jq -r --arg r "${repo#*/}" '((.starters // {}) | .[] | .paths[]), ((.repos[$r].paths // {}) | .[])' "$here/../blueprint/sync.json")" ||
+allowed_paths="$(jq -r --arg r "${repo#*/}" '((.starters // {}) | .[] | .paths[]), ((.repos[$r].paths // {}) | .[]), ((.repos[$r].twins // {}) | .[][])' "$here/../blueprint/sync.json")" ||
   die "cannot read the allowed paths from blueprint/sync.json"
 other=""
 only_workflows=1

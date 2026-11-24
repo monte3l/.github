@@ -26,6 +26,9 @@
  * `bin/lib/template-sync.mjs`, and the data (which templates and starters are managed,
  * which repositories take which optional blocks) is `blueprint/sync.json`.
  *
+ * A repository may keep extra verbatim copies of a starter (`repos.<name>.twins` in sync.json). Each is a row of its
+ * own, `STARTER+1`, compared and refreshed like the main copy.
+ *
  * Prints a table (`I` identical, `E` equivalent, `S1` stale by one version, `H1` stale
  * but held back because a starter it needs is custom or missing, `C` custom, `skip` left out
  * by the repository's `skip` list in sync.json, `-` the repository has no such file), then
@@ -125,6 +128,11 @@ for (const [name, entry] of Object.entries(config.starters ?? {})) {
 }
 for (const [repo, entry] of Object.entries(config.repos)) {
   for (const [name, p] of Object.entries(entry.paths ?? {})) if (!safePath(p)) fail(2, `blueprint/sync.json: ${repo} has the path "${p}" for "${name}", which is not a relative path inside the repository`);
+  for (const [name, list] of Object.entries(entry.twins ?? {})) {
+    if (!(name in (config.starters ?? {}))) fail(2, `blueprint/sync.json: ${repo} has twins of "${name}", which is not a starter`);
+    if (!Array.isArray(list) || list.length === 0) fail(2, `blueprint/sync.json: ${repo} has twins of "${name}" that are not a non-empty list of paths`);
+    for (const p of list) if (!safePath(p)) fail(2, `blueprint/sync.json: ${repo} has the twin path "${p}" for "${name}", which is not a relative path inside the repository`);
+  }
 }
 for (const name of only ?? []) if (!(name in config.repos)) fail(2, `${name} is not a consumer in blueprint/sync.json`);
 
@@ -202,7 +210,8 @@ try {
     const rows = [];
     const copies = new Map();
     for (const unit of unitsFor(config, repo)) {
-      const row = { repo, template: unit.name, kind: unit.kind, managed: unit.managed };
+      // A twin names the units it needs itself, since its own name is not a starter's.
+      const row = { repo, template: unit.name, kind: unit.kind, managed: unit.managed, ...(unit.twinOf ? { requires: unit.requires } : {}) };
       // A repository that keeps its own version on purpose says so in sync.json: nothing is read or written.
       if (unit.skipped) {
         rows.push({ ...row, path: unit.paths[0], state: "SKIPPED" });
@@ -295,10 +304,13 @@ if (publicOutput) {
 } else if (asJson) {
   console.log(JSON.stringify({ results, mismatches }, null, 2));
 } else {
-  const cell = (r) => (r.state === "MISSING" ? "-" : r.state === "SKIPPED" ? "skip" : r.state === "STALE" ? `S${r.back}` : r.state === "HELD" ? `H${r.back}` : r.state[0]) + (r.managed ? "" : "*");
-  console.log(`${"template".padEnd(20)}${repos.map((r) => r.replace("m3l-", "").slice(0, 11).padEnd(12)).join("")}`);
-  for (const unit of unitsFor(config, repos[0])) {
-    console.log(unit.name.padEnd(20) + repos.map((repo) => cell(results.find((r) => r.repo === repo && r.template === unit.name)).padEnd(12)).join(""));
+  // A repository may have units the others do not (its twins of a starter), so the rows are the union.
+  const cell = (r) => (r === undefined || r.state === "MISSING" ? "-" : r.state === "SKIPPED" ? "skip" : r.state === "STALE" ? `S${r.back}` : r.state === "HELD" ? `H${r.back}` : r.state[0]) + (r !== undefined && !r.managed ? "*" : "");
+  const unitNames = [...new Set(repos.flatMap((repo) => unitsFor(config, repo).map((unit) => unit.name)))];
+  const width = Math.max(20, ...unitNames.map((name) => name.length + 2));
+  console.log(`${"template".padEnd(width)}${repos.map((r) => r.replace("m3l-", "").slice(0, 11).padEnd(12)).join("")}`);
+  for (const name of unitNames) {
+    console.log(name.padEnd(width) + repos.map((repo) => cell(results.find((r) => r.repo === repo && r.template === name)).padEnd(12)).join(""));
   }
   console.log("\n* = unmanaged: shown for information, never changed by a sync");
   console.log(`\nmanaged copies: ${countOf(results.filter((r) => r.managed && r.state !== "MISSING"))}`);

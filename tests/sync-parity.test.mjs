@@ -91,4 +91,17 @@ await expectProblem("a repository that skips a template and a starter is clean",
 await expectProblem("a repository that skips a name that is neither", (c) => { c.sync.repos["m3l-x"].skip = ["nope"]; }, 'skips "nope", which is neither a workflow template nor a starter');
 await expectProblem("a skip that is not a list", (c) => { c.sync.repos["m3l-x"].skip = "a"; }, 'a "skip" that is not a list');
 await expectProblem("a skip that lists a name twice", (c) => { c.sync.repos["m3l-x"].skip = ["a", "a"]; }, 'lists a name twice under "skip"');
+// `twins`: extra verbatim copies of a starter in one repository (m3l-groundwork's templates/core).
+const withTwins = (c, twins) => { withStarter(c); c.sync.repos["m3l-x"].twins = twins; };
+await expectProblem("twins of a starter are clean", (c) => withTwins(c, { "x.toml": ["core/x.toml"] }), null);
+await expectProblem("several twins of one starter are clean", (c) => withTwins(c, { "x.toml": ["core/x.toml", "pack/x.toml"] }), null);
+await expectProblem("twins of something that is not a starter", (c) => withTwins(c, { nope: ["core/x"] }), "name something that is not a starter");
+await expectProblem("twins that are not a list", (c) => withTwins(c, { "x.toml": "core/x.toml" }), "not a non-empty list of paths");
+await expectProblem("twins that are an empty list", (c) => withTwins(c, { "x.toml": [] }), "not a non-empty list of paths");
+await expectProblem("a twin path that leaves the repository", (c) => withTwins(c, { "x.toml": ["../x.toml"] }), "leaves the repository");
+await expectProblem("a twin path with a glob", (c) => withTwins(c, { "x.toml": ["core/*.toml"] }), "glob or backslash");
+await expectProblem("a twin path that is not a string", (c) => withTwins(c, { "x.toml": [7] }), "not a non-empty string");
+await expectProblem("a twin at the path of its starter", (c) => withTwins(c, { "x.toml": [".x.toml"] }), "already the path of a starter");
+await expectProblem("a twin at a path the repository names for a starter", (c) => { withStarter(c); c.sync.repos["m3l-x"].paths = { "x.toml": "conf/x.toml" }; c.sync.repos["m3l-x"].twins = { "x.toml": ["conf/x.toml"] }; }, "already the path of a starter");
+await expectProblem("a twin path listed twice", (c) => withTwins(c, { "x.toml": ["core/x.toml", "core/x.toml"] }), "already the path of a starter");
 console.log(failed ? `\n${failed} FAILED` : "\nALL SYNC-PARITY CASES BEHAVE"); process.exit(failed ? 1 : 0);
