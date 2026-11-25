@@ -18,7 +18,8 @@ test("the probe job runs only on a manual dispatch with the probe input", () => 
 });
 
 test("every probe call uses the same title, and the last one closes the issue", () => {
-  assert.equal(calls.length, 3);
+  // open, find again, close; and a cleanup after a failed step
+  assert.equal(calls.length, 4);
   const titles = new Set(calls.map((line) => /upsert-issue\.sh\s+("[^"]+")/.exec(line)?.[1]));
   assert.equal(titles.size, 1);
   assert.match(calls.at(-1), /--clean/);

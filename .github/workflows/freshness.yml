@@ -246,7 +246,26 @@ jobs:
           printf '%s\n' 'Opened by a manual run of freshness.yml with probe on, to prove the tracking-issue path. The same run closes it.' >"$RUNNER_TEMP/probe.md"
           bin/lib/upsert-issue.sh "Freshness probe" freshness,area:ci "$RUNNER_TEMP/probe.md" | tee "$RUNNER_TEMP/probe-1.txt"
           grep -q '^opened ' "$RUNNER_TEMP/probe-1.txt"
+          # A list right after a create can miss the new issue for a few seconds (the first probe run opened a
+          # second issue 5 s later). A weekly run never meets that, so wait until the list shows it and say how long.
+          waited=0
+          until [[ "$(gh issue list --state open --label freshness --json title --jq '[.[] | select(.title == "Freshness probe")] | length')" -ge 1 ]]; do
+            [[ "$waited" -lt 120 ]] || { echo 'the new issue is still not listed after 120 s' >&2; exit 1; }
+            sleep 5
+            waited=$((waited + 5))
+          done
+          echo "the new issue was listed after ${waited} s of waiting"
           bin/lib/upsert-issue.sh "Freshness probe" freshness,area:ci "$RUNNER_TEMP/probe.md" | tee "$RUNNER_TEMP/probe-2.txt"
           grep -q 'is unchanged' "$RUNNER_TEMP/probe-2.txt"
           bin/lib/upsert-issue.sh "Freshness probe" freshness,area:ci "$RUNNER_TEMP/probe.md" --clean | tee "$RUNNER_TEMP/probe-3.txt"
           grep -q '^closed ' "$RUNNER_TEMP/probe-3.txt"
+
+      # A failed step above must not leave the probe issue open.
+      - name: Close the probe issue if a step failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          printf '%s\n' 'cleanup' >"$RUNNER_TEMP/probe.md"
+          bin/lib/upsert-issue.sh "Freshness probe" freshness,area:ci "$RUNNER_TEMP/probe.md" --clean
