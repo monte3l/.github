@@ -1024,7 +1024,7 @@ else
   fi
 fi
 
-# --- env-janitor (applied: the environment, its branch policy, org-secret access) ---
+# --- env-janitor (applied: the environment, its branch policy, dropping the org-secret share) ---
 # Only a repository with .github/environments.json runs the weekly cleanup. The
 # App installation and the secrets themselves are never touched here: installing
 # an App is an org setting, and a secret needs key material this script does not
@@ -1034,11 +1034,58 @@ fi
 # changes what a consuming repository's pin runs. Keep it in step with the
 # imports of bin/cleanup-environments.mjs.
 janitor_files=(bin/cleanup-environments.mjs bin/lib/environment-cleanup.mjs bin/lib/report.mjs bin/lib/term.mjs)
-janitor_secrets=(JANITOR_APP_CLIENT_ID JANITOR_APP_PRIVATE_KEY)
+IFS=' ' read -r -a janitor_secrets <<<"$(jq -r '.environments["env-janitor"] | join(" ")' "$here/env-secrets.json")"
 janitor_env="env-janitor"
 planner_repo="monte3l/m3l-groundwork"
 owner="${repo%%/*}"
 repo_id="$(jq -r .id <<<"$live_repo")"
+
+# env_secret_state ENV SECRET...: reads names and sharing, never values. Sets
+#   es_missing        secrets the environment does not hold (a 404 means it has none)
+#   es_shared         organization secrets shared with this repository
+#   es_all            organization secrets visible to every repository
+#   es_unreadable     the environment's secrets could not be read
+#   es_org_unreadable an organization secret could not be read (not a 404)
+# Each is a space-separated list or empty.
+env_secret_state() {
+  local env="$1" secret out ids held=""
+  shift
+  es_missing="" es_shared="" es_all="" es_unreadable="" es_org_unreadable=""
+  if out="$(gh api "repos/$repo/environments/$env/secrets" --jq '.secrets[].name' 2>&1)"; then
+    held="$out"
+  elif ! grep -q 'HTTP 404' <<<"$out"; then
+    es_unreadable=1
+  fi
+  for secret in "$@"; do
+    grep -Fxq -- "$secret" <<<"$held" || es_missing+="$secret "
+    if out="$(gh api "orgs/$owner/actions/secrets/$secret" --jq .visibility 2>&1)"; then
+      if [[ "$out" == "all" ]]; then
+        es_all+="$secret "
+      elif ! ids="$(gh api --paginate "orgs/$owner/actions/secrets/$secret/repositories" --jq '.repositories[].id' 2>/dev/null)"; then
+        es_org_unreadable=1
+      elif grep -Fxq -- "$repo_id" <<<"$ids"; then
+        es_shared+="$secret "
+      fi
+    elif ! grep -q 'HTTP 404' <<<"$out"; then
+      es_org_unreadable=1
+    fi
+  done
+}
+
+# drop_org_shares SECRET...: removes this repository from each organization
+# secret's list (an org-level write), or says it would.
+drop_org_shares() {
+  local secret
+  for secret in "$@"; do
+    case "$mode" in
+      dry-run) printf '         would run: gh api -X DELETE orgs/%s/actions/secrets/%s/repositories/%s\n' "$owner" "$secret" "$repo_id" ;;
+      apply)
+        gh api -X DELETE "orgs/$owner/actions/secrets/$secret/repositories/$repo_id" >/dev/null
+        printf '         applied: %s\n' "$secret"
+        ;;
+    esac
+  done
+}
 
 if [[ -z "$(file_content .github/environments.json)" ]]; then
   skip "env-janitor" "no .github/environments.json"
@@ -1072,68 +1119,50 @@ else
     fi
   fi
 
-  # The two secrets are org-level, visibility "selected". This applies one org
-  # write: adding this repository to each secret's list. It never creates a
-  # secret or widens its visibility.
-  secret_problems="" secret_unshared=()
-  for secret in "${janitor_secrets[@]}"; do
-    if ! visibility="$(gh api "orgs/$owner/actions/secrets/$secret" --jq .visibility 2>/dev/null)"; then
-      secret_problems+="$secret cannot be read (missing, or the token lacks admin:org); "
-    elif [[ "$visibility" != "selected" ]]; then
-      secret_problems+="$secret has visibility '$visibility', want selected; "
-    elif ! shared_ids="$(gh api --paginate "orgs/$owner/actions/secrets/$secret/repositories" --jq '.repositories[].id' 2>/dev/null)"; then
-      secret_problems+="$secret's repository list cannot be read; "
-    elif ! grep -Fxq -- "$repo_id" <<<"$shared_ids"; then
-      secret_problems+="$secret is not shared with $repo; "
-      secret_unshared+=("$secret")
-    fi
-  done
-  if [[ -z "$secret_problems" ]]; then
-    printf 'OK     env-janitor: org secrets: shared with this repository\n'
+  # The two secrets live in the environment, not in the organization: an
+  # organization secret reaches every workflow on every branch, an environment
+  # secret only a job on main in that environment. The check reads names only.
+  env_secret_state "$janitor_env" "${janitor_secrets[@]}"
+  if [[ -n "$es_unreadable" ]]; then
+    skip "env-janitor: environment secrets" "cannot read them (the token needs Environments read)"
+  elif [[ -z "$es_missing" ]]; then
+    printf 'OK     env-janitor: environment secrets\n'
     ok=$((ok + 1))
   else
     drift=$((drift + 1))
-    printf 'DRIFT  env-janitor: org secrets: %s\n' "${secret_problems%; }"
-    # The + form keeps an empty array from tripping `set -u` on bash 3.2 (macOS).
-    for secret in ${secret_unshared[@]+"${secret_unshared[@]}"}; do
-      case "$mode" in
-        dry-run) printf '         would run: gh api -X PUT orgs/%s/actions/secrets/%s/repositories/%s\n' "$owner" "$secret" "$repo_id" ;;
-        apply)
-          gh api -X PUT "orgs/$owner/actions/secrets/$secret/repositories/$repo_id" >/dev/null
-          printf '         applied: %s\n' "$secret"
-          ;;
-      esac
-    done
-    [[ "$mode" == "check" ]] || printf '         a missing secret needs: gh secret set <name> --org %s --visibility selected --repos <repo,...>\n' "$owner"
-  fi
-
-  # An environment secret wins over an org one, so a leftover copy keeps the
-  # old key alive after a rotation. Never deleted here.
-  # A 404 means the environment does not exist, so there is nothing leftover. Any
-  # other failure (the read needs Environments read) is not "no secrets".
-  leftover="" env_secrets_unreadable=""
-  if env_secrets="$(gh api "repos/$repo/environments/$janitor_env/secrets" --jq '.secrets[].name' 2>&1)"; then
-    leftover="$(grep -E '^JANITOR_APP_' <<<"$env_secrets" | tr '\n' ' ' || true)"
-  elif ! grep -q 'HTTP 404' <<<"$env_secrets"; then
-    env_secrets_unreadable=1
-  fi
-  if [[ -n "$env_secrets_unreadable" ]]; then
-    skip "env-janitor: no environment secrets" "cannot read them (the token needs Environments read)"
-  elif [[ -z "$leftover" ]]; then
-    printf 'OK     env-janitor: no environment secrets\n'
-    ok=$((ok + 1))
-  else
-    drift=$((drift + 1))
-    printf 'DRIFT  env-janitor: no environment secrets: %sstill set, and they override the org secrets\n' "$leftover"
+    printf 'DRIFT  env-janitor: environment secrets: %snot set\n' "$es_missing"
     if [[ "$mode" != "check" ]]; then
-      for secret in $leftover; do
-        printf '         gh secret delete %s --env %s --repo %s\n' "$secret" "$janitor_env" "$repo"
+      for secret in $es_missing; do
+        printf '         bin/env-secrets.sh set %s --repo %s\n' "$secret" "$repo"
       done
     fi
   fi
 
-  # Org secrets reach every workflow in the repository on any branch, so only
-  # environments.yml may name them.
+  # An organization secret that still names this repository defeats the
+  # environment copy. --apply removes the repository from its list, and only
+  # when the environment already holds the secret: it never leaves the job
+  # without one. It never creates or deletes a secret.
+  if [[ -n "$es_org_unreadable" ]]; then
+    skip "env-janitor: org secrets" "cannot read them (the token needs admin:org)"
+  elif [[ -z "$es_shared$es_all" ]]; then
+    printf 'OK     env-janitor: org secrets\n'
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  env-janitor: org secrets: %s%sstill reach this repository\n' "$es_shared" "$es_all"
+    [[ -z "$es_all" ]] || printf '         %svisible to all repositories: narrow them to selected by hand\n' "$es_all"
+    if [[ "$mode" != "check" && -n "$es_shared" ]]; then
+      if [[ -n "$es_missing" ]]; then
+        printf '         not removed: set the environment secrets first\n'
+      else
+        # shellcheck disable=SC2086 # a space-separated list of names, split on purpose
+        drop_org_shares $es_shared
+      fi
+    fi
+  fi
+
+  # Only environments.yml may name them: no other workflow should declare that
+  # it needs the janitor App's key.
   stray=""
   while IFS= read -r wf; do
     [[ -n "$wf" && "$wf" != "environments.yml" ]] || continue
@@ -1199,6 +1228,68 @@ else
     drift=$((drift + 1))
     printf 'DRIFT  env-janitor: last run: %s\n' "${conclusion:-in progress}"
     [[ "$mode" == "check" ]] || printf '         dispatch environments.yml with dry_run on and read the job summary: the App installation, a secret or the policy may be the cause\n'
+  fi
+fi
+
+# --- docs-cloudflare (reported; --apply drops the org share once the environment holds the secrets) ---
+# Only a repository whose deploy runs in the docs-cloudflare environment. The
+# environment itself is not created here: new-repo.sh and the docs runbook do.
+IFS=' ' read -r -a cloudflare_secrets <<<"$(jq -r '.environments["docs-cloudflare"] | join(" ")' "$here/env-secrets.json")"
+cloudflare_env="docs-cloudflare"
+if ! gh api "repos/$repo/environments/$cloudflare_env" >/dev/null 2>&1; then
+  skip "docs-cloudflare" "no $cloudflare_env environment"
+else
+  env_secret_state "$cloudflare_env" "${cloudflare_secrets[@]}"
+  if [[ -n "$es_unreadable" ]]; then
+    skip "docs-cloudflare: environment secrets" "cannot read them (the token needs Environments read)"
+  elif [[ -z "$es_missing" ]]; then
+    printf 'OK     docs-cloudflare: environment secrets\n'
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  docs-cloudflare: environment secrets: %snot set\n' "$es_missing"
+    if [[ "$mode" != "check" ]]; then
+      for secret in $es_missing; do
+        printf '         bin/env-secrets.sh set %s --repo %s\n' "$secret" "$repo"
+      done
+    fi
+  fi
+
+  if [[ -n "$es_org_unreadable" ]]; then
+    skip "docs-cloudflare: org secrets" "cannot read them (the token needs admin:org)"
+  elif [[ -z "$es_shared$es_all" ]]; then
+    printf 'OK     docs-cloudflare: org secrets\n'
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  docs-cloudflare: org secrets: %s%sstill reach this repository\n' "$es_shared" "$es_all"
+    [[ -z "$es_all" ]] || printf '         %svisible to all repositories: narrow them to selected by hand\n' "$es_all"
+    if [[ "$mode" != "check" && -n "$es_shared" ]]; then
+      if [[ -n "$es_missing" ]]; then
+        printf '         not removed: set the environment secrets first\n'
+      else
+        # shellcheck disable=SC2086 # a space-separated list of names, split on purpose
+        drop_org_shares $es_shared
+      fi
+    fi
+  fi
+
+  # Only docs.yml may name them: an environment secret is read by a job in the
+  # environment, and no other workflow should declare that it needs one.
+  stray=""
+  while IFS= read -r wf; do
+    [[ -n "$wf" && "$wf" != "docs.yml" ]] || continue
+    if grep -q 'CLOUDFLARE_API_TOKEN\|CLOUDFLARE_ACCOUNT_ID' <<<"$(file_content ".github/workflows/$wf")"; then
+      stray+="$wf "
+    fi
+  done <<<"$workflow_names"
+  if [[ -z "$stray" ]]; then
+    printf 'OK     docs-cloudflare: secret references: only docs.yml\n'
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  docs-cloudflare: secret references: %sname the Cloudflare secrets\n' "$stray"
+    [[ "$mode" == "check" ]] || printf '         move the use into docs.yml\n'
   fi
 fi
 

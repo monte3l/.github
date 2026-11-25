@@ -64,31 +64,31 @@ Done by hand, before merging the pull request that adds `docs.yml`.
    - Set a TTL of one year at most, and record the expiry in the repository's
      `SECURITY.md` secrets table.
    - The token cannot be scoped to a single Worker: Workers Scripts Edit is
-     account-wide. It is stored as an **organization** secret shared with the
-     repositories that deploy a docs site, so every workflow in those
-     repositories can read it, on any branch. The `docs-cloudflare`
-     environment restricts where the deploy job runs, not who can read the
-     secret. What limits the exposure is the required review of every workflow
-     change, and that only `docs.yml` names the secret.
-   - Issue one token for the organization and rotate it in one place, rather
-     than a token per repository.
+     account-wide. It is stored as a secret of each repository's
+     `docs-cloudflare` environment, which is limited to `main`, so only a
+     deploy job on `main` can read it, never a workflow on another branch.
+   - Issue one token for the organization and rotate it with one command,
+     `bin/env-secrets.sh set CLOUDFLARE_API_TOKEN`, which writes it to the
+     environment of every repository that has one, rather than a token per
+     repository.
 2. **Get the account ID** (dashboard sidebar, or the Workers & Pages overview).
 3. **Create the GitHub environment** that restricts the deploy to `main`, and
-   share the two organization secrets with the repository:
+   set the two secrets in it (the value is read from a hidden prompt, never
+   from an argument):
 
    ```sh
    echo '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' |
      gh api -X PUT repos/monte3l/<repo>/environments/docs-cloudflare --input -
    gh api -X POST repos/monte3l/<repo>/environments/docs-cloudflare/deployment-branch-policies \
      -f name=main
-   id="$(gh api repos/monte3l/<repo> --jq .id)"
-   gh api -X PUT "orgs/monte3l/actions/secrets/CLOUDFLARE_API_TOKEN/repositories/$id"
-   gh api -X PUT "orgs/monte3l/actions/secrets/CLOUDFLARE_ACCOUNT_ID/repositories/$id"
+   bin/env-secrets.sh set CLOUDFLARE_API_TOKEN --repo <repo>
+   bin/env-secrets.sh set CLOUDFLARE_ACCOUNT_ID --repo <repo>
    ```
 
-   Never also set either secret on the environment: an environment secret
-   overrides the organization one, so a copy left there keeps an old token
-   alive after a rotation. The environment holds no secret.
+   Never also share an organization secret of the same name with the
+   repository: it would reach every workflow on every branch, and
+   `apply-repo-baseline.sh` reports it as drift. `bin/env-secrets.sh check`
+   lists every copy with its date and flags one a rotation missed.
 
    The new environment also needs the weekly `env-janitor` cleanup, with
    `docs-cloudflare` in its policy. See

@@ -7,8 +7,8 @@ name: Environments
 # with `retain: 0`. Then install the `monte3l-env-janitor` GitHub App on this
 # repository, and run `bin/apply-repo-baseline.sh monte3l/<repo> --apply` from
 # monte3l/.github: it creates the `env-janitor` environment (restricted to
-# `main`) and shares the org secrets JANITOR_APP_CLIENT_ID and
-# JANITOR_APP_PRIVATE_KEY with this repository.
+# `main`) and prints the command that sets the secrets JANITOR_APP_CLIENT_ID and
+# JANITOR_APP_PRIVATE_KEY in that environment (bin/env-secrets.sh set NAME).
 #
 # What this does: cleans up stale GitHub Deployments and Environments this
 # repository's CI has left behind. GitHub creates an environment the first time
@@ -26,9 +26,11 @@ name: Environments
 # Deleting an environment needs Administration: write, which the default
 # GITHUB_TOKEN cannot hold, so the job mints a token from the dedicated
 # monte3l-env-janitor App, installed on selected repositories only. Its two
-# secrets are organization secrets shared with selected repositories. Do not
-# also set them on the `env-janitor` environment, which would override them,
-# and do not reference them from any other workflow.
+# secrets are secrets of the `env-janitor` environment, which is limited to
+# `main`, so only this job can read them. Do not also share an organization
+# secret of the same name with the repository (the environment copy would win
+# and the organization one would reach every workflow), and do not reference
+# them from any other workflow.
 on:
   schedule:
     # Weekly. A stale environment sitting a few extra days costs nothing.

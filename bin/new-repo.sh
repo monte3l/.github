@@ -214,6 +214,8 @@ render "$work/preview"
 project="$(jq -c .project "$work/result.json")"
 # The organization secrets this repository must be shared: from the data (by the options given), plus the release App's.
 org_secrets=()
+# The environments a docs repository creates, and the secrets each holds (blueprint/env-secrets.json).
+docs_envs=(docs-cloudflare env-janitor)
 while IFS= read -r secret; do org_secrets+=("$secret"); done < <(jq -r '.orgSecrets[]?' "$work/result.json")
 if [[ -n "$kind" ]]; then
   while IFS= read -r secret; do org_secrets+=("$secret"); done < <(jq -r '.secrets[]?' "$here/../blueprint/release.json")
@@ -262,9 +264,10 @@ if [[ "$mode" == plan ]]; then
     printf '  - run the docs gate (build.mjs --check) on the result: nothing is created if it fails\n'
   fi
   printf '  - make one signed-off commit and create %s/%s (%s: "%s")\n' "$owner" "$name" "$visibility" "$description"
-  ((docs)) && printf '  - create the docs-cloudflare environment, limited to main\n'
+  ((docs)) && printf '  - create the %s environments, each limited to main\n' "${docs_envs[*]}"
   printf '  - add the repository to the Apps: %s\n' "${apps[*]}"
   printf '  - share the organization secrets with it: %s (organization-level writes)\n' "$(printf '%s ' "${org_secrets[@]}")"
+  ((docs)) && printf '  - set the environment secrets (bin/env-secrets.sh: a hidden prompt on a terminal, otherwise listed for you): %s\n' "$(jq -r '[.environments[][]] | join(", ")' "$here/../blueprint/env-secrets.json")"
   [[ -z "$kind" ]] || printf '  - turn on immutable releases for it, which the release workflow needs\n'
   printf '  - push main, which starts Gitleaks and Release: the Apps and secrets come first for that reason\n'
   printf '  - set the topics: %s\n' "$(jq -r '.topics | join(", ")' <<<"$project")"
@@ -343,18 +346,20 @@ printf 'created: %s/%s\n' "$owner" "$name"
 manual=()
 repo_id="$(gh api "repos/$owner/$name" --jq .id)"
 if ((docs)); then
-  # The deploy job runs in this environment, which restricts it to main. It holds no secret: the two
-  # Cloudflare secrets are the organization's, shared below.
-  printf '\n== docs-cloudflare environment ==\n'
-  # The branch policy flags are JSON booleans, which gh api -f would send as strings.
-  if env_error="$(printf '%s' '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' |
-    gh api -X PUT "repos/$owner/$name/environments/docs-cloudflare" --input - 2>&1 >/dev/null)" &&
-    env_error="$(gh api -X POST "repos/$owner/$name/environments/docs-cloudflare/deployment-branch-policies" -f name=main 2>&1 >/dev/null)"; then
-    printf 'OK     docs-cloudflare, limited to main\n'
-  else
-    manual+=("create the docs-cloudflare environment limited to main: see blueprint/docs-site.md, One-time setup, step 3 (${env_error%%$'\n'*})")
-    printf 'MANUAL docs-cloudflare: refused (%s)\n' "${env_error%%$'\n'*}"
-  fi
+  # The deploy job and the weekly cleanup each run in an environment limited to main. The four secrets
+  # they use are set in those environments, not shared from the organization (see "Environment secrets").
+  printf '\n== environments ==\n'
+  for env_name in "${docs_envs[@]}"; do
+    # The branch policy flags are JSON booleans, which gh api -f would send as strings.
+    if env_error="$(printf '%s' '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' |
+      gh api -X PUT "repos/$owner/$name/environments/$env_name" --input - 2>&1 >/dev/null)" &&
+      env_error="$(gh api -X POST "repos/$owner/$name/environments/$env_name/deployment-branch-policies" -f name=main 2>&1 >/dev/null)"; then
+      printf 'OK     %s, limited to main\n' "$env_name"
+    else
+      manual+=("create the $env_name environment limited to main: see blueprint/docs-site.md, One-time setup, step 3 (${env_error%%$'\n'*})")
+      printf 'MANUAL %s: refused (%s)\n' "$env_name" "${env_error%%$'\n'*}"
+    fi
+  done
 fi
 # The Apps are installed on selected repositories, so a new repository is added by hand otherwise
 printf '\n== Apps ==\n'
@@ -388,6 +393,25 @@ for secret in "${org_secrets[@]}"; do
     printf 'MANUAL %s: the call was refused\n' "$secret"
   fi
 done
+# Environment secrets: the Cloudflare and janitor credentials are read only by a job in their environment.
+# The values are typed here or later by a person, never passed to this script or read from the organization.
+if ((docs)); then
+  printf '\n== Environment secrets ==\n'
+  # The list comes in on fd 3, so standard input stays the terminal for the prompt and the -t test.
+  env_secret_pairs="$(jq -r '.environments | to_entries[] | .key as $e | .value[] | "\($e) \(.)"' "$here/../blueprint/env-secrets.json")"
+  while IFS=' ' read -r -u 3 env_name secret; do
+    if [[ -t 0 ]]; then
+      if "$here/env-secrets.sh" set "$secret" --repo "$name" --owner "$owner" >/dev/null; then
+        printf 'OK     %s set in %s\n' "$secret" "$env_name"
+        continue
+      fi
+      printf 'MANUAL %s: not set in %s\n' "$secret" "$env_name"
+    else
+      printf 'MANUAL %s: set it in %s\n' "$secret" "$env_name"
+    fi
+    manual+=("set $secret in the $env_name environment of $owner/$name: bin/env-secrets.sh set $secret --repo $name --owner $owner")
+  done 3<<<"$env_secret_pairs"
+fi
 if [[ -n "$kind" ]]; then
   if gh api -X PUT "repos/$owner/$name/immutable-releases" >/dev/null 2>&1; then
     printf 'OK     immutable releases on\n'
