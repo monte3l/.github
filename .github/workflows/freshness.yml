@@ -25,13 +25,22 @@ name: Freshness (Scheduled)
 #   alone and never reported. It reads public files and changes nothing. The
 #   issue and the job summary hold counts only (`--public`), because this
 #   repository is public and a repository name tells an outsider where to aim.
+# - `probe`: only on a manual run with `probe` on. Opens, finds again and closes
+#   a throwaway "Freshness probe" issue with the real token, so the path that
+#   the four jobs above take on a finding is proven even when everything is
+#   current. It holds no finding and no repository name.
 #
 # A run fails only when it cannot check; a finding is reported by its issue.
 on:
   schedule:
     # Monday 05:15 UTC, ahead of the other weekly Monday jobs.
     - cron: "15 5 * * 1"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      probe:
+        description: Open and close a probe issue to prove the tracking-issue path
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -215,3 +224,29 @@ jobs:
               ;;
             *) printf 'template-sync.mjs failed with exit code %s\n' "$code" >&2; exit "$code" ;;
           esac
+
+  probe:
+    name: Tracking-issue probe
+    if: github.event_name == 'workflow_dispatch' && inputs.probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write # the probe issue is the only write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Open, find again and close a probe issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          printf '%s\n' 'Opened by a manual run of freshness.yml with probe on, to prove the tracking-issue path. The same run closes it.' >"$RUNNER_TEMP/probe.md"
+          bin/lib/upsert-issue.sh "Freshness probe" freshness,area:ci "$RUNNER_TEMP/probe.md" | tee "$RUNNER_TEMP/probe-1.txt"
+          grep -q '^opened ' "$RUNNER_TEMP/probe-1.txt"
+          bin/lib/upsert-issue.sh "Freshness probe" freshness,area:ci "$RUNNER_TEMP/probe.md" | tee "$RUNNER_TEMP/probe-2.txt"
+          grep -q 'is unchanged' "$RUNNER_TEMP/probe-2.txt"
+          bin/lib/upsert-issue.sh "Freshness probe" freshness,area:ci "$RUNNER_TEMP/probe.md" --clean | tee "$RUNNER_TEMP/probe-3.txt"
+          grep -q '^closed ' "$RUNNER_TEMP/probe-3.txt"
