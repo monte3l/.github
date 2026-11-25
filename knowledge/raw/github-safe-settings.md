@@ -17,3 +17,5 @@ accessed: 2026-11-19
 
 - Read by a research agent, and its README checked again by a second reader. It is built to apply settings from an admin repository: it can dry-run on pull requests and revert drift, and the page does not describe a read-only audit mode. It has to be run, as a GitHub App or a scheduled Action.
 - Whether it covers the Actions policy and the security features was not confirmed on the page.
+
+**Re-read:** 2026-11-25 — the README still lists custom properties among the managed settings, still describes only a no-change dry-run mode on pull requests, and the latest release is still 3.0.0 (2026-10-05, GitHub API). Nothing changed.

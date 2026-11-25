@@ -15,3 +15,5 @@ accessed: 2026-11-19
 
 - Version 2.0.0-beta8 was released on 2024-06-27 and nothing has been released since, although the repository saw a push on 2026-07-25 (GitHub API). About 50 stars. Treated as stale.
 - Read by a research agent.
+
+**Re-read:** 2026-11-25 — the README is unchanged and the latest release is still v2.0.0-beta8 (2024-06-27, GitHub API).

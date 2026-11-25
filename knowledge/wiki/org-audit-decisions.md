@@ -1,5 +1,5 @@
 ---
-reviewed: 2026-11-19
+reviewed: 2026-11-25
 sources:
   - raw/ossf-allstar.md
   - raw/github-safe-settings.md
@@ -7,11 +7,14 @@ sources:
   - raw/github-rulesets-plans.md
   - raw/github-app-permissions.md
   - raw/github-api-visibility-observation.md
+  - raw/github-custom-properties-guide.md
+  - raw/github-custom-properties-rest.md
+  - raw/github-custom-properties-observation.md
 ---
 
 # The weekly org audit: why it is built this way
 
-**Status:** Decision · **Reviewed:** 2026-11-19
+**Status:** Decision · **Reviewed:** 2026-11-25
 
 Every Monday `org-audit.yml` runs the read-only baseline check over every repository and keeps one issue, **Org baseline drift**. It uses a read-only GitHub App token, and because this repository is public it publishes **counts only**. A person reads the detail locally with `bin/org-audit.sh`.
 
@@ -42,7 +45,15 @@ The first scheduled run opened an issue saying all 7 repositories differ by 21 i
 
 The lesson is to get the real item names before fixing. They cannot come from the public run, so a helper that mints an App token locally makes that possible. A read that fails for a reason other than "off" must also never be reported as drift: a 404 is read as off, a 403 is a skip, and anything else is a failed call.
 
+## Custom properties on the Free plan
+
+**Organization custom properties can be defined on the Free plan.** On 2026-11-25 `PUT /orgs/monte3l/properties/schema/zz-plan-probe` answered 200, and the property was deleted again ([the observation](../raw/github-custom-properties-observation.md)). Reading the schema had already worked the day before.
+
+GitHub's own pages state no plan rule. [The guide](../raw/github-custom-properties-guide.md) names a plan only for Copilot's suggested values, and [the REST page](../raw/github-custom-properties-rest.md) asks only for an organization administrator or the `custom_properties_org_definitions_manager` permission. So the answer rests on the observation, and a later plan change would not show in the docs.
+
+This does not change the decision above. Custom properties would be a way to tag repositories (for example by kind), not a way to enforce or audit settings, and the audit stays a script.
+
 ## Open questions
 
-- What the installation token is shown for each individual field was not measured. The match is indirect.
-- Whether organization-level custom properties are available on the Free plan was not established.
+- What the installation token is shown for each individual field was not measured. The match is indirect. [GitHub's page](../raw/github-api-visibility-observation.md) says that viewing merge-related settings needs the `contents:read` and `contents:write` permissions, which may be the reason, but that was not tested.
+- Setting a custom property value on a repository, and the Copilot suggestions feature, were not tried. Only defining a property was.
