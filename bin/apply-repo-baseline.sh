@@ -1043,7 +1043,7 @@ repo_id="$(jq -r .id <<<"$live_repo")"
 # env_secret_state ENV SECRET...: reads names and sharing, never values. Sets
 #   es_missing        secrets the environment does not hold (a 404 means it has none)
 #   es_shared         organization secrets shared with this repository
-#   es_all            organization secrets visible to every repository
+#   es_all            organization secrets whose visibility is not "selected"
 #   es_unreadable     the environment's secrets could not be read
 #   es_org_unreadable an organization secret could not be read (not a 404)
 # Each is a space-separated list or empty.
@@ -1059,7 +1059,9 @@ env_secret_state() {
   for secret in "$@"; do
     grep -Fxq -- "$secret" <<<"$held" || es_missing+="$secret "
     if out="$(gh api "orgs/$owner/actions/secrets/$secret" --jq .visibility 2>&1)"; then
-      if [[ "$out" == "all" ]]; then
+      # Only "selected" has a repository list. "all" and "private" reach this repository without being on
+      # one, and a value this script does not know is not safe to assume narrow: all three are drift.
+      if [[ "$out" != "selected" ]]; then
         es_all+="$secret "
       elif ! ids="$(gh api --paginate "orgs/$owner/actions/secrets/$secret/repositories" --jq '.repositories[].id' 2>/dev/null)"; then
         es_org_unreadable=1
@@ -1100,6 +1102,10 @@ else
   # Missing main is added. Extra policies are reported and never removed.
   if policies="$(gh api "repos/$repo/environments/$janitor_env/deployment-branch-policies" --jq '[.branch_policies[].name]' 2>/dev/null)"; then :; else policies='[]'; fi
   policies="$(jq -c . <<<"$policies")"
+  # The secrets are only as narrow as the environment: held in one open to any branch they are no better
+  # than an organization secret, so they are not reported as in order then.
+  env_locked=""
+  if [[ "$policies" == '["main"]' && "$(jq -S . <<<"$current")" == "$(jq -S . <<<"$desired")" ]]; then env_locked=1; fi
   if [[ "$policies" == '["main"]' ]]; then
     printf 'OK     env-janitor: branch policy: main only\n'
     ok=$((ok + 1))
@@ -1125,6 +1131,9 @@ else
   env_secret_state "$janitor_env" "${janitor_secrets[@]}"
   if [[ -n "$es_unreadable" ]]; then
     skip "env-janitor: environment secrets" "cannot read them (the token needs Environments read)"
+  elif [[ -z "$es_missing" && -z "$env_locked" ]]; then
+    drift=$((drift + 1))
+    printf 'DRIFT  env-janitor: environment secrets: held, but the environment is not limited to main\n'
   elif [[ -z "$es_missing" ]]; then
     printf 'OK     env-janitor: environment secrets\n'
     ok=$((ok + 1))
@@ -1150,7 +1159,7 @@ else
   else
     drift=$((drift + 1))
     printf 'DRIFT  env-janitor: org secrets: %s%sstill reach this repository\n' "$es_shared" "$es_all"
-    [[ -z "$es_all" ]] || printf '         %svisible to all repositories: narrow them to selected by hand\n' "$es_all"
+    [[ -z "$es_all" ]] || printf '         %snot limited to selected repositories: narrow them by hand\n' "$es_all"
     if [[ "$mode" != "check" && -n "$es_shared" ]]; then
       if [[ -n "$es_missing" ]]; then
         printf '         not removed: set the environment secrets first\n'
@@ -1239,9 +1248,43 @@ cloudflare_env="docs-cloudflare"
 if ! gh api "repos/$repo/environments/$cloudflare_env" >/dev/null 2>&1; then
   skip "docs-cloudflare" "no $cloudflare_env environment"
 else
+  # The environment only scopes the deploy to main (the job's `url` is set in the workflow, not here), so
+  # replacing its settings with PUT loses nothing. The check reads the environment it just found.
+  desired='{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'
+  if live="$(gh api "repos/$repo/environments/$cloudflare_env" 2>/dev/null)"; then :; else live='{}'; fi
+  current="$(jq -c '{deployment_branch_policy: (.deployment_branch_policy // null)}' <<<"$live")"
+  settle "docs-cloudflare: environment" "$current" "$desired" PUT "repos/$repo/environments/$cloudflare_env"
+
+  # Missing main is added. Extra policies are reported and never removed.
+  if policies="$(gh api "repos/$repo/environments/$cloudflare_env/deployment-branch-policies" --jq '[.branch_policies[].name]' 2>/dev/null)"; then :; else policies='[]'; fi
+  policies="$(jq -c . <<<"$policies")"
+  env_locked=""
+  if [[ "$policies" == '["main"]' && "$(jq -S . <<<"$current")" == "$(jq -S . <<<"$desired")" ]]; then env_locked=1; fi
+  if [[ "$policies" == '["main"]' ]]; then
+    printf 'OK     docs-cloudflare: branch policy: main only\n'
+    ok=$((ok + 1))
+  else
+    drift=$((drift + 1))
+    printf 'DRIFT  docs-cloudflare: branch policy: %s, want ["main"]\n' "$policies"
+    if jq -e 'index("main") != null' <<<"$policies" >/dev/null; then
+      [[ "$mode" == "check" ]] || printf '         extra policies are never removed here: delete them by hand in %s\n' "$repo"
+    else
+      case "$mode" in
+        dry-run) printf '         would run: gh api -X POST repos/%s/environments/%s/deployment-branch-policies -f name=main\n' "$repo" "$cloudflare_env" ;;
+        apply)
+          gh api -X POST "repos/$repo/environments/$cloudflare_env/deployment-branch-policies" -f name=main >/dev/null
+          printf '         applied\n'
+          ;;
+      esac
+    fi
+  fi
+
   env_secret_state "$cloudflare_env" "${cloudflare_secrets[@]}"
   if [[ -n "$es_unreadable" ]]; then
     skip "docs-cloudflare: environment secrets" "cannot read them (the token needs Environments read)"
+  elif [[ -z "$es_missing" && -z "$env_locked" ]]; then
+    drift=$((drift + 1))
+    printf 'DRIFT  docs-cloudflare: environment secrets: held, but the environment is not limited to main\n'
   elif [[ -z "$es_missing" ]]; then
     printf 'OK     docs-cloudflare: environment secrets\n'
     ok=$((ok + 1))
@@ -1263,7 +1306,7 @@ else
   else
     drift=$((drift + 1))
     printf 'DRIFT  docs-cloudflare: org secrets: %s%sstill reach this repository\n' "$es_shared" "$es_all"
-    [[ -z "$es_all" ]] || printf '         %svisible to all repositories: narrow them to selected by hand\n' "$es_all"
+    [[ -z "$es_all" ]] || printf '         %snot limited to selected repositories: narrow them by hand\n' "$es_all"
     if [[ "$mode" != "check" && -n "$es_shared" ]]; then
       if [[ -n "$es_missing" ]]; then
         printf '         not removed: set the environment secrets first\n'

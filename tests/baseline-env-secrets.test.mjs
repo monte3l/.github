@@ -101,6 +101,14 @@ test("an organization secret visible to every repository is reported separately,
   assert.match(out, /shared=\[\] all=\[A \]/);
 });
 
+test("a visibility other than selected is drift, without reading a repository list", () => {
+  for (const visibility of ["private", "internal"]) {
+    const { out, err } = run({ env: ["A"], org: { A: { visibility } } }, ["A"]);
+    assert.match(out, /shared=\[\] all=\[A \]/, visibility);
+    assert.doesNotMatch(err, /unexpected gh call/);
+  }
+});
+
 test("an organization secret the token cannot read (403) is flagged, not taken as absent", () => {
   const { out } = run({ env: ["A"], org: { A: "403" } }, ["A"]);
   assert.match(out, /orgunreadable=\[1\]/);

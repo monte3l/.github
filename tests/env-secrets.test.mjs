@@ -15,6 +15,9 @@ import { test } from "node:test";
 const root = path.join(import.meta.dirname, "..");
 const script = path.join(root, "bin", "env-secrets.sh");
 const VALUE = "s3cret-value-DO-NOT-LEAK";
+const FRESH = "2026-11-27T10:00:00Z";
+const OLD = "2026-11-01T10:00:00Z";
+const both = (ts) => [`JANITOR_APP_CLIENT_ID ${ts}`, `JANITOR_APP_PRIVATE_KEY ${ts}`];
 
 const STUB = `#!/usr/bin/env bash
 D="$GH_STUB_DIR"
@@ -30,6 +33,9 @@ case "$1 $2" in
     if [[ -f "$D/broken-$r" ]]; then echo "gh: Forbidden (HTTP 403)" >&2; exit 1; fi
     if [[ -z "$rest" ]]; then
       grep -qx "$r" "$D/env-$env.txt" || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+      case "$*" in *--jq*) [[ -f "$D/open-$r" ]] && echo false || echo true ;; esac
+    elif [[ "$rest" == deployment-branch-policies ]]; then
+      if [[ -f "$D/extra-$r" ]]; then echo main,dev; else echo main; fi
     else
       cat "$D/secrets-$r-$env.txt" 2>/dev/null || true
     fi ;;
@@ -37,7 +43,8 @@ case "$1 $2" in
 esac
 `;
 
-/** @param {{ repos?: string[], envs?: Record<string, string[]>, fail?: string[], secrets?: Record<string, string[]>, broken?: string[] }} world */
+/** @param {{ repos?: string[], envs?: Record<string, string[]>, fail?: string[], secrets?: Record<string, string[]>, broken?: string[], open?: string[], extra?: string[] }} world
+ *  open: repositories whose environment is not custom-branch-policy; extra: repositories with a second branch policy. */
 function setup(world = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), "env-secrets-"));
   const bin = path.join(dir, "bin");
@@ -53,6 +60,8 @@ function setup(world = {}) {
     writeFileSync(path.join(dir, `secrets-${key}.txt`), rows.join("\n") + "\n");
   }
   for (const r of world.broken ?? []) writeFileSync(path.join(dir, `broken-${r}`), "");
+  for (const r of world.open ?? []) writeFileSync(path.join(dir, `open-${r}`), "");
+  for (const r of world.extra ?? []) writeFileSync(path.join(dir, `extra-${r}`), "");
   return { dir, bin };
 }
 
@@ -106,6 +115,32 @@ test("a refused write names the repository, fails the run, and still tries the o
   assert.ok(!r.out.includes(VALUE) && !r.err.includes(VALUE));
 });
 
+test("an environment that is not limited to main is refused, never written, and the others still are", () => {
+  for (const world of [{ open: ["alpha"] }, { extra: ["alpha"] }]) {
+    const r = run(world, ["set", "JANITOR_APP_PRIVATE_KEY"], VALUE);
+    assert.equal(r.status, 1);
+    assert.match(r.out, /FAIL   alpha: env-janitor is not limited to main, so JANITOR_APP_PRIVATE_KEY was not written/);
+    assert.match(r.out, /OK     beta/);
+    assert.doesNotMatch(r.log, /secret set .*monte3l\/alpha/, "nothing was written to the open environment");
+    assert.ok(!r.out.includes(VALUE) && !r.err.includes(VALUE));
+  }
+});
+
+test("--repo is held to the same rule", () => {
+  const r = run({ open: ["beta"] }, ["set", "JANITOR_APP_CLIENT_ID", "--repo", "beta"], "id");
+  assert.equal(r.status, 1);
+  assert.doesNotMatch(r.log, /secret set/);
+});
+
+test("check flags an environment that is not limited to main", () => {
+  const r = run(
+    { envs: { "env-janitor": ["alpha"], "docs-cloudflare": [] }, secrets: { "alpha-env-janitor": both(FRESH) }, extra: ["alpha"] },
+    ["check"],
+  );
+  assert.equal(r.status, 1);
+  assert.match(r.out, /DRIFT  alpha: env-janitor is not limited to main/);
+});
+
 test("a name that is not in blueprint/env-secrets.json is refused before any call", () => {
   const r = run({}, ["set", "GITLEAKS_LICENSE"], VALUE);
   assert.equal(r.status, 2);
@@ -138,9 +173,6 @@ test("usage errors exit 2", () => {
   assert.equal(run({}, ["check", "--repo", "alpha"]).status, 2);
 });
 
-const FRESH = "2026-11-27T10:00:00Z";
-const OLD = "2026-11-01T10:00:00Z";
-const both = (ts) => [`JANITOR_APP_CLIENT_ID ${ts}`, `JANITOR_APP_PRIVATE_KEY ${ts}`];
 
 test("check is clean when every copy is present and from the same rotation", () => {
   const r = run(

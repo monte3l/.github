@@ -14,7 +14,9 @@
 #          never from an argument, so it does not reach a process list or the
 #          shell history. It sets NAME in the environment the JSON file maps it
 #          to, in REPO (a name, default: every repository of OWNER that has the
-#          environment). A refused write names the repository and never the value.
+#          environment). An environment that does not deploy from main only is
+#          refused, since a secret in it is readable from any branch. A refused
+#          write names the repository and never the value.
 #   check  prints each secret's name, repository and update time, and flags a
 #          copy that is missing from an environment that exists, or older than
 #          the newest copy of the same name by more than an hour (a rotation
@@ -31,7 +33,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")/../blueprint" && pwd)"
 map="$here/env-secrets.json"
 
 usage() {
-  sed -n '5,23p' "$0" | sed 's/^# \{0,1\}//' >&2
+  sed -n '5,25p' "$0" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
@@ -79,6 +81,17 @@ has_env() {
   exit 3
 }
 
+# env_locked REPO ENV: the environment deploys from main only, with the settings the baseline owns. A
+# secret written to one that does not is readable from any branch, which is what an organization secret
+# was, so the write is refused. A failed read stops the run (fail closed), it is never "not locked".
+env_locked() {
+  local settings names
+  settings="$(gh api "repos/$owner/$1/environments/$2" --jq '.deployment_branch_policy | (.custom_branch_policies == true and .protected_branches == false)')"
+  [[ "$settings" == "true" ]] || return 1
+  names="$(gh api "repos/$owner/$1/environments/$2/deployment-branch-policies" --jq '[.branch_policies[].name] | join(",")')"
+  [[ "$names" == "main" ]]
+}
+
 if [[ "$cmd" == "set" ]]; then
   env="$(jq -r --arg n "$name" '.environments | to_entries[] | select(.value | index($n)) | .key' "$map")"
   [[ -n "$env" ]] || { printf '%s is not listed in blueprint/env-secrets.json\n' "$name" >&2; exit 2; }
@@ -96,6 +109,11 @@ if [[ "$cmd" == "set" ]]; then
   while IFS= read -r r; do
     [[ -n "$r" ]] || continue
     if [[ -z "$repo_only" ]] && ! has_env "$r" "$env"; then
+      continue
+    fi
+    if ! env_locked "$r" "$env"; then
+      printf 'FAIL   %s: %s is not limited to main, so %s was not written\n' "$r" "$env" "$name"
+      failed=$((failed + 1))
       continue
     fi
     if printf '%s' "$value" | gh secret set "$name" --env "$env" --repo "$owner/$r" >/dev/null 2>&1; then
@@ -122,6 +140,10 @@ while IFS= read -r env; do
   while IFS= read -r r; do
     [[ -n "$r" ]] || continue
     has_env "$r" "$env" || continue
+    if ! env_locked "$r" "$env"; then
+      printf 'DRIFT  %s: %s is not limited to main\n' "$r" "$env"
+      drift=$((drift + 1))
+    fi
     held="$(gh api "repos/$owner/$r/environments/$env/secrets" --jq '.secrets[] | "\(.name) \(.updated_at)"')"
     wanted="$(jq -r --arg e "$env" '.environments[$e][]' "$map")"
     while IFS= read -r secret; do

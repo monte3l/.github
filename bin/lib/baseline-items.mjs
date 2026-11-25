@@ -43,6 +43,7 @@ export const INLINE_ITEMS = [
   "env-janitor: branch policy",
   "env-janitor: org secrets",
   "env-janitor: environment secrets",
+  "docs-cloudflare: branch policy",
   "docs-cloudflare: environment secrets",
   "docs-cloudflare: org secrets",
   "docs-cloudflare: secret references",
