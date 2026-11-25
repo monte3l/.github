@@ -30,7 +30,6 @@ What this repository intends to do, and not do, over roughly the next year. It l
 Each wiki page under `knowledge/wiki/` ends with what it could not verify, with the date it was last reviewed, and the harness tracker keeps its own list. The open ones that matter:
 
 - **Whether org custom properties are available on the Free plan.** Tracked in [#119](https://github.com/monte3l/.github/issues/119). See [The weekly org audit](knowledge/wiki/org-audit-decisions.md).
-- **The watchers' issue-creating path.** The pin and upstream watchers have only run in dry-run, because everything has been current. Tracked in [#156](https://github.com/monte3l/.github/issues/156). `freshness.yml` has no recorded run on GitHub at all. See [Pinned tools and upstream policies](knowledge/wiki/pin-and-policy-freshness.md).
 - **The project backfill from outside the org.** Tracked in [#118](https://github.com/monte3l/.github/issues/118). The add step itself ran on 2026-11-23 and added two issues.
 - **Whether any provider reads `llms.txt`.** None is confirmed. See [LLM wiki, llms.txt and RAG](knowledge/wiki/llm-wiki-and-llms-txt.md).
 - **How the sync config file behaves outside what its source says.** It was read from the action's source and not run. See [Keeping copied workflows current](knowledge/wiki/template-sync-options.md).

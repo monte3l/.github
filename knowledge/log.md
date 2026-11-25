@@ -83,3 +83,7 @@ The Project cannot rely on the issue forms alone: GitHub adds an issue through `
 ## [2026-11-25] ingest | Org custom properties on the Free plan
 
 Defining an organization custom property works on the Free plan (a probe property was created and deleted; GitHub's pages state no plan rule). Three cards added, the six existing sources of the org audit page were re-read (Allstar is now v4.7), and its review date was set.
+
+## [2026-11-25] ingest | The freshness workflow's issue path, run for real
+
+One card for two manual runs of `freshness.yml` with a probe input: a throwaway issue was opened with its labels and type, found again and closed. The first attempt opened a duplicate 5 seconds later, so the probe waits for the list. The pins and upstream page records the result and keeps the schedule as open. Its review date was not changed, because its six other sources were not re-read.

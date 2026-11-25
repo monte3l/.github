@@ -7,6 +7,7 @@ sources:
   - raw/ossf-best-practices-criteria.md
   - raw/ossf-security-baseline-releases.md
   - raw/reuse-spec-changelog.md
+  - raw/freshness-probe-observation.md
 ---
 
 # Keeping pinned tools and upstream policies current
@@ -38,5 +39,5 @@ To review a change: read it, update `blueprint/` if the standard should follow, 
 
 - The first recorded values are what each source said on the day the watcher was added. They are a starting point and not proof that the standard was checked against them.
 - **The Scorecard signal has a blind spot.** A check's behaviour can change without its name or risk level changing: on 2026-10-28 GitHub Actions pinned to immutable releases began to count as pinned, and the fingerprint would not have fired. The Scorecard release feed is a complementary signal that is not watched yet.
-- The issue-creating path of both watchers has been tested only in dry-run, because everything has been current.
+- **The issue path is proven, the schedule is not.** Nothing has been stale, so the watchers never had a finding to report. On 2026-11-25 a manual run of `freshness.yml` with `probe` on opened a throwaway issue through the same `bin/lib/upsert-issue.sh` call, with its labels and the Gap type, found it again as unchanged and closed it ([the run](../raw/freshness-probe-observation.md)). The first attempt opened a second issue, because a list 5 seconds after a create did not show the first one, so the probe now waits for it. The path that rewrites a body after a change was not run. `freshness.yml` had no run at all before that, and its 2026-11-23 schedule did not fire: the 2026-11-30 schedule is the next check.
 - A Baseline release can trigger two sources at once, which is accepted noise.
