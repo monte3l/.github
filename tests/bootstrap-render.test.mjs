@@ -140,7 +140,8 @@ assert.match(dm, /^- \*\*Version copied:\*\* `v\d+\.\d+\.\d+`$/m);
 assert.match(dm, /^- \*\*Last re-synced:\*\* 2026-12-24$/m);
 assert.match(dm, /^- \*\*Tier:\*\* vendored$/m);
 // secrets and todos by condition
-assert.deepEqual(docs.orgSecrets, ["GITLEAKS_LICENSE", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "JANITOR_APP_CLIENT_ID", "JANITOR_APP_PRIVATE_KEY"]);
+// the Cloudflare and janitor secrets are environment secrets (blueprint/env-secrets.json), never shared from the organization
+assert.deepEqual(docs.orgSecrets, ["GITLEAKS_LICENSE"]);
 assert.deepEqual(go({ kind: "simple" }).orgSecrets, ["GITLEAKS_LICENSE"]);
 assert.ok(docs.todo.some((t) => t.includes("`dig plugins.monte3l.com`")), "the todo has the host filled in");
 assert.ok(docs.todo.some((t) => t.includes('add "m3l-plugins" to "consumers"')));

@@ -61,6 +61,8 @@ case "$*" in
   "release verify --help") [[ -z "${STUB_GH_OLD:-}" ]] || exit 1 ;;
   "api -X PUT repos/monte3l/zz-test-repo/environments/docs-cloudflare"*) [[ -z "${STUB_ENV_FAIL:-}" ]] || exit 1 ;;
   "api -X POST repos/monte3l/zz-test-repo/environments/docs-cloudflare/deployment-branch-policies"*) [[ -z "${STUB_ENV_FAIL:-}" ]] || exit 1 ;;
+  "api -X PUT repos/monte3l/zz-test-repo/environments/env-janitor"*) [[ -z "${STUB_ENV_FAIL:-}" ]] || exit 1 ;;
+  "api -X POST repos/monte3l/zz-test-repo/environments/env-janitor/deployment-branch-policies"*) [[ -z "${STUB_ENV_FAIL:-}" ]] || exit 1 ;;
   *) echo "unexpected gh call: $*" >&2; exit 9 ;;
 esac
 STUB
@@ -310,7 +312,7 @@ check "plan order: apps and secrets before the push" 'awk "/add the repository t
 run zz-test-repo --kind simple --docs
 check "docs plan lists the docs files" 'miss=0; for f in docs.config.mjs tools/deploy/wrangler.jsonc tools/deploy/package.json .github/workflows/docs.yml .github/workflows/docs-live.yml .github/workflows/environments.yml .node-version .github/environments.json LICENSES/OFL-1.1.txt design/README.md; do grep -q "+ $f" <<<"$OUT" || miss=1; done; [[ $miss == 0 ]]'
 check "docs plan says the design is vendored and the gate runs first" 'grep -q "vendor the design: bin/sync-design.sh of m3l-design v" <<<"$OUT" && grep -q "nothing is created if it fails" <<<"$OUT"'
-check "docs plan lists the Cloudflare secrets and the environment" 'grep -q "CLOUDFLARE_API_TOKEN" <<<"$OUT" && grep -q "CLOUDFLARE_ACCOUNT_ID" <<<"$OUT" && grep -q "docs-cloudflare environment" <<<"$OUT"'
+check "docs plan lists both environments and the four environment secrets" 'grep -q "create the docs-cloudflare env-janitor environments" <<<"$OUT" && grep -q "set the environment secrets" <<<"$OUT" && for n in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID JANITOR_APP_CLIENT_ID JANITOR_APP_PRIVATE_KEY; do grep -q "$n" <<<"$OUT" || exit 1; done'
 check "docs plan lists the three todos for a person" 'grep -q "dig zz-test-repo.monte3l.com" <<<"$OUT" && grep -q "add .node-version\|.node-version, so a pull request" <<<"$OUT" && grep -q "\"consumers\" in blueprint/design-system.json" <<<"$OUT"'
 check "docs plan runs nothing: no npm, no design sync" '! grep -q "^npm\|^design-sync" "$LOG"'
 run zz-test-repo --docs --scaffold
@@ -326,7 +328,8 @@ check "docs apply: npm ci --dry-run runs inside the deploy directory" 'grep -q "
 check "docs apply: the gate ran BEFORE the repository was created" 'awk "/^gate ran/{g=NR} /^gh repo create/{c=NR} END{exit !(g && c && g<c)}" "$LOG"'
 check "docs apply: the environment is created after the repo and before the Apps" 'awk "/^gh repo create/{a=NR} /environments\/docs-cloudflare\/deployment/{b=NR} /^gh api -X PUT user/{c=NR} END{exit !(a<b && b<c)}" "$LOG"'
 check "docs apply: the environment branch policy is main" 'grep -q "deployment-branch-policies -f name=main" "$LOG"'
-check "docs apply: the Cloudflare secrets are shared" 'grep -q "secrets/CLOUDFLARE_API_TOKEN/repositories/4242" "$LOG" && grep -q "secrets/CLOUDFLARE_ACCOUNT_ID/repositories/4242" "$LOG"'
+check "docs apply: the Cloudflare secrets are NOT shared from the organization" '! grep -q "secrets/CLOUDFLARE_API_TOKEN/repositories" "$LOG" && ! grep -q "secrets/CLOUDFLARE_ACCOUNT_ID/repositories" "$LOG"'
+check "docs apply: without a terminal the four values are left for a person, with the command (exit 1)" 'for n in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID JANITOR_APP_CLIENT_ID JANITOR_APP_PRIVATE_KEY; do grep -q "bin/env-secrets.sh set $n --repo zz-test-repo --owner monte3l" <<<"$OUT" || exit 1; done; ! grep -q "^gh secret set" "$LOG" && [[ $RC == 1 ]]'
 # The lock is large: capture it first, because `git show | grep -q` makes git take SIGPIPE when grep exits early,
 # and pipefail then calls a successful match a failure.
 check "docs apply: the starter lockfile has the repository's name, not PROJECT" 'lock="$(git -C "$T/remotes/monte3l/zz-test-repo.git" show main:tools/deploy/package-lock.json)"; grep -q "\"name\": \"zz-test-repo-deploy-tools\"" <<<"$lock" && ! grep -q PROJECT <<<"$lock"'
@@ -343,7 +346,7 @@ STUB_ENV_FAIL=1 run zz-test-repo --kind simple --docs --apply --yes
 check "a refused environment call is MANUAL and exit 1" 'grep -q "MANUAL docs-cloudflare" <<<"$OUT" && [[ $RC == 1 ]]'
 reset_remote
 run zz-test-repo --kind simple --apply --yes
-check "no docs: no npm, no design sync, no environment" '! grep -q "^npm\|^design-sync\|docs-cloudflare" "$LOG"'
+check "no docs: no npm, no design sync, no environment" '! grep -q "^npm\|^design-sync\|docs-cloudflare\|env-janitor" "$LOG"'
 
 # ---- the --docs review
 run zz-test-repo --kind simple --docs
@@ -364,11 +367,11 @@ reset_remote
 run zz-test-repo --kind simple --docs --apply --yes
 check "the design sync hook prints a warning when it is used" 'grep -q "warning: NEW_REPO_DESIGN_SYNC is set" <<<"$OUT"'
 check "the environment is made from a JSON body (real booleans), not -f strings" 'grep -q "^gh api -X PUT repos/monte3l/zz-test-repo/environments/docs-cloudflare --input -" "$LOG" && ! grep -q "deployment_branch_policy\[" "$LOG"'
-check "docs: the env-janitor org secrets are shared before the push" 'grep -q "secrets/JANITOR_APP_CLIENT_ID/repositories/4242" "$LOG" && grep -q "secrets/JANITOR_APP_PRIVATE_KEY/repositories/4242" "$LOG"'
+check "docs: the env-janitor environment is created, limited to main, and its secrets are not shared from the organization" 'grep -q "^gh api -X PUT repos/monte3l/zz-test-repo/environments/env-janitor --input -" "$LOG" && grep -q "environments/env-janitor/deployment-branch-policies -f name=main" "$LOG" && ! grep -q "secrets/JANITOR_APP_CLIENT_ID/repositories" "$LOG" && ! grep -q "secrets/JANITOR_APP_PRIVATE_KEY/repositories" "$LOG"'
 check "docs: the dig todo says it is for before the first deploy" 'grep -q "should return nothing before the first deploy" <<<"$OUT"'
 reset_remote
 STUB_ENV_FAIL=1 run zz-test-repo --kind simple --docs --apply --yes
-check "a refused environment call shows the reason in the manual step" 'grep -q "MANUAL docs-cloudflare: refused" <<<"$OUT"'
+check "a refused environment call shows the reason in the manual step" 'grep -q "MANUAL docs-cloudflare: refused" <<<"$OUT" && grep -q "MANUAL env-janitor: refused" <<<"$OUT"'
 
 # the real clone path: the TAG is fetched by its full ref, never a branch of the same name
 mkdir -p "$T/mk" && rm -rf "$T/mk/d" "$T/remotes/monte3l/m3l-design.git" && git init -q "$T/mk/d" && (
