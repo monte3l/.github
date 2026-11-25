@@ -13,7 +13,6 @@ What this repository intends to do, and not do, over roughly the next year. It l
 
 ## Next 12 months
 
-- **Prove the Project backfill adds an issue.** Tracked in [#118](https://github.com/monte3l/.github/issues/118). The scheduled run on 2026-11-23 added two issues, so the add step is proven. Still unshown is a run from outside the org.
 - **Put the Claude Code sandbox behind the managed settings.** The console policy matches Bash command text, so it does not stop `bash -c '...'` or an absolute path, and it is a client-side control on a machine without admin rights. The sandbox is the planned follow-up that closes both gaps. See [Claude Code managed settings](blueprint/README.md#claude-code-managed-settings). There is no date, and no issue until someone commits to it.
 - **Open "Docs pages need review" from the docs kit's freshness report.** The report is in m3l-design 1.5.0 and reaches a repository with its design re-sync. The weekly `docs-freshness` job in the docs workflow templates is built and turns it into an issue, and it ran on 2026-11-23. Its issue open and close path has never met a stale page. Until it does, the release re-read in [Tracking work](blueprint/tracking.md#the-roadmap-file) is the only check on a ROADMAP.
 
@@ -30,7 +29,6 @@ What this repository intends to do, and not do, over roughly the next year. It l
 Each wiki page under `knowledge/wiki/` ends with what it could not verify, with the date it was last reviewed, and the harness tracker keeps its own list. The open ones that matter:
 
 - **Whether org custom properties are available on the Free plan.** Tracked in [#119](https://github.com/monte3l/.github/issues/119). See [The weekly org audit](knowledge/wiki/org-audit-decisions.md).
-- **The project backfill from outside the org.** Tracked in [#118](https://github.com/monte3l/.github/issues/118). The add step itself ran on 2026-11-23 and added two issues.
 - **Whether any provider reads `llms.txt`.** None is confirmed. See [LLM wiki, llms.txt and RAG](knowledge/wiki/llm-wiki-and-llms-txt.md).
 - **How the sync config file behaves outside what its source says.** It was read from the action's source and not run. See [Keeping copied workflows current](knowledge/wiki/template-sync-options.md).
 - **Whether the `if` pre-filter on git commands matches `env git commit`, and whether NotebookEdit input uses `notebook_path`.** Both are noted as unverified in `docs/research/harness-refresh.md`.
