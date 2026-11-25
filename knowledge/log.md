@@ -79,3 +79,7 @@ Eight scheduled workflows across the organization open issues, and nothing tied 
 A project had no rule for where limits, unverified claims, gaps and plans go: each kept a `ROADMAP.md`, and the rest sat in prose in four other places. `blueprint/tracking.md` now sets one rule: a statement that stays true lives in `ROADMAP.md`, and work that can be finished is an issue with one of six org types (Bug, Feature, Task, Gap, Debt, Verify). One org Project gives the cross-repository view. It sits beside the `freshness` label, which still marks a finding that a scheduled check opened. The ten issue types the org had belonged to an unrelated workspace and no issue used one, so they were replaced.
 
 The Project cannot rely on the issue forms alone: GitHub adds an issue through `projects:` only when its author can write to the Project, and the Free plan allows one auto-add rule. `bin/project-backfill.sh` adds what they miss, and its test found that a failed repository listing read as a clean run until the listing was read into a variable first. Everything new reports only and blocks nothing.
+
+## [2026-11-25] ingest | Org custom properties on the Free plan
+
+Defining an organization custom property works on the Free plan (a probe property was created and deleted; GitHub's pages state no plan rule). Three cards added, the six existing sources of the org audit page were re-read (Allstar is now v4.7), and its review date was set.

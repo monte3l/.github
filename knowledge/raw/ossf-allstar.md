@@ -18,3 +18,5 @@ accessed: 2026-11-19
 
 - Read by a research agent, not by the author of this card. Release dates come from the GitHub API.
 - That it cannot check rulesets, merge settings, labels or REUSE is an inference from its list of policies, not a statement on the page.
+
+**Re-read:** 2026-11-25 — the latest release is now v4.7 (2026-11-20, GitHub API), not 4.6. The README still lists the same ten policies and says the hosted app is retired. Nothing the audit page relies on changed.

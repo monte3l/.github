@@ -17,3 +17,5 @@ accessed: 2026-11-19
 
 - What the installation token is shown for each field was not measured directly. The match is between the no-token view, the App-token drift list and the fix that cleared it.
 - The documentation page was not re-read for the rule that withholds these fields.
+
+**Re-read:** 2026-11-25 — the "Get a repository" page does not say that admin or push access withholds these fields. It says "To view merge-related settings, you must have the contents:read and contents:write permissions", which is a token permission. That is a documented reason a token without it would not be shown them, and it was not tested here. The observation above is unchanged.

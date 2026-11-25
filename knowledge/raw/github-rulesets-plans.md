@@ -17,3 +17,5 @@ accessed: 2026-11-19
 
 - Observed on 2026-11-19: this organization is on the Free plan, and `GET /orgs/monte3l/rulesets` answered 403 "Upgrade to GitHub Team to enable this feature".
 - No newer page confirming that required workflows reached other plans was found.
+
+**Re-read:** 2026-11-25 — the introduction still says organization rulesets are for GitHub Team or Enterprise plans.
