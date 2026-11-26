@@ -590,6 +590,7 @@ after the others were handled.
 | --- | --- |
 | The pull request branch is `chore/bestpractices-sync-<hash>` and the commit goes through the API as the App | A rerun finds its own pull request, a closed one is not opened again, and GitHub signs the commit |
 | Only one file is sent: `.bestpractices.json` or `.project.d/bestpractices.json` | A checkout holding anything else is not what the workflow made |
+| The file keeps its own key order and spelling, and an unchanged value is left as written | A pull request shows the answers that moved, not a reordered file. A new answer goes after the last key, or right after its status key for a justification, and a file that does not exist yet is written in criteria order |
 | A symbolic link anywhere on the answer file's path stops the write | The checkout comes from the project, and the tools are checked out next to it |
 | A pull request does not overwrite a criterion changed in the file | That one goes to the issue as a link |
 | Requests to bestpractices.dev go at one a second | The pace the site asks for |

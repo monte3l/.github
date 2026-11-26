@@ -208,10 +208,14 @@ test("--write keeps a file's other keys and the file it already has", async () =
   const out = await run(["--repos", NAME, "--write", dir], { files: { ".project.d/bestpractices.json": existing } });
   assert.equal(out.status, 0, out.stderr);
   assert.ok(!existsSync(path.join(dir, ".bestpractices.json")), "the second path is not created");
+  // The file's own keys stay where they were, a `?` placeholder is not noise to remove, and the new
+  // answer goes after them.
   assert.deepEqual(JSON.parse(readFileSync(path.join(dir, ".project.d", "bestpractices.json"), "utf8")), {
-    description_good_status: "Met",
     name: "kept",
+    contribution_status: "?",
+    description_good_status: "Met",
   });
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(path.join(dir, ".project.d", "bestpractices.json"), "utf8"))), ["name", "contribution_status", "description_good_status"]);
 });
 
 test("a file with an answer the site rejects is reported and never rewritten", async () => {
