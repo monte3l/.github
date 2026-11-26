@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   MAX_URL,
   UNSET,
+  applyDecisions,
   applySiteAhead,
   baselineTotal,
   classify,
@@ -332,6 +333,55 @@ test("a typo in the file is skipped: it never becomes a link that clears the sit
   assert.equal(nextAgreed(file.answers, site, out, agreed, skip).get("contribution"), hashAnswer(met), "its old base is kept");
   // Without the skip it would have been a change to unset, which is the bug.
   assert.deepEqual(classify(file.answers, site, agreed, criteria).repoAhead, ["contribution"]);
+});
+
+// What a person decided on conflicts, carried out. `state` is shaped like the sync CLI's `inspect`.
+const stateOf = (file, site, conflicts, extra = {}) => ({ file: map(file), site: map(site), conflicts, object: null, invalid: [], ...extra });
+
+test("applyDecisions: 'file' makes a link per section, 'site' rewrites the file, undecided stays a conflict", () => {
+  const file = { description_good: answer("Met", "file one"), contribution: answer("Met", "file two"), osps_ac_01_01: answer("Met", "file three") };
+  const site = { description_good: answer("Met", "site one"), contribution: answer("Met", "site two"), osps_ac_01_01: answer("Met", "site three") };
+  const object = {
+    name: "kept",
+    description_good_status: "Met",
+    description_good_justification: "file one",
+    contribution_status: "Met",
+    contribution_justification: "file two",
+    osps_ac_01_01_status: "Met",
+    osps_ac_01_01_justification: "file three",
+  };
+  const state = stateOf(file, site, ["description_good", "contribution", "osps_ac_01_01"], { object });
+  const out = applyDecisions(map({ description_good: "file", contribution: "site" }), state, criteria, "https://x.test", 7);
+  assert.deepEqual(out.keepFile, ["description_good"]);
+  assert.deepEqual(out.keepSite, ["contribution"]);
+  assert.deepEqual(out.skipped, []);
+  assert.equal(out.proposals.urls.length, 1);
+  assert.match(out.proposals.urls[0].url, /\/projects\/7\/passing\/edit\?description_good_status=Met&description_good_justification=file%20one&overrides=description_good_status,description_good_justification$/);
+  const written = JSON.parse(out.fileText);
+  assert.equal(written.contribution_justification, "site two", "the site's wording goes into the file");
+  assert.equal(written.description_good_justification, "file one", "a 'file' decision leaves the file as it is");
+  assert.equal(written.name, "kept");
+  assert.equal(written.osps_ac_01_01_justification, "file three", "an undecided conflict is not touched, neither side's wording is applied");
+});
+
+test("applyDecisions: a decision that no longer matches a conflict is skipped, never applied", () => {
+  const state = stateOf({ description_good: answer("Met", "same") }, { description_good: answer("Met", "same") }, []);
+  const out = applyDecisions(map({ description_good: "site", contribution: "file", not_a_criterion: "file" }), state, criteria, "https://x.test", 1);
+  assert.deepEqual(out.skipped.map((s) => [s.name, s.why]), [
+    ["description_good", "not a conflict any more"],
+    ["contribution", "not a conflict any more"],
+    ["not_a_criterion", "not a criterion"],
+  ]);
+  assert.deepEqual([out.keepFile, out.keepSite, out.fileText], [[], [], null]);
+  assert.deepEqual(out.proposals.urls, []);
+});
+
+test("applyDecisions: the file is not rewritten while it holds an answer the site would reject", () => {
+  const state = stateOf({ contribution: answer("Met", "f") }, { contribution: answer("Met", "s") }, ["contribution"], { invalid: ["description_good"] });
+  const out = applyDecisions(map({ contribution: "site" }), state, criteria, "https://x.test", 1);
+  assert.equal(out.fileText, null);
+  assert.deepEqual(out.keepSite, []);
+  assert.match(out.skipped[0].why, /would reject/);
 });
 
 test("a retired criterion is not synced", () => {
