@@ -41,12 +41,10 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { closeSync, constants, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { realpathSync } from "node:fs";
 
 import {
   applySiteAhead,
@@ -202,13 +200,15 @@ async function siteGet(url) {
 
 const normUrl = (u) => String(u ?? "").trim().replace(/\/+$/, "").replace(/\.git$/, "").toLowerCase();
 
-/** The one project registered for `repoUrl`, null if none, an error if several. */
-async function lookupProject(repoUrl) {
+/**
+ * Every project registered for `repoUrl`. The site's word alone is not enough to
+ * trust one: its answers become text in a pull request and an issue here, so the
+ * caller picks the one the repository's own README badge names.
+ */
+async function lookupProjects(repoUrl) {
   const list = await siteGet(`${baseUrl()}/projects.json?url=${encodeURIComponent(repoUrl)}`);
   if (!Array.isArray(list)) throw new RepoError("bestpractices.dev sent an unexpected shape");
-  const matches = list.filter((p) => normUrl(p?.repo_url) === normUrl(repoUrl));
-  if (matches.length > 1) throw new RepoError("more than one project is registered for this repository");
-  return matches[0] ?? null;
+  return list.filter((p) => normUrl(p?.repo_url) === normUrl(repoUrl));
 }
 
 // ---- one repository ---------------------------------------------------------
@@ -253,7 +253,9 @@ function describe(answer) {
 }
 
 // `<` is escaped so an answer's text can never form a snapshot marker or any other HTML comment.
-const cell = (text) => String(text).replace(/\|/g, "\\|").replace(/\n/g, " ").replace(/</g, "&lt;");
+// The backslash goes first: otherwise an answer holding `\|` becomes `\\|`, an escaped backslash
+// followed by a bare pipe, which ends the cell.
+const cell = (text) => String(text).replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\n/g, " ").replace(/</g, "&lt;");
 
 function buildIssueBody(result, owner) {
   const lines = [
@@ -317,11 +319,16 @@ async function inspect(owner, name, criteria) {
   const repo = `${owner}/${name}`;
   const result = { repo: name, state: "in-sync", id: null, siteAhead: [], repoAhead: [], conflicts: [], invalid: [], inSync: [], needsAction: false, pending: false };
   try {
-    const project = await lookupProject(`https://github.com/${repo}`);
-    if (!project) return { ...result, state: "not-registered" };
-    result.id = project.id;
+    const matches = await lookupProjects(`https://github.com/${repo}`);
+    if (matches.length === 0) return { ...result, state: "not-registered" };
+    // A project is trusted only when the repository itself names it: anyone can claim a URL on the
+    // site, but only someone who can commit here can put the badge in the README. With several
+    // matches the badge also says which one is meant.
     const badge = readmeBadgeId(repo);
-    if (badge !== null && String(badge) !== String(project.id)) throw new RepoError("the README badge points at another project");
+    if (badge === null) throw new RepoError("no README badge ties this repository to a project");
+    const project = matches.find((p) => String(p.id) === String(badge));
+    if (!project) throw new RepoError("the README badge points at another project");
+    result.id = project.id;
 
     const present = FILE_PATHS.filter((p) => ghFile(repo, p) !== null);
     if (present.length > 1) throw new RepoError("both answer files exist");
@@ -441,6 +448,40 @@ function upsertIssue(owner, result) {
   }
 }
 
+/**
+ * Writes `text` to `relative` inside the checkout `dir`. The checkout comes from the
+ * project's repository, so what is in it is not trusted: a symlink committed at the answer
+ * file's path, or at `.project.d`, would send this write to a file of the runner outside the
+ * checkout (the tools are checked out next to it). Every part of the path is checked with
+ * lstat, the real directory must stay inside the real checkout, and the file is opened with
+ * O_NOFOLLOW so a link made between the check and the write is refused too.
+ */
+function writeInto(dir, relative, text) {
+  const root = realpathSync(dir);
+  const parts = relative.split("/");
+  let current = root;
+  for (const part of parts) {
+    current = path.join(current, part);
+    let stat = null;
+    try {
+      stat = lstatSync(current);
+    } catch {
+      // It does not exist yet: it will be created below.
+    }
+    if (stat?.isSymbolicLink()) throw new CliError(3, "a path in the checkout is a symbolic link, so nothing is written");
+    if (stat === null) break;
+  }
+  mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
+  const real = realpathSync(path.dirname(path.join(root, relative)));
+  if (real !== root && !real.startsWith(`${root}${path.sep}`)) throw new CliError(3, "the answer file's folder is outside the checkout, so nothing is written");
+  const fd = openSync(path.join(real, parts.at(-1)), constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o644);
+  try {
+    writeSync(fd, text);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 // ---- output --------------------------------------------------------------------
 
 const STATES = ["in-sync", "site-ahead", "repo-ahead", "conflict", "not-registered", "error"];
@@ -497,9 +538,7 @@ export async function main(argv) {
   if (opts.write !== null) {
     const r = results[0];
     if (r.fileWrite) {
-      const target = path.join(opts.write, r.filePath);
-      await mkdir(path.dirname(target), { recursive: true });
-      writeFileSync(target, r.fileText);
+      writeInto(opts.write, r.filePath, r.fileText);
     }
     process.stdout.write(quiet ? `${r.fileWrite ? 1 : 0} file written\n` : `${r.repo}: ${r.fileWrite ? `wrote ${r.filePath}` : "nothing to write"}\n`);
   } else if (opts.issue) {

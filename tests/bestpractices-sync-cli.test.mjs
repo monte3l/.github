@@ -6,7 +6,7 @@
 // what a workflow log may say.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -67,7 +67,11 @@ const project = (extra = {}) => ({
  * Runs the CLI. `files` maps an answer-file path to its text, `issues` is what `gh issue list`
  * returns, `readme` the README text. The stub logs every call and keeps the last --body-file.
  */
-async function run(args, { files = {}, issues = [], readme = null, env = {} } = {}) {
+// A project is trusted only when the repository's README names it, so every repository here has the
+// badge for project 5 unless a test says otherwise (`readme: null` is no README at all).
+const BADGE = "[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/5/badge)](https://www.bestpractices.dev/projects/5)\n";
+
+async function run(args, { files = {}, issues = [], readme = BADGE, env = {} } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), "bp-cli-"));
   const calls = path.join(dir, "calls.log");
   writeFileSync(calls, "");
@@ -132,11 +136,25 @@ test("a project found only by its home page is not this repository's", async () 
   assert.equal((await one([])).result.state, "not-registered");
 });
 
-test("two projects for one repository is an error", async () => {
-  site = { status: 200, body: [project(), project({ id: 6 })] };
+test("with several projects for one repository, the one the README badge names is used", async () => {
+  site = { status: 200, body: [project({ id: 6, description_good_status: "Unmet" }), project({ description_good_status: "Met" })] };
   const { result } = await one([]);
-  assert.equal(result.state, "error");
-  assert.match(result.error, /more than one project/);
+  assert.equal(result.id, 5);
+  assert.equal(result.state, "site-ahead", "the answers are the bound project's, not the other one's");
+});
+
+test("no README badge means the site's claim on the URL is not trusted: an error, nothing written", async () => {
+  site = { status: 200, body: [project({ description_good_status: "Met" })] };
+  for (const readme of [null, "# Demo\n\nNo badge here.\n"]) {
+    const { result } = await one([], { readme });
+    assert.equal(result.state, "error");
+    assert.match(result.error, /no README badge/);
+    assert.equal(result.needsAction, false);
+  }
+  const dir = mkdtempSync(path.join(tmpdir(), "bp-nobadge-"));
+  const out = await run(["--repos", NAME, "--write", dir], { readme: null });
+  assert.equal(out.status, 3);
+  assert.ok(!existsSync(path.join(dir, ".bestpractices.json")));
 });
 
 test("a README badge that points at another project is an error", async () => {
@@ -292,6 +310,37 @@ test("a table cell cannot carry an HTML comment, so an answer cannot plant a sna
   assert.equal(out.status, 0, out.stderr);
   assert.ok(!out.body.includes(fake), "the text is escaped");
   assert.equal(out.body.match(/<!-- bp-agreed:/g).length, 1, "only the real marker");
+});
+
+test("a backslash in an answer cannot end a table cell", async () => {
+  site = { status: 200, body: [project({ description_good_status: "Met", description_good_justification: "site" })] };
+  const files = { ".bestpractices.json": JSON.stringify({ description_good_status: "Met", description_good_justification: "a \\| b" }) };
+  const out = await run(["--repos", NAME, "--issue"], { files });
+  assert.equal(out.status, 0, out.stderr);
+  // `\|` in the answer is shown as an escaped backslash and an escaped pipe, never as a bare pipe.
+  assert.ok(out.body.includes("a \\\\\\| b"), `body: ${out.body}`);
+});
+
+test("--write refuses a symbolic link in the checkout and leaves the file it points at alone", async () => {
+  site = { status: 200, body: [project({ description_good_status: "Met" })] };
+  const outside = mkdtempSync(path.join(tmpdir(), "bp-outside-"));
+  const victim = path.join(outside, "tools-file");
+  writeFileSync(victim, "untouched\n");
+
+  const linkedFile = mkdtempSync(path.join(tmpdir(), "bp-link-"));
+  symlinkSync(victim, path.join(linkedFile, ".bestpractices.json"));
+  const first = await run(["--repos", NAME, "--write", linkedFile]);
+  assert.equal(first.status, 3);
+  assert.equal(readFileSync(victim, "utf8"), "untouched\n");
+
+  const linkedDir = mkdtempSync(path.join(tmpdir(), "bp-link-"));
+  symlinkSync(outside, path.join(linkedDir, ".project.d"));
+  const second = await run(["--repos", NAME, "--write", linkedDir], { files: { ".project.d/bestpractices.json": "{}" } });
+  assert.equal(second.status, 3);
+  assert.ok(!existsSync(path.join(outside, "bestpractices.json")), "nothing was written through the linked folder");
+
+  const text = `${first.stdout}${first.stderr}${second.stdout}${second.stderr}`;
+  assert.ok(!text.includes(outside) && !text.includes(linkedFile), "the message names no path");
 });
 
 test("a leg that writes fails when its project could not be checked", async () => {

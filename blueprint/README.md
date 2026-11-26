@@ -535,9 +535,13 @@ A project's answers live twice: in `.bestpractices.json` and on
 bestpractices.dev. Without a job, every change, however small, is typed into
 the other one by hand. `bestpractices-sync.yml` compares the two for every
 registered project, criterion by criterion, and closes the gap. It finds a
-project by its repository URL, so registering it on bestpractices.dev is all it
-takes to be included. A repository in `openssf.json`'s `exempt`, a private one,
-an archived one and a fork are skipped.
+project by its repository URL, and trusts it only when the repository's own
+README badge names it: anyone can claim a URL on the site, but only someone who
+can commit to the repository can add the badge. A project with no badge, or a
+badge for another id, is reported as unchecked and nothing is written for it.
+Registering on bestpractices.dev and adding the badge is all it takes to be
+included. A repository in `openssf.json`'s `exempt`, a private one, an archived
+one and a fork are skipped.
 
 Which side is ahead is decided against the last answer both sides held, not
 against a timestamp: the site keeps none per criterion.
@@ -586,6 +590,7 @@ after the others were handled.
 | --- | --- |
 | The pull request branch is `chore/bestpractices-sync-<hash>` and the commit goes through the API as the App | A rerun finds its own pull request, a closed one is not opened again, and GitHub signs the commit |
 | Only one file is sent: `.bestpractices.json` or `.project.d/bestpractices.json` | A checkout holding anything else is not what the workflow made |
+| A symbolic link anywhere on the answer file's path stops the write | The checkout comes from the project, and the tools are checked out next to it |
 | A pull request does not overwrite a criterion changed in the file | That one goes to the issue as a link |
 | Requests to bestpractices.dev go at one a second | The pace the site asks for |
 | A run page and a log hold counts only | This repository is public |

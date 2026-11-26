@@ -14,8 +14,9 @@ name: OpenSSF Best Practices sync
 #               for a job to do it, so that click is the one step left to a person.
 #   conflict    both moved and differ: the issue lists both and nothing is changed.
 #
-# A project is found by its repository URL, so registering it on bestpractices.dev
-# is all it takes to be included. See `blueprint/README.md`, "OpenSSF Best
+# A project is found by its repository URL and trusted only when the repository's
+# README badge names it, so a project is included once it is registered on
+# bestpractices.dev and carries its badge. See `blueprint/README.md`, "OpenSSF Best
 # Practices sync".
 #
 # It runs every day at 05:30 UTC, and for real: a scheduled run opens the pull
