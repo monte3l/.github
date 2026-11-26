@@ -634,7 +634,7 @@ one and refuses to run in a workflow for the same reason.
 and questions a criterion only when they differ, so an answer both state wrongly
 passes unnoticed. In `m3l-design`, "released assets carry the same MIT license"
 was caught only because it happened to be a conflict: the release also ships the
-brand files under a notice that is not an open-source license. Custom wording
+brand files, which carry their own notice and are not under the MIT terms. Custom wording
 may therefore amend a criterion where file and site agree, and only custom
 wording: `file` and `site` mean nothing where there is no other side. A
 criterion with a change waiting on one side, or one that already has the answer
