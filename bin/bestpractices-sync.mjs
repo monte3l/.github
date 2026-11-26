@@ -154,7 +154,7 @@ function exemptRepositories() {
   }
 }
 
-function loadCriteria() {
+export function loadCriteria() {
   const upstream = JSON.parse(readFileSync(path.join(ROOT, "blueprint/upstream.json"), "utf8"));
   const entry = upstream.find((e) => e.name === "OpenSSF Best Practices criteria");
   const ref = entry?.reviewed;
@@ -172,7 +172,7 @@ function loadCriteria() {
 
 // ---- bestpractices.dev ----------------------------------------------------
 
-const baseUrl = () => (process.env.BESTPRACTICES_BASE_URL || "https://www.bestpractices.dev").replace(/\/+$/, "");
+export const baseUrl = () => (process.env.BESTPRACTICES_BASE_URL || "https://www.bestpractices.dev").replace(/\/+$/, "");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let lastRequest = 0;
 
@@ -299,7 +299,7 @@ function buildIssueBody(result, owner) {
   return lines.join("\n");
 }
 
-async function inspect(owner, name, criteria) {
+export async function inspect(owner, name, criteria) {
   const repo = `${owner}/${name}`;
   const result = { repo: name, state: "in-sync", id: null, siteAhead: [], repoAhead: [], conflicts: [], invalid: [], inSync: [], needsAction: false, pending: false };
   try {
@@ -331,6 +331,7 @@ async function inspect(owner, name, criteria) {
     const site = readAnswers(project, criteria);
     result.file = file.answers;
     result.site = site.answers;
+    result.object = object;
     result.invalid = file.invalid;
 
     const issue = findIssue(repo);
@@ -444,7 +445,7 @@ function upsertIssue(owner, result) {
  * lstat, the real directory must stay inside the real checkout, and the file is opened with
  * O_NOFOLLOW so a link made between the check and the write is refused too.
  */
-function writeInto(dir, relative, text) {
+export function writeInto(dir, relative, text) {
   const root = realpathSync(dir);
   const parts = relative.split("/");
   let current = root;
