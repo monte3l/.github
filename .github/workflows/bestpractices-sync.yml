@@ -1,0 +1,211 @@
+name: OpenSSF Best Practices sync
+
+# Keeps each registered project's `.bestpractices.json` and its bestpractices.dev
+# answers in step, so nobody retypes an answer when one changes, even slightly.
+#
+# What differs, and which side is ahead, is decided by `bin/bestpractices-sync.mjs`
+# and nothing else, per criterion, against the last answer both sides held:
+#
+#   site ahead  a pull request from the `monte3l-sync` App brings the site's answer
+#               into the file. A person reviews and merges it.
+#   repo ahead  a link goes into the project's tracking issue that opens the site's
+#               form with the file's answers filled in. bestpractices.dev only saves
+#               an answer when a logged-in person clicks Save, and offers no token
+#               for a job to do it, so that click is the one step left to a person.
+#   conflict    both moved and differ: the issue lists both and nothing is changed.
+#
+# A project is found by its repository URL, so registering it on bestpractices.dev
+# is all it takes to be included. See `blueprint/README.md`, "OpenSSF Best
+# Practices sync".
+#
+# It runs every day at 05:30 UTC, and for real: a scheduled run opens the pull
+# requests and writes the issues. Started by hand it only reports unless `dry_run`
+# is turned off. A run with `dry_run` on needs no App. A real run mints a token for
+# one repository at a time from the `monte3l-sync` App, in the `bestpractices-sync`
+# environment (main only).
+#
+#   gh workflow run bestpractices-sync.yml -R monte3l/.github -f dry_run=false -f repositories="m3l-plugins"
+on:
+  schedule:
+    - cron: "30 5 * * *"
+  workflow_dispatch:
+    inputs:
+      repositories:
+        description: Repository names to sync, separated by spaces. Empty means every registered project
+        required: false
+        default: ""
+        type: string
+      dry_run:
+        description: Only report what would change. Turn off to open the pull requests and write the issues
+        required: false
+        default: true
+        type: boolean
+
+permissions: {}
+
+# One sync at a time, and none cancelled midway: a run that stops between creating
+# a branch and opening its pull request is cleaned up by the next one.
+concurrency:
+  group: bestpractices-sync
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      repositories: ${{ steps.plan.outputs.repositories }}
+      indexes: ${{ steps.plan.outputs.indexes }}
+      errors: ${{ steps.plan.outputs.errors }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .node-version
+
+      # Public repositories only: the workflow token reads them. The script paces its
+      # requests to bestpractices.dev at one a second, as the site asks.
+      - name: List the projects that need something done
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_REPOSITORIES: ${{ inputs.repositories }}
+          # A scheduled run has no inputs, and it is a real run.
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          set -f # the names are split on spaces, never expanded as a glob
+          args=(--json)
+          if [[ -n "${INPUT_REPOSITORIES// /}" ]]; then
+            # shellcheck disable=SC2086 # splitting the space-separated names is the point
+            names="$(printf '%s\n' $INPUT_REPOSITORIES | paste -sd, -)"
+            args+=(--repos "$names")
+          fi
+          node bin/bestpractices-sync.mjs "${args[@]}" >plan.json
+          repositories="$(jq -c '[.results[] | select(.needsAction) | .repo] | unique' plan.json)"
+          {
+            printf 'repositories=%s\n' "$repositories"
+            # The legs are numbered, not named: a matrix value is shown in the job name on the run page.
+            printf 'indexes=%s\n' "$(jq -c '[range(0; length)]' <<<"$repositories")"
+            printf 'errors=%s\n' "$(jq '[.results[] | select(.state == "error")] | length' plan.json)"
+          } >>"$GITHUB_OUTPUT"
+          # This repository is public, so the summary holds counts only, never which project or criterion.
+          {
+            echo '### OpenSSF Best Practices answers'
+            echo
+            jq -r '.results as $r | [
+              "\([$r[] | select(.state != "not-registered")] | length) registered projects checked",
+              "\([$r[] | select(.state == "in-sync")] | length) in sync",
+              "\([$r[] | select(.state == "site-ahead")] | length) with a site change waiting for a pull request",
+              "\([$r[] | select(.state == "repo-ahead")] | length) with a file change waiting for a Save on the site",
+              "\([$r[] | select(.state == "conflict")] | length) with a change on both sides",
+              "\([$r[] | select(.state == "error")] | length) that could not be checked"
+            ] | map("- " + .) | .[]' plan.json
+            echo
+            echo "Dry run: **$DRY_RUN**"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  act:
+    # A neutral name: GitHub shows a matrix value in the job name, so the legs are numbered and the
+    # repository is looked up from the plan inside the job. This repository is public.
+    name: Sync a project
+    needs: [plan]
+    if: ${{ github.repository_owner == 'monte3l' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && needs.plan.outputs.repositories != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: bestpractices-sync
+    permissions:
+      contents: read
+    env:
+      REPOSITORY_NAME: ${{ fromJSON(needs.plan.outputs.repositories)[matrix.index] }}
+    strategy:
+      fail-fast: false
+      # One at a time: the one-a-second pace to bestpractices.dev holds inside a process, not across legs.
+      max-parallel: 1
+      matrix:
+        index: ${{ fromJSON(needs.plan.outputs.indexes) }}
+    steps:
+      # Scoped to the one repository this leg changes. The App's key could mint a
+      # token for every installed repository, so no other step gets it.
+      - name: Mint a token for this repository only
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ env.REPOSITORY_NAME }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      # The issue step needs issues write and nothing else, so it gets a token that has only that.
+      - name: Mint an issues-only token for this repository
+        id: issues-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ env.REPOSITORY_NAME }}
+          permission-issues: write
+
+      - name: Check out this repository (the tools)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: tools
+          persist-credentials: false
+
+      - name: Check out the project
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ github.repository_owner }}/${{ env.REPOSITORY_NAME }}
+          token: ${{ steps.app-token.outputs.token }}
+          path: consumer
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: tools/.node-version
+
+      # Reads the project with the read-only workflow token, never the App's.
+      - name: Write the site's answers into the file
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ env.REPOSITORY_NAME }}
+        run: node tools/bin/bestpractices-sync.mjs --repos "$REPOSITORY" --write consumer
+
+      - name: Open the pull request
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPOSITORY: ${{ github.repository_owner }}/${{ env.REPOSITORY_NAME }}
+        run: bash tools/bin/bestpractices-sync-pr.sh "$REPOSITORY" consumer
+
+      # Runs even when the pull request step failed: what a person has to do does not depend on it.
+      - name: Write the tracking issue
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ steps.issues-token.outputs.token }}
+          REPOSITORY: ${{ env.REPOSITORY_NAME }}
+        run: node tools/bin/bestpractices-sync.mjs --repos "$REPOSITORY" --issue
+
+  unchecked:
+    # A project that could not be checked must not pass quietly: the run fails, after every other project
+    # was handled. The message holds a count, never which project.
+    name: Unchecked projects
+    needs: [plan, act]
+    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.errors != '0' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    env:
+      ERRORS: ${{ needs.plan.outputs.errors }}
+    steps:
+      - run: |
+          echo "$ERRORS project(s) could not be checked: run bin/bestpractices-sync.mjs by hand for the detail."
+          exit 1
