@@ -261,9 +261,10 @@ See [Workflow template sync](blueprint/README.md#workflow-template-sync).
 
 ### Scheduled checks
 
-Each workflow below runs every Monday (UTC). Findings go to one tracking issue
-each, which a later clean run closes, and never block a merge. The template sync
-opens pull requests instead.
+Each workflow below runs every Monday (UTC), except the answer sync, which runs
+daily. Findings go to one tracking issue each, which a later clean run closes,
+and never block a merge. The template sync and the answer sync open pull requests
+instead.
 
 | Workflow | When | Reports as |
 | --- | --- | --- |
@@ -273,8 +274,10 @@ opens pull requests instead.
 | `freshness.yml`, job `copies` | 05:15 | **Workflow copies are behind their templates** |
 | `org-audit.yml` | 05:45 | **Org baseline drift**: counts only, because this repository is public |
 | `template-sync.yml` | 06:15 | A pull request in each repository with a stale copy |
+| `bestpractices-sync.yml` | daily 05:30 | A pull request in each project where bestpractices.dev holds a newer answer than `.bestpractices.json`, and a tracking issue with a link to save where the file does |
 
-See [Org audit](blueprint/README.md#org-audit) and
+See [OpenSSF Best Practices sync](blueprint/README.md#openssf-best-practices-sync),
+[Org audit](blueprint/README.md#org-audit) and
 [Keeping the standard current](blueprint/README.md#keeping-the-standard-current).
 
 ### Knowledge base and agent files
@@ -427,6 +430,7 @@ One row per file or group of files. **Delivery** is one of:
 | Environment example | `blueprint/environments.example.json` | **Not delivered**. Needs real reviewer ids | Create its own environments | Not verified |
 | New repository | `bin/new-repo.sh`, `bin/bootstrap-render.mjs`, `bin/lib/bootstrap.mjs`, `blueprint/bootstrap.json` | **Not delivered**. A tool and the data it reads | Nothing | `shellcheck` and `node --check` in `verify.yml`; `bin/bootstrap-parity.mjs` in the docs check; `tests/` |
 | Template sync | `blueprint/sync.json`, `bin/template-sync.mjs`, `bin/lib/template-sync.mjs`, `bin/template-sync-pr.sh`, `.github/workflows/template-sync.yml` | **Not delivered**. Opens pull requests in repositories that hold a stale managed copy | Review and merge them | `shellcheck` and `node --check` in `verify.yml`; `bin/sync-parity.mjs` in the docs check; `tests/` |
+| Best Practices answer sync | `bin/bestpractices-sync.mjs`, `bin/lib/bestpractices.mjs`, `bin/bestpractices-sync-pr.sh`, `.github/workflows/bestpractices-sync.yml` | **Not delivered**. Keeps `.bestpractices.json` and bestpractices.dev in step, both ways | Review and merge the pull requests, click Save on a proposal link | `shellcheck` and `node --check` in `verify.yml`; `tests/` |
 | Pins and upstream policies | `blueprint/pins.json`, `blueprint/upstream.json`, `bin/pin-freshness.sh`, `bin/upstream-watch.sh`, `bin/lib/upsert-issue.sh`, `.github/workflows/freshness.yml` | **Not delivered**. Weekly tracking issues | Nothing | `shellcheck` in `verify.yml`; `bin/pin-parity.mjs` in the docs check |
 | Org audit | `bin/org-audit.sh`, `.github/workflows/org-audit.yml` | **Not delivered**. The script over every repository, as a weekly counts-only issue | Nothing | `shellcheck` in `verify.yml` |
 | Knowledge base | `knowledge/`, `bin/knowledge-parity.mjs`, `bin/knowledge-report.mjs`, `bin/lib/knowledge.mjs` | **Not delivered**. Decisions and research | Nothing | `bin/knowledge-parity.mjs` in the docs check; staleness reported weekly; `tests/` |

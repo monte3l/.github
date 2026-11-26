@@ -1,0 +1,310 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 Enrico Lionello (enri3l) and Giulia Montevecchi (giulmonte), monte3l
+// SPDX-License-Identifier: MIT
+
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  MAX_URL,
+  UNSET,
+  applySiteAhead,
+  baselineTotal,
+  classify,
+  formatMarker,
+  hashAnswer,
+  nextAgreed,
+  normJustification,
+  normKey,
+  normStatus,
+  parseCriteria,
+  parseMarker,
+  proposalUrls,
+  readAnswers,
+  renderFile,
+} from "../bin/lib/bestpractices.mjs";
+
+// Excerpts in the shape of the two upstream files, including the awkward
+// lines the real ones have: a group heading, a criterion with a trailing
+// comment, and a block whose text holds a colon.
+const METAL = `--- !!omap
+- '0': !!omap
+  - Basics: !!omap
+    - Basic project website content: !!omap
+      - description_good:
+          category: MUST
+          autofill: >
+            Look at the README for something like:
+            this project does X.
+      - contribution:
+          category: MUST
+          na_allowed: true
+- '1': !!omap
+  - Basics: !!omap
+    - Prerequisites: !!omap
+      - achieve_silver:
+          category: MUST
+  - Security: !!omap
+    - Secured delivery: !!omap
+      - hardened_site: # After delivery_mitm?
+          category: MUST
+          met_url_required: true
+- '2': !!omap
+  - Quality: !!omap
+    - Tests: !!omap
+      - test_statement_coverage90:
+          category: SUGGESTED
+`;
+
+const BASELINE = `---
+_metadata:
+  total_controls: 3
+baseline-1:
+  General:
+    Controls:
+      osps_ac_01_01:
+        category: MUST
+        original_id: OSPS-AC-01.01
+        na_allowed: true
+      osps_ac_02_01:
+        category: MUST
+        original_id: OSPS-AC-02.01
+baseline-2:
+  General:
+    Controls:
+      osps_br_02_01:
+        category: MUST
+        original_id: OSPS-BR-02.01
+`;
+
+const criteria = parseCriteria(METAL, BASELINE);
+
+const answer = (status, justification = "") => ({ status, justification });
+const map = (entries) => new Map(Object.entries(entries));
+
+test("parseCriteria maps each criterion to its section and N/A rule", () => {
+  assert.equal(criteria.size, 7);
+  assert.deepEqual(criteria.get("description_good"), { section: "passing", naAllowed: false, obsolete: false });
+  assert.equal(criteria.get("contribution").naAllowed, true);
+  assert.equal(criteria.get("hardened_site").section, "silver", "a trailing comment on the name line is allowed");
+  assert.equal(criteria.get("test_statement_coverage90").section, "gold");
+  assert.equal(criteria.get("osps_ac_01_01").section, "baseline-1");
+  assert.equal(criteria.get("osps_ac_01_01").naAllowed, true);
+  assert.equal(criteria.get("osps_br_02_01").section, "baseline-2");
+  assert.ok(!criteria.has("Basics"), "a group heading is not a criterion");
+  assert.ok(!criteria.has("achieve_silver"), "a level the site derives itself is not synced");
+});
+
+test("baselineTotal reads the file's own count, so a misparse can be caught", () => {
+  assert.equal(baselineTotal(BASELINE), 3);
+  assert.equal(baselineTotal("nothing here"), null);
+  const found = [...criteria.values()].filter((c) => c.section.startsWith("baseline-")).length;
+  assert.equal(found, baselineTotal(BASELINE));
+});
+
+test("normKey turns the site's spelling into the file's", () => {
+  assert.equal(normKey("OSPS-AC-01.01_status"), "osps_ac_01_01_status");
+  assert.equal(normKey("floss_license_status"), "floss_license_status");
+});
+
+test("normStatus accepts the site's words and BadgeApp's integers", () => {
+  assert.equal(normStatus("Met"), "Met");
+  assert.equal(normStatus(" unmet "), "Unmet");
+  assert.equal(normStatus("n/a"), "N/A");
+  assert.equal(normStatus("?"), "?");
+  assert.equal(normStatus("unknown"), "?");
+  assert.equal(normStatus(undefined), "?");
+  assert.equal(normStatus(3), "Met");
+  assert.equal(normStatus(0), "?");
+  assert.equal(normStatus(1), "Unmet");
+  assert.equal(normStatus(2), "N/A");
+  assert.equal(normStatus(4), null);
+  assert.equal(normStatus("Maybe"), null);
+});
+
+test("justification: CRLF and trailing space do not count, one character does", () => {
+  assert.equal(normJustification("a\r\nb  \n"), "a\nb");
+  assert.equal(normJustification(null), "");
+  assert.notEqual(hashAnswer(answer("Met", "a b")), hashAnswer(answer("Met", "a  b")));
+  const read = (text) =>
+    readAnswers({ contribution_status: "Met", contribution_justification: text }, criteria).answers.get("contribution");
+  assert.equal(hashAnswer(read("a\r\nb  ")), hashAnswer(read("a\nb")), "the same answer from either side hashes alike");
+  assert.notEqual(hashAnswer(read("a b")), hashAnswer(read("a  b")));
+});
+
+test("readAnswers reads both spellings and drops the unset ones", () => {
+  const { answers, invalid } = readAnswers(
+    {
+      "OSPS-AC-01.01_status": 3,
+      "OSPS-AC-01.01_justification": "MFA is required org-wide",
+      description_good_status: "?",
+      contribution_status: "N/A",
+      contribution_justification: "",
+      achieve_passing_status: "Met",
+      name: "kept elsewhere",
+    },
+    criteria,
+  );
+  assert.deepEqual([...answers.keys()].sort(), ["contribution", "osps_ac_01_01"]);
+  assert.deepEqual(answers.get("osps_ac_01_01"), answer("Met", "MFA is required org-wide"));
+  assert.deepEqual(invalid, []);
+});
+
+test("readAnswers reports a status the site would reject instead of syncing it", () => {
+  const { answers, invalid } = readAnswers(
+    { description_good_status: "N/A", hardened_site_status: "Perhaps", contribution_status: "Met" },
+    criteria,
+  );
+  assert.deepEqual(invalid.sort(), ["description_good", "hardened_site"]);
+  assert.deepEqual([...answers.keys()], ["contribution"]);
+});
+
+test("a justification kept under an unknown status still counts as an answer", () => {
+  const { answers } = readAnswers({ contribution_status: "?", contribution_justification: "to do" }, criteria);
+  assert.deepEqual(answers.get("contribution"), answer("?", "to do"));
+});
+
+// The four rows of the table, one criterion each. `agreed` is the base.
+test("classify: every row of the three-way table", () => {
+  const names = ["description_good", "contribution", "hardened_site", "test_statement_coverage90"];
+  const small = new Map(names.map((n) => [n, criteria.get(n)]));
+  const base = answer("Unmet", "old");
+  const agreed = new Map(names.map((n) => [n, hashAnswer(base)]));
+  const file = map({
+    description_good: answer("Met", "same"), // both moved to the same value
+    contribution: base, // file unchanged
+    hardened_site: answer("Met", "file edit"), // file moved
+    test_statement_coverage90: answer("Met", "file edit"), // both moved, differently
+  });
+  const site = map({
+    description_good: answer("Met", "same"),
+    contribution: answer("Met", "site edit"), // site moved
+    hardened_site: base, // site unchanged
+    test_statement_coverage90: answer("Unmet", "site edit"),
+  });
+  const out = classify(file, site, agreed, small);
+  assert.deepEqual(out.inSync, ["description_good"]);
+  assert.deepEqual(out.siteAhead, ["contribution"]);
+  assert.deepEqual(out.repoAhead, ["hardened_site"]);
+  assert.deepEqual(out.conflicts, ["test_statement_coverage90"]);
+});
+
+test("classify: a criterion the snapshot lacks was unset, so a site answer is site ahead", () => {
+  const out = classify(new Map(), map({ contribution: answer("Met", "x") }), new Map(), criteria);
+  assert.deepEqual(out.siteAhead, ["contribution"]);
+  assert.deepEqual(out.repoAhead, []);
+  assert.equal(out.inSync.length, criteria.size - 1, "everything unset on both sides is in sync");
+});
+
+test("classify: with no site answers, a file answer is repo ahead", () => {
+  const out = classify(map({ contribution: answer("Met", "x") }), new Map(), new Map(), criteria);
+  assert.deepEqual(out.repoAhead, ["contribution"]);
+});
+
+test("classify: clearing an answer on the site is a site change, not a lost file", () => {
+  const was = answer("Met", "x");
+  const out = classify(map({ contribution: was }), new Map(), map({ contribution: hashAnswer(was) }), criteria);
+  assert.deepEqual(out.siteAhead, ["contribution"]);
+  assert.equal(applySiteAhead(map({ contribution: was }), new Map(), out.siteAhead).has("contribution"), false);
+});
+
+test("nextAgreed keeps the old base for every open criterion", () => {
+  const old = answer("Unmet", "old");
+  const file = map({ contribution: answer("Met", "file"), hardened_site: answer("Met", "same") });
+  const site = map({ contribution: old, hardened_site: answer("Met", "same") });
+  const agreed = map({ contribution: hashAnswer(old) });
+  const out = classify(file, site, agreed, criteria);
+  const next = nextAgreed(file, site, out, agreed);
+  assert.equal(next.get("hardened_site"), hashAnswer(answer("Met", "same")), "agreement is recorded");
+  assert.equal(next.get("contribution"), hashAnswer(old), "an open repo-ahead criterion keeps its base");
+  assert.ok(!next.has("description_good"), "unset answers are not stored");
+});
+
+test("renderFile: sorted, canonical, keeps keys that are not criteria, same bytes twice", () => {
+  const existing = { name: "demo", "OSPS-AC-01.01_status": "Unmet", zeta: 1 };
+  const answers = map({ osps_ac_01_01: answer("Met", "MFA"), contribution: answer("N/A") });
+  const text = renderFile(existing, answers, criteria);
+  assert.equal(
+    text,
+    `{\n  "contribution_status": "N/A",\n  "name": "demo",\n  "osps_ac_01_01_justification": "MFA",\n  "osps_ac_01_01_status": "Met",\n  "zeta": 1\n}\n`,
+  );
+  assert.equal(renderFile(JSON.parse(text), readAnswers(JSON.parse(text), criteria).answers, criteria), text);
+  assert.equal(renderFile(null, new Map(), criteria), "{}\n");
+});
+
+test("proposalUrls: one link per section, forcing exactly its own keys", () => {
+  const answers = map({
+    description_good: answer("Met", "README says it & more"),
+    contribution: answer("?"),
+    osps_ac_01_01: answer("N/A", "no repo"),
+  });
+  const { urls, oversize } = proposalUrls("https://www.bestpractices.dev", 42, [...answers.keys()], answers, criteria);
+  assert.deepEqual(oversize, []);
+  assert.deepEqual(urls.map((u) => u.section).sort(), ["baseline-1", "passing"]);
+  const passing = urls.find((u) => u.section === "passing");
+  assert.equal(passing.count, 2);
+  const url = new URL(passing.url);
+  assert.equal(url.pathname, "/en/projects/42/passing/edit");
+  assert.equal(url.searchParams.get("description_good_status"), "Met");
+  assert.equal(url.searchParams.get("description_good_justification"), "README says it & more");
+  assert.equal(url.searchParams.get("contribution_status"), "?", "an unset answer is sent as an explicit reset");
+  assert.equal(
+    url.searchParams.get("overrides"),
+    "description_good_status,description_good_justification,contribution_status,contribution_justification",
+  );
+  assert.ok(!passing.url.includes("osps_ac_01_01"), "another section's keys are not in this link");
+});
+
+test("proposalUrls splits a long section and sets aside one that can never fit", () => {
+  const answers = new Map();
+  const wide = new Map();
+  for (let i = 0; i < 40; i++) {
+    wide.set(`c${i}`, { section: "passing", naAllowed: false, obsolete: false });
+    answers.set(`c${i}`, answer("Met", "x".repeat(400)));
+  }
+  wide.set("huge", { section: "passing", naAllowed: false, obsolete: false });
+  answers.set("huge", answer("Met", "y".repeat(MAX_URL)));
+  const { urls, oversize } = proposalUrls("https://www.bestpractices.dev", 1, [...answers.keys()], answers, wide);
+  assert.deepEqual(oversize, ["huge"]);
+  assert.ok(urls.length > 1, "40 answers of 400 characters need more than one link");
+  assert.equal(urls.reduce((n, u) => n + u.count, 0), 40, "every criterion is in exactly one link");
+  for (const u of urls) assert.ok(u.url.length <= MAX_URL, `link is ${u.url.length} characters`);
+});
+
+test("a typo in the file is skipped: it never becomes a link that clears the site's answer", () => {
+  const met = answer("Met", "right");
+  const file = readAnswers({ contribution_status: "Mett" }, criteria);
+  assert.deepEqual(file.invalid, ["contribution"]);
+  const site = map({ contribution: met });
+  const agreed = map({ contribution: hashAnswer(met) });
+  const skip = new Set(file.invalid);
+  const out = classify(file.answers, site, agreed, criteria, skip);
+  assert.ok(![...out.inSync, ...out.siteAhead, ...out.repoAhead, ...out.conflicts].includes("contribution"));
+  assert.deepEqual(proposalUrls("https://x.test", 1, out.repoAhead, file.answers, criteria).urls, []);
+  assert.equal(nextAgreed(file.answers, site, out, agreed, skip).get("contribution"), hashAnswer(met), "its old base is kept");
+  // Without the skip it would have been a change to unset, which is the bug.
+  assert.deepEqual(classify(file.answers, site, agreed, criteria).repoAhead, ["contribution"]);
+});
+
+test("a retired criterion is not synced", () => {
+  const retired = parseCriteria(`- '0': !!omap\n  - A: !!omap\n    - B: !!omap\n      - old_one:\n          category: MUST\n          obsolete: true\n      - new_one:\n          category: MUST\n`, "");
+  assert.deepEqual([...retired.keys()], ["new_one"]);
+});
+
+test("the last marker counts, so answer text cannot plant a snapshot", () => {
+  const fake = `<!-- bp-agreed:${JSON.stringify({ v: 1, a: { contribution: "aaaaaaaaaa" } })} -->`;
+  const real = formatMarker(new Map([["contribution", hashAnswer(answer("Met"))]]));
+  assert.equal(parseMarker(`${fake}\n\n${real}`).get("contribution"), hashAnswer(answer("Met")));
+});
+
+test("the snapshot marker round-trips and refuses anything it did not write", () => {
+  const agreed = map({ b: hashAnswer(answer("Met", "b")), a: hashAnswer(answer("Unmet")) });
+  const text = formatMarker(agreed);
+  assert.match(text, /^<!-- bp-agreed:\{"v":1,"a":\{"a":"[0-9a-f]{10}","b":"[0-9a-f]{10}"\}\} -->$/);
+  assert.deepEqual([...parseMarker(`Body\n\n${text}\n`)], [...agreed].sort(([x], [y]) => (x < y ? -1 : 1)));
+  assert.equal(parseMarker("no marker"), null);
+  assert.equal(parseMarker('<!-- bp-agreed:{"v":2,"a":{}} -->'), null);
+  assert.equal(parseMarker('<!-- bp-agreed:{"v":1,"a":{"x":"nothex"}} -->'), null);
+  assert.equal(parseMarker("<!-- bp-agreed:{not json} -->"), null);
+  assert.deepEqual([...parseMarker(formatMarker(new Map()))], []);
+  assert.equal(UNSET.status, "?");
+});

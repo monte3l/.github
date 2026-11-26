@@ -49,6 +49,8 @@ const TESTS = [
   [/^blueprint\/sync\.json$|^bin\/(lib\/)?template-sync|^bin\/sync-parity\.mjs$|^workflow-templates\//, ["template-sync", "sync-parity"]],
   // What the public repository publishes from these must stay counts only.
   [/^\.github\/workflows\/(freshness|template-sync)\.yml$|^bin\/template-sync(-pr\.sh|\.mjs)$/, ["freshness-public", "sync-log-public"]],
+  // The answer sync, its tracking issue and its public run page, and the environment it runs in.
+  [/^bin\/(lib\/)?bestpractices|^\.github\/workflows\/bestpractices-sync\.yml$|^\.github\/environments\.json$/, ["bestpractices-", "environments-listed"]],
   [/^bin\/new-repo\.sh$/, ["new-repo"]],
   // The guard starters in blueprint/files/ and the push guard's helper are copies of, or used by, the hooks.
   [/^\.claude\/hooks\/|^bin\/lib\/signed-range\.mjs$|^blueprint\/files\//, ["harness-"]],

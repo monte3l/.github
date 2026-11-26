@@ -31,6 +31,7 @@ in `m3l-groundwork`.
 | `tracking.md`            | Where a project records bugs, gaps, limits, unverified claims, decisions and planned work, with which tool, and the one-time org setup. See [Tracking work](tracking.md) |
 | `issue-types.json`       | The organization's six issue types (Bug, Feature, Task, Gap, Debt, Verify). A record: issue types are an org setting, so nothing applies it |
 | `../.github/workflows/project-backfill.yml`, `../bin/project-backfill.sh` | The weekly run that adds issues the forms could not to the org Project. It adds only, and publishes counts only. See [Tracking work](tracking.md#milestones-and-the-org-project) |
+| `../.github/workflows/bestpractices-sync.yml`, `../bin/bestpractices-sync.mjs`, `../bin/lib/bestpractices.mjs`, `../bin/bestpractices-sync-pr.sh` | The daily run that keeps each registered project's `.bestpractices.json` and its bestpractices.dev answers in step. It publishes counts only. See [OpenSSF Best Practices sync](#openssf-best-practices-sync) |
 | `docs-site.md`           | The docs site standard, the Cloudflare one-time setup and the runbook. See [Docs site](#docs-site) |
 | `files/`                 | Starting points for files a repository commits itself: `gitleaks.toml`, `gitattributes`, `editorconfig`, `REUSE.toml`, `dependency-review-config.yml`, `SECURITY.md` (a starting point with placeholders) and `CODEOWNERS`, and for a docs site `docs.config.mjs`, `deploy-tools/`, `environments.json` (the environment cleanup policy) and `dependency-review-config-docs.yml` (the `sharp` exemptions), `policies.yml` and `scancode-config.yml` (the ScanCode license policy and ignored paths), `dependabot.yml`, `labeler.yml`, `guard-shared-checkout.mjs` (the worktree guard, see [Worktree guard](#worktree-guard)), `require-signoff.sh` (the sign-off guard, see [Sign-off guard](#sign-off-guard)), `guard-secret-writes.mjs`, `guard-double-background.mjs`, `guard-shell-portability.mjs`, `guard-git-push-signed.mjs` and `signed-range.mjs` (see [Other guards](#other-guards)), `check-plugin-metadata.mjs` (a plugin repository's manifest parity check, see [Claude Code plugins](#claude-code-plugins); not bootstrapped), a `README.md` skeleton, `ROADMAP.md` and `decisions/` (the roadmap and decision-record starters), `release-please/` (the release configuration starters), and for a docs site `docs.config.mjs` and `deploy-tools/`. The script only checks that the repository has the matching file, and does not check the README at all |
 | `environments.example.json` | An example `npm-publish` environment. Not applied by the script: it needs real reviewer ids            |
@@ -514,7 +515,9 @@ template-sync.yml -f dry_run=false -f repositories="m3l-plugins"`) and, with
 
 It uses its own App, **`monte3l-sync`**: repository permissions `contents`,
 `pull requests` and `workflows` write and `metadata` read, no webhook, installed
-only on the consumers listed in `sync.json`, never on `.github`. The key is in
+only on the consumers listed in `sync.json` and on the projects registered at
+bestpractices.dev (see [OpenSSF Best Practices sync](#openssf-best-practices-sync),
+which also needs `issues` write), never on `.github`. The key is in
 the `template-sync` environment of `monte3l/.github` (`SYNC_APP_CLIENT_ID`,
 `SYNC_APP_PRIVATE_KEY`), limited to `main` and listed in
 `.github/environments.json`. The release App stays without `workflows`. Each
@@ -525,6 +528,83 @@ The workflow runs every Monday at 06:15 UTC, an hour after the weekly
 it opens the pull requests. A run that finds nothing stale opens nothing, and a
 person still reviews and merges each pull request. Started by hand it only
 reports, unless `dry_run` is turned off.
+
+## OpenSSF Best Practices sync
+
+A project's answers live twice: in `.bestpractices.json` and on
+bestpractices.dev. Without a job, every change, however small, is typed into
+the other one by hand. `bestpractices-sync.yml` compares the two for every
+registered project, criterion by criterion, and closes the gap. It finds a
+project by its repository URL, and trusts it only when the repository's own
+README badge names it: anyone can claim a URL on the site, but only someone who
+can commit to the repository can add the badge. A project with no badge, or a
+badge for another id, is reported as unchecked and nothing is written for it.
+Registering on bestpractices.dev and adding the badge is all it takes to be
+included. A repository in `openssf.json`'s `exempt`, a private one, an archived
+one and a fork are skipped.
+
+Which side is ahead is decided against the last answer both sides held, not
+against a timestamp: the site keeps none per criterion.
+
+| File vs last agreed | Site vs last agreed | What happens |
+| --- | --- | --- |
+| Same as the site | Any | Nothing: recorded as agreed |
+| Unchanged | Changed | **Site ahead.** A pull request from `monte3l-sync` puts the site's answer in the file |
+| Changed | Unchanged | **Repo ahead.** The project's tracking issue gets a link that opens the site's form with the file's answers filled in |
+| Changed | Changed, and different | **Conflict.** The issue lists both answers. Nothing is changed |
+
+The last agreed answers are a hidden `bp-agreed` line in the tracking issue
+(`OpenSSF Best Practices sync`, labels `bestpractices-sync` and `freshness`), one
+short hash per criterion. Every checked project has one: it is open while a
+person has something to do, and closed otherwise, so it only holds the line.
+The `bestpractices-sync` label is created by the job, not by the baseline, which
+would otherwise report it missing in every repository. A project with no such
+line yet takes the file as of its last commit before the site was last edited as
+the base, which is right when only one side has moved since they agreed.
+
+> [!IMPORTANT]
+> One step stays with a person: the **Save** click for a change made in the
+> file. bestpractices.dev only saves an answer when a logged-in person submits
+> the form, and offers a job no token to do it. The proposal link fills the form
+> in and forces exactly the changed answers, so the click is all that is left.
+> The other way to write, a copied session cookie, expires after 48 hours and is
+> not what the site recommends, so this job does not use it.
+
+What counts as a difference is strict on purpose:
+
+| Rule | Why |
+| --- | --- |
+| A justification differing by one character is a difference | The point is that a small change needs no manual edit |
+| Line endings and trailing whitespace do not count | Editors and the site's form add them |
+| `?`, `unknown` and a missing key are the same answer | The site ignores `?` in the file |
+| A criterion is synced only if it is in the upstream `criteria.yml` or `baseline_criteria.yml` at the commit `upstream.json` records as reviewed | A file's other keys (`name`, `description`) are never touched |
+| `achieve_passing` and `achieve_silver` are not synced | BadgeApp sets them from the level below |
+| A status the site would reject (an unknown word, `N/A` where it is not allowed) is reported, and the file is not rewritten while one remains | Rewriting would silently drop it |
+
+The workflow runs every day at 05:30 UTC, and a scheduled run is a real one.
+Started by hand it only reports, unless `dry_run` is turned off. A bestpractices.dev
+outage makes that project unchecked, never a pull request, and the run fails
+after the others were handled.
+
+| Rule | Why |
+| --- | --- |
+| The pull request branch is `chore/bestpractices-sync-<hash>` and the commit goes through the API as the App | A rerun finds its own pull request, a closed one is not opened again, and GitHub signs the commit |
+| Only one file is sent: `.bestpractices.json` or `.project.d/bestpractices.json` | A checkout holding anything else is not what the workflow made |
+| A symbolic link anywhere on the answer file's path stops the write | The checkout comes from the project, and the tools are checked out next to it |
+| A pull request does not overwrite a criterion changed in the file | That one goes to the issue as a link |
+| Requests to bestpractices.dev go at one a second | The pace the site asks for |
+| A run page and a log hold counts only | This repository is public |
+
+It uses the same App as [Workflow template sync](#workflow-template-sync),
+`monte3l-sync`, with one more repository permission, **issues write**: the
+tracking issue lives in the project's own repository. The issue step gets its
+own token with that permission alone, and the pull request step a token without
+it. One leg runs at a time, because the pace to bestpractices.dev holds inside a
+process, not across jobs. The key is in the
+`bestpractices-sync` environment of `monte3l/.github` (`SYNC_APP_CLIENT_ID`,
+`SYNC_APP_PRIVATE_KEY`), limited to `main` and listed in
+`.github/environments.json`. Raising the App's permissions asks each installation
+to accept them, and the App must be installed on every project it syncs.
 
 ## Environment cleanup
 
