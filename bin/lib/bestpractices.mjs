@@ -332,10 +332,17 @@ export function proposalUrls(base, projectId, names, fileAnswers, criteria) {
 
 const MARKER = /<!-- bp-agreed:(\{.*?\}) -->/gs;
 
+/**
+ * Version 1 snapshots (the first runs, 2026-11-26) could hold a guess: they recorded, as agreed, answers
+ * taken from the file's history on the assumption that the site had them too. Version 2 holds only
+ * answers both sides were seen to share, so a version 1 marker is ignored, not trusted.
+ */
+const MARKER_VERSION = 2;
+
 /** The hidden snapshot line stored in a project's tracking issue. */
 export function formatMarker(agreed) {
   const a = Object.fromEntries([...agreed].sort(([x], [y]) => (x < y ? -1 : 1)));
-  return `<!-- bp-agreed:${JSON.stringify({ v: 1, a })} -->`;
+  return `<!-- bp-agreed:${JSON.stringify({ v: MARKER_VERSION, a })} -->`;
 }
 
 /**
@@ -349,7 +356,7 @@ export function parseMarker(body) {
   if (!match) return null;
   try {
     const parsed = JSON.parse(match[1]);
-    if (parsed?.v !== 1 || typeof parsed.a !== "object" || parsed.a === null || Array.isArray(parsed.a)) return null;
+    if (parsed?.v !== MARKER_VERSION || typeof parsed.a !== "object" || parsed.a === null || Array.isArray(parsed.a)) return null;
     const out = new Map();
     for (const [name, hash] of Object.entries(parsed.a)) {
       if (typeof hash !== "string" || !/^[0-9a-f]{10}$/.test(hash)) return null;

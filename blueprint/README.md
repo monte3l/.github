@@ -558,9 +558,17 @@ The last agreed answers are a hidden `bp-agreed` line in the tracking issue
 short hash per criterion. Every checked project has one: it is open while a
 person has something to do, and closed otherwise, so it only holds the line.
 The `bestpractices-sync` label is created by the job, not by the baseline, which
-would otherwise report it missing in every repository. A project with no such
-line yet takes the file as of its last commit before the site was last edited as
-the base, which is right when only one side has moved since they agreed.
+would otherwise report it missing in every repository.
+
+A project with no such line yet gets **no guess**: the last agreed answer is
+"unset" for every criterion. An answer on one side only goes to the other (a
+file answer the site lacks becomes a link to save, and a site answer the file
+lacks goes into a pull request), and an answer on both sides that differs is a
+conflict, listed once with both texts for a person to settle. Deciding which
+side is newer from the site's last edit overwrote better wording in the file and
+pruned answers the site never had, so the job does not do it. The line only
+records answers both sides were seen to share. A line from version 1, written by
+the first runs, is ignored for the same reason.
 
 > [!IMPORTANT]
 > One step stays with a person: the **Save** click for a change made in the

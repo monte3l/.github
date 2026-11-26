@@ -71,14 +71,16 @@ const project = (extra = {}) => ({
 // badge for project 5 unless a test says otherwise (`readme: null` is no README at all).
 const BADGE = "[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/5/badge)](https://www.bestpractices.dev/projects/5)\n";
 
-async function run(args, { files = {}, issues = [], readme = BADGE, env = {} } = {}) {
+async function run(args, { files = {}, issues = [], readme = BADGE, env = {}, history = false } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), "bp-cli-"));
   const calls = path.join(dir, "calls.log");
   writeFileSync(calls, "");
   writeFileSync(path.join(dir, "metal.yml"), METAL);
   writeFileSync(path.join(dir, "baseline.yml"), BASELINE);
   writeFileSync(path.join(dir, "issues.json"), JSON.stringify(issues));
-  writeFileSync(path.join(dir, "commits.json"), "[]");
+  // `history` gives the file a commit older than the site's last edit, whose content is the file as it is now: what
+  // a guess from the file's history would have used as the "last agreed" answers.
+  writeFileSync(path.join(dir, "commits.json"), history ? '[{"sha":"abc123"}]' : "[]");
   if (readme !== null) writeFileSync(path.join(dir, "readme.md"), readme);
   for (const [name, text] of Object.entries(files)) writeFileSync(path.join(dir, `file-${name.replace(/\W/g, "_")}`), text);
   const stub = path.join(dir, "gh");
@@ -288,7 +290,7 @@ test("an in-sync project with no issue still gets one, closed, so the snapshot i
   assert.equal(out.status, 0, out.stderr);
   assert.match(out.calls.find((c) => c.startsWith("issue create")), /--label bestpractices-sync,freshness/);
   assert.ok(out.calls.some((c) => c.startsWith("issue close ")), "it is closed at once: nothing needs a person");
-  assert.match(out.body, /<!-- bp-agreed:\{"v":1,"a":\{"description_good":"[0-9a-f]{10}"\}\} -->/);
+  assert.match(out.body, /<!-- bp-agreed:\{"v":2,"a":\{"description_good":"[0-9a-f]{10}"\}\} -->/);
   // With the issue in place and unchanged, the next run has nothing to do.
   const issues = [{ number: 4, title: "OpenSSF Best Practices sync", state: "CLOSED", body: out.body.trim() }];
   assert.equal((await one([], { files, issues })).result.needsAction, false);
@@ -307,7 +309,7 @@ test("a typo in the file never produces a link that clears the site's answer", a
 });
 
 test("a table cell cannot carry an HTML comment, so an answer cannot plant a snapshot", async () => {
-  const fake = '<!-- bp-agreed:{"v":1,"a":{"planted":"aaaaaaaaaa"}} -->';
+  const fake = '<!-- bp-agreed:{"v":2,"a":{"planted":"aaaaaaaaaa"}} -->';
   site = { status: 200, body: [project({ description_good_status: "Met", description_good_justification: "site" })] };
   const files = { ".bestpractices.json": JSON.stringify({ description_good_status: "Met", description_good_justification: fake }) };
   const out = await run(["--repos", NAME, "--issue"], { files });
@@ -352,6 +354,55 @@ test("a leg that writes fails when its project could not be checked", async () =
   const dir = mkdtempSync(path.join(tmpdir(), "bp-leg-"));
   assert.equal((await run(["--repos", NAME, "--write", dir])).status, 3);
   assert.equal((await run(["--repos", NAME, "--issue"])).status, 3);
+});
+
+// With no snapshot nothing is assumed. These are the cases the first live runs got wrong: the file's
+// own answers were pruned because the site lacked them, and the site's wording was written over the
+// file's on a guess that the site was newer.
+test("no snapshot: an answer only the file has is carried to the site, never pruned from the file", async () => {
+  site = { status: 200, body: [project()] };
+  const files = { ".bestpractices.json": JSON.stringify({ description_good_status: "Unmet", description_good_justification: "drafted for the site" }) };
+  const { result } = await one([], { files, history: true });
+  assert.equal(result.state, "repo-ahead");
+  assert.deepEqual(result.repoAhead, ["description_good"]);
+  assert.deepEqual(result.siteAhead, []);
+  const dir = mkdtempSync(path.join(tmpdir(), "bp-nosnap-"));
+  const written = await run(["--repos", NAME, "--write", dir], { files, history: true });
+  assert.equal(written.status, 0, written.stderr);
+  assert.ok(!existsSync(path.join(dir, ".bestpractices.json")), "the file is not touched");
+});
+
+test("no snapshot: different wording on both sides is a conflict, listed once with both texts, never overwritten", async () => {
+  site = { status: 200, body: [project({ description_good_status: "Met", description_good_justification: "the site's wording" })] };
+  const files = { ".bestpractices.json": JSON.stringify({ description_good_status: "Met", description_good_justification: "the file's better wording" }) };
+  const { result } = await one([], { files, history: true });
+  assert.equal(result.state, "conflict");
+  assert.deepEqual(result.conflicts, ["description_good"]);
+  const dir = mkdtempSync(path.join(tmpdir(), "bp-nosnap-"));
+  assert.equal((await run(["--repos", NAME, "--write", dir], { files, history: true })).status, 0);
+  assert.ok(!existsSync(path.join(dir, ".bestpractices.json")), "no pull request content is written");
+  const out = await run(["--repos", NAME, "--issue"], { files, history: true });
+  assert.match(out.body, /the site's wording/);
+  assert.match(out.body, /the file's better wording/);
+});
+
+test("no snapshot: an answer only the site has is still added to the file", async () => {
+  site = { status: 200, body: [project({ description_good_status: "Met", description_good_justification: "new on the site" })] };
+  const files = { ".bestpractices.json": JSON.stringify({ name: "kept" }) };
+  const { result } = await one([], { files });
+  assert.deepEqual(result.siteAhead, ["description_good"]);
+});
+
+test("a version 1 snapshot is ignored: it could hold a guess", async () => {
+  const mine = { status: "Unmet", justification: "drafted" };
+  site = { status: 200, body: [project()] };
+  const v1 = `<!-- bp-agreed:${JSON.stringify({ v: 1, a: { description_good: hashAnswer(mine) } })} -->`;
+  const issues = [{ number: 3, title: "OpenSSF Best Practices sync", state: "CLOSED", body: v1 }];
+  const files = { ".bestpractices.json": JSON.stringify({ description_good_status: "Unmet", description_good_justification: "drafted" }) };
+  // Trusted, v1 would say both agreed and the site then cleared it: the file's answer would be removed.
+  const { result } = await one([], { files, issues });
+  assert.deepEqual(result.siteAhead, [], "the file's answer is not pruned");
+  assert.deepEqual(result.repoAhead, ["description_good"]);
 });
 
 test("--check exits 1 when a person has something to do", async () => {
