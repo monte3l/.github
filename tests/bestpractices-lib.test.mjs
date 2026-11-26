@@ -340,7 +340,7 @@ test("a retired criterion is not synced", () => {
 });
 
 test("the last marker counts, so answer text cannot plant a snapshot", () => {
-  const fake = `<!-- bp-agreed:${JSON.stringify({ v: 1, a: { contribution: "aaaaaaaaaa" } })} -->`;
+  const fake = `<!-- bp-agreed:${JSON.stringify({ v: 2, a: { contribution: "aaaaaaaaaa" } })} -->`;
   const real = formatMarker(new Map([["contribution", hashAnswer(answer("Met"))]]));
   assert.equal(parseMarker(`${fake}\n\n${real}`).get("contribution"), hashAnswer(answer("Met")));
 });
@@ -348,11 +348,11 @@ test("the last marker counts, so answer text cannot plant a snapshot", () => {
 test("the snapshot marker round-trips and refuses anything it did not write", () => {
   const agreed = map({ b: hashAnswer(answer("Met", "b")), a: hashAnswer(answer("Unmet")) });
   const text = formatMarker(agreed);
-  assert.match(text, /^<!-- bp-agreed:\{"v":1,"a":\{"a":"[0-9a-f]{10}","b":"[0-9a-f]{10}"\}\} -->$/);
+  assert.match(text, /^<!-- bp-agreed:\{"v":2,"a":\{"a":"[0-9a-f]{10}","b":"[0-9a-f]{10}"\}\} -->$/);
   assert.deepEqual([...parseMarker(`Body\n\n${text}\n`)], [...agreed].sort(([x], [y]) => (x < y ? -1 : 1)));
   assert.equal(parseMarker("no marker"), null);
-  assert.equal(parseMarker('<!-- bp-agreed:{"v":2,"a":{}} -->'), null);
-  assert.equal(parseMarker('<!-- bp-agreed:{"v":1,"a":{"x":"nothex"}} -->'), null);
+  assert.equal(parseMarker('<!-- bp-agreed:{"v":3,"a":{}} -->'), null);
+  assert.equal(parseMarker('<!-- bp-agreed:{"v":2,"a":{"x":"nothex"}} -->'), null);
   assert.equal(parseMarker("<!-- bp-agreed:{not json} -->"), null);
   assert.deepEqual([...parseMarker(formatMarker(new Map()))], []);
   assert.equal(UNSET.status, "?");

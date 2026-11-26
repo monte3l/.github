@@ -231,22 +231,6 @@ function findIssue(repo) {
   return rows.find((row) => row.title === ISSUE_TITLE) ?? null;
 }
 
-/** The file as of its last commit before the site was last edited: the base when no snapshot exists. */
-function bootstrapBase(repo, filePath, before, criteria) {
-  const commits = JSON.parse(
-    gh(["api", `repos/${repo}/commits?path=${encodeURIComponent(filePath)}&until=${encodeURIComponent(before)}&per_page=1`]),
-  );
-  if (!Array.isArray(commits) || commits.length === 0) return new Map();
-  const text = ghFile(repo, filePath, commits[0].sha);
-  if (text === null) return new Map();
-  try {
-    const { answers } = readAnswers(JSON.parse(text), criteria);
-    return new Map([...answers].map(([name, answer]) => [name, hashAnswer(answer)]));
-  } catch {
-    return new Map();
-  }
-}
-
 function describe(answer) {
   if (!answer) return "unset";
   return answer.justification === "" ? answer.status : `${answer.status}: ${answer.justification}`;
@@ -352,7 +336,11 @@ async function inspect(owner, name, criteria) {
     const issue = findIssue(repo);
     result.issue = issue;
     let agreed = issue ? parseMarker(issue.body) : null;
-    if (agreed === null) agreed = text === null ? new Map() : bootstrapBase(repo, result.filePath, project.updated_at ?? new Date().toISOString(), criteria);
+    // With no snapshot nothing is assumed: the last agreed answer is "unset" for every criterion. An
+    // answer on one side only goes to the other side, and an answer on both sides that differs is a
+    // conflict for a person, once. Guessing which side is newer (from the site's last edit, say) put
+    // the site's older wording over a better one in the file, and pruned answers the site never had.
+    if (agreed === null) agreed = new Map();
 
     const skip = new Set([...file.invalid, ...site.invalid]);
     const outcome = classify(file.answers, site.answers, agreed, criteria, skip);
