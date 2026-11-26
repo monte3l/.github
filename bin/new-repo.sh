@@ -353,7 +353,7 @@ if ((docs)); then
     # The branch policy flags are JSON booleans, which gh api -f would send as strings.
     if env_error="$(printf '%s' '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' |
       gh api -X PUT "repos/$owner/$name/environments/$env_name" --input - 2>&1 >/dev/null)" &&
-      env_error="$(gh api -X POST "repos/$owner/$name/environments/$env_name/deployment-branch-policies" -f name=main 2>&1 >/dev/null)"; then
+      env_error="$(gh api -X POST "repos/$owner/$name/environments/$env_name/deployment-branch-policies" -f name=main -f type=branch 2>&1 >/dev/null)"; then
       printf 'OK     %s, limited to main\n' "$env_name"
     else
       manual+=("create the $env_name environment limited to main: see blueprint/docs-site.md, One-time setup, step 3 (${env_error%%$'\n'*})")

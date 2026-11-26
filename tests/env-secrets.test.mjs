@@ -35,7 +35,7 @@ case "$1 $2" in
       grep -qx "$r" "$D/env-$env.txt" || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
       case "$*" in *--jq*) [[ -f "$D/open-$r" ]] && echo false || echo true ;; esac
     elif [[ "$rest" == deployment-branch-policies ]]; then
-      if [[ -f "$D/extra-$r" ]]; then echo main,dev; else echo main; fi
+      if [[ -f "$D/extra-$r" ]]; then echo branch:main,branch:dev; elif [[ -f "$D/tag-$r" ]]; then echo tag:main; else echo branch:main; fi
     else
       cat "$D/secrets-$r-$env.txt" 2>/dev/null || true
     fi ;;
@@ -43,7 +43,7 @@ case "$1 $2" in
 esac
 `;
 
-/** @param {{ repos?: string[], envs?: Record<string, string[]>, fail?: string[], secrets?: Record<string, string[]>, broken?: string[], open?: string[], extra?: string[] }} world
+/** @param {{ repos?: string[], envs?: Record<string, string[]>, fail?: string[], secrets?: Record<string, string[]>, broken?: string[], open?: string[], extra?: string[], tag?: string[] }} world
  *  open: repositories whose environment is not custom-branch-policy; extra: repositories with a second branch policy. */
 function setup(world = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), "env-secrets-"));
@@ -62,6 +62,7 @@ function setup(world = {}) {
   for (const r of world.broken ?? []) writeFileSync(path.join(dir, `broken-${r}`), "");
   for (const r of world.open ?? []) writeFileSync(path.join(dir, `open-${r}`), "");
   for (const r of world.extra ?? []) writeFileSync(path.join(dir, `extra-${r}`), "");
+  for (const r of world.tag ?? []) writeFileSync(path.join(dir, `tag-${r}`), "");
   return { dir, bin };
 }
 
@@ -116,7 +117,7 @@ test("a refused write names the repository, fails the run, and still tries the o
 });
 
 test("an environment that is not limited to main is refused, never written, and the others still are", () => {
-  for (const world of [{ open: ["alpha"] }, { extra: ["alpha"] }]) {
+  for (const world of [{ open: ["alpha"] }, { extra: ["alpha"] }, { tag: ["alpha"] }]) {
     const r = run(world, ["set", "JANITOR_APP_PRIVATE_KEY"], VALUE);
     assert.equal(r.status, 1);
     assert.match(r.out, /FAIL   alpha: env-janitor is not limited to main, so JANITOR_APP_PRIVATE_KEY was not written/);
