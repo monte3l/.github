@@ -630,6 +630,17 @@ one and refuses to run in a workflow for the same reason.
 | `site`: keep the site's wording | With `--write DIR`, writes the site's answers into the file in the checkout at DIR, changing only those criteria | A person reviews the diff, commits with `git commit -s` and opens the pull request |
 | `{ "status": "Met", "justification": "..." }`: custom wording, when neither side's text is right | Does both: a Save link carrying that text, and with `--write DIR` the same text written into the file. The status must be Met, Unmet or N/A, and N/A only where the criterion allows it | A person clicks **Save** and opens the pull request, then the two sides match |
 
+**Agreement does not prove an answer is true.** The sync compares the two sides
+and questions a criterion only when they differ, so an answer both state wrongly
+passes unnoticed. In `m3l-design`, "released assets carry the same MIT license"
+was caught only because it happened to be a conflict: the release also ships the
+brand files, which carry their own notice and are not under the MIT terms. Custom wording
+may therefore amend a criterion where file and site agree, and only custom
+wording: `file` and `site` mean nothing where there is no other side. A
+criterion with a change waiting on one side, or one that already has the answer
+on both, is skipped and reported. Reading the answers for what the release
+really contains is a person's check, not the job's.
+
 Each decision is checked against the state found now. A criterion that is no
 longer a conflict, because a side moved since the choice was made, is skipped
 and reported, never applied, so a stale choice cannot overwrite a newer answer.
