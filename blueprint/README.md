@@ -609,14 +609,18 @@ It uses the same App as [Workflow template sync](#workflow-template-sync),
 tracking issue lives in the project's own repository. The issue step gets its
 own token with that permission alone, and the pull request step a token without
 it. One leg runs at a time, because the pace to bestpractices.dev holds inside a
-process, not across jobs.
+process, not across jobs. The key is in the
+`bestpractices-sync` environment of `monte3l/.github` (`SYNC_APP_CLIENT_ID`,
+`SYNC_APP_PRIVATE_KEY`), limited to `main` and listed in
+`.github/environments.json`. Raising the App's permissions asks each installation
+to accept them, and the App must be installed on every project it syncs.
 
 ### Settling conflicts
 
 The job never settles a conflict: both sides moved and differ, so which wording
 is right is a person's call. `bin/bestpractices-settle.mjs` carries that call
-out. It reads a decisions file, JSON of `repository`, `criterion`, then `"file"`
-or `"site"`, and **keep it outside every repository**: it names which projects
+out. It reads a decisions file, JSON of `repository`, `criterion`, then `"file"`,
+`"site"` or custom wording, and **keep it outside every repository**: it names which projects
 differ on which criteria, and this repository is public. The tool is a local
 one and refuses to run in a workflow for the same reason.
 
@@ -624,17 +628,14 @@ one and refuses to run in a workflow for the same reason.
 | --- | --- | --- |
 | `file`: keep the file's wording | Prints a link per section that opens the site's form with exactly those answers filled in | A person opens it and clicks **Save** |
 | `site`: keep the site's wording | With `--write DIR`, writes the site's answers into the file in the checkout at DIR, changing only those criteria | A person reviews the diff, commits with `git commit -s` and opens the pull request |
+| `{ "status": "Met", "justification": "..." }`: custom wording, when neither side's text is right | Does both: a Save link carrying that text, and with `--write DIR` the same text written into the file. The status must be Met, Unmet or N/A, and N/A only where the criterion allows it | A person clicks **Save** and opens the pull request, then the two sides match |
 
 Each decision is checked against the state found now. A criterion that is no
 longer a conflict, because a side moved since the choice was made, is skipped
 and reported, never applied, so a stale choice cannot overwrite a newer answer.
 A conflict with no decision stays one. A file that holds an answer the site would
 reject is not rewritten. Once the two sides match, the next run of
-`bestpractices-sync.yml` records the agreement and closes the conflict. The key is in the
-`bestpractices-sync` environment of `monte3l/.github` (`SYNC_APP_CLIENT_ID`,
-`SYNC_APP_PRIVATE_KEY`), limited to `main` and listed in
-`.github/environments.json`. Raising the App's permissions asks each installation
-to accept them, and the App must be installed on every project it syncs.
+`bestpractices-sync.yml` records the agreement and closes the conflict.
 
 ## Environment cleanup
 
