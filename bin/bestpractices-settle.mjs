@@ -32,6 +32,13 @@
  * the same. The status must be Met, Unmet or N/A, and N/A only where the
  * criterion allows it.
  *
+ * Custom wording may also amend a criterion that is not a conflict, where the
+ * file and the site agree: the sync compares the two sides and never questions
+ * an answer both of them state, so an answer that is wrong on both (a license
+ * claim a release check shows to be false, say) is fixed here. "file" and
+ * "site" mean nothing there. A criterion with a change waiting on one side, or
+ * one that already has the answer on both sides, is skipped and reported.
+ *
  * Each decision is checked against the state it finds now. A criterion that is
  * no longer a conflict (a side moved since the choice was made) is skipped and
  * reported, never applied, so a stale choice cannot overwrite a newer answer.
@@ -138,8 +145,10 @@ export async function main(argv, out = (line) => process.stdout.write(`${clean(l
       continue;
     }
     const done = applyDecisions(all.get(name), state, criteria, baseUrl(), state.id);
-    const decided = done.keepFile.length + done.keepSite.length + done.custom.size;
-    out(`${name} (project ${state.id}): ${state.conflicts.length} conflicts now, ${decided} decided, ${state.conflicts.length - decided} left`);
+    const open = new Set(state.conflicts);
+    const decided = [...done.keepFile, ...done.keepSite, ...done.custom.keys()].filter((c) => open.has(c)).length;
+    const amended = [...done.custom.keys()].filter((c) => !open.has(c)).length;
+    out(`${name} (project ${state.id}): ${state.conflicts.length} conflicts now, ${decided} decided, ${state.conflicts.length - decided} left${amended > 0 ? `, ${amended} agreed answer${amended === 1 ? "" : "s"} amended` : ""}`);
 
     if (done.keepFile.length > 0) {
       out(`  keep the file's wording (${done.keepFile.length}):`);

@@ -355,11 +355,17 @@ export function applyDecisions(decisions, state, criteria, base, projectId) {
   const custom = new Map();
   const skipped = [];
   for (const [name, choice] of decisions) {
+    const isCustom = choice !== null && typeof choice === "object" && !Array.isArray(choice);
+    // Where file and site already say the same, an answer can still be wrong on both. Only custom wording may
+    // amend such a criterion; "file" and "site" mean nothing there, since there is no other side to keep.
+    const agreed = !open.has(name) && hashAnswer(state.file.get(name)) === hashAnswer(state.site.get(name));
     if (!criteria.has(name)) skipped.push({ name, why: "not a criterion" });
-    else if (!open.has(name)) skipped.push({ name, why: "not a conflict any more" });
-    else if (choice === "file") keepFile.push(name);
+    else if (!open.has(name) && !(isCustom && agreed)) {
+      // A custom answer on a criterion with a change waiting (site ahead or file ahead) would race that change.
+      skipped.push({ name, why: isCustom && !agreed ? "a change on one side is waiting: let the sync deal with it first" : "not a conflict any more" });
+    } else if (choice === "file") keepFile.push(name);
     else if (choice === "site") keepSite.push(name);
-    else if (choice !== null && typeof choice === "object" && !Array.isArray(choice)) {
+    else if (isCustom) {
       const status = normStatus(choice.status);
       if (typeof choice.status !== "string" || status === null || status === "?") {
         skipped.push({ name, why: "the custom status must be Met, Unmet or N/A" });
@@ -368,7 +374,9 @@ export function applyDecisions(decisions, state, criteria, base, projectId) {
       } else if (typeof choice.justification !== "string") {
         skipped.push({ name, why: "the custom wording needs a justification text" });
       } else {
-        custom.set(name, { status, justification: normJustification(choice.justification) });
+        const answer = { status, justification: normJustification(choice.justification) };
+        if (agreed && hashAnswer(state.file.get(name)) === hashAnswer(answer)) skipped.push({ name, why: "both sides already have this answer" });
+        else custom.set(name, answer);
       }
     } else skipped.push({ name, why: `unknown choice ${JSON.stringify(choice)}` });
   }

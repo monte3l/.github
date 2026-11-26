@@ -140,6 +140,30 @@ test("a decision for something that is no longer a conflict is skipped and repor
   assert.ok(!/passing\/edit/.test(out.stdout), "and makes no link");
 });
 
+test("custom wording amends an answer that file and site share, in the file and in the link", async () => {
+  // The two sides agree, so the sync never questions it. It can still be wrong on both.
+  site = { status: 200, body: [project(answers("Met", "agreed but overstated"))] };
+  const file = { name: "kept", ...answers("Met", "agreed but overstated") };
+  const dir = mkdtempSync(path.join(tmpdir(), "bp-settle-amend-"));
+  const wording = { status: "Met", justification: "the true wording" };
+  const out = await run(["--repos", NAME, "--write", dir], { file, decisions: { [NAME]: { description_good: wording } } });
+  assert.equal(out.status, 0, out.stderr);
+  assert.match(out.stdout, /0 conflicts now, 0 decided, 0 left, 1 agreed answer amended/);
+  const url = out.stdout.match(/https?:\/\/\S+\/en\/projects\/5\/passing\/edit\?\S+/)?.[0];
+  assert.ok(url, out.stdout);
+  assert.equal(new URL(url).searchParams.get("description_good_justification"), "the true wording");
+  assert.deepEqual(JSON.parse(readFileSync(path.join(dir, ".bestpractices.json"), "utf8")), { name: "kept", ...answers("Met", "the true wording") });
+});
+
+test("amending an answer both sides already have in that wording is skipped, exit 1", async () => {
+  site = { status: 200, body: [project(answers("Met", "already right"))] };
+  const dir = mkdtempSync(path.join(tmpdir(), "bp-settle-amend-same-"));
+  const out = await run(["--repos", NAME, "--write", dir], { file: answers("Met", "already right"), decisions: { [NAME]: { description_good: { status: "Met", justification: "already right" } } } });
+  assert.equal(out.status, 1);
+  assert.match(out.stdout, /skipped description_good: both sides already have this answer/);
+  assert.ok(!existsSync(path.join(dir, ".bestpractices.json")));
+});
+
 test("a file with an answer the site would reject is not rewritten", async () => {
   site = { status: 200, body: [project({ ...answers("Met", "site"), contribution_status: "Met" })] };
   const file = { ...answers("Met", "file"), contribution_status: "Perhaps" };

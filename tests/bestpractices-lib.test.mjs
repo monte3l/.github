@@ -445,11 +445,33 @@ test("applyDecisions: custom N/A is accepted where the criterion allows it, and 
   assert.equal(JSON.parse(out.fileText).contribution_status, "N/A");
 });
 
-test("applyDecisions: custom wording is skipped when it is no longer a conflict, or the file holds an answer the site would reject", () => {
-  const settled = stateOf({ contribution: answer("Met", "same") }, { contribution: answer("Met", "same") }, []);
-  const stale = applyDecisions(map({ contribution: { status: "Met", justification: "x" } }), settled, criteria, "https://x.test", 1);
-  assert.deepEqual(stale.skipped.map((s) => s.why), ["not a conflict any more"]);
-  assert.equal(stale.fileText, null);
+test("applyDecisions: custom wording amends an answer both sides share, and 'file' or 'site' still mean nothing there", () => {
+  const object = { name: "kept", contribution_status: "Met", contribution_justification: "same", description_good_status: "Met", description_good_justification: "other" };
+  const both = { contribution: answer("Met", "same"), description_good: answer("Met", "other") };
+  const state = stateOf(both, both, [], { object });
+  const out = applyDecisions(map({ contribution: { status: "Unmet", justification: "corrected" }, description_good: "site" }), state, criteria, "https://x.test", 3);
+  assert.deepEqual([...out.custom], [["contribution", answer("Unmet", "corrected")]]);
+  assert.deepEqual(out.skipped.map((s) => [s.name, s.why]), [["description_good", "not a conflict any more"]]);
+  const url = new URL(out.proposals.urls[0].url);
+  assert.equal(url.searchParams.get("contribution_justification"), "corrected", "the site gets the amended answer");
+  assert.equal(url.searchParams.get("overrides"), "contribution_status,contribution_justification");
+  const written = JSON.parse(out.fileText);
+  assert.deepEqual([written.contribution_status, written.contribution_justification], ["Unmet", "corrected"], "and so does the file");
+  assert.equal(written.description_good_justification, "other", "an answer nobody decided on is untouched");
+  assert.equal(written.name, "kept");
+});
+
+test("applyDecisions: custom wording is skipped when it repeats the answer, a change is waiting on one side, or the file holds an answer the site would reject", () => {
+  const same = stateOf({ contribution: answer("Met", "same") }, { contribution: answer("Met", "same") }, []);
+  const repeat = applyDecisions(map({ contribution: { status: "Met", justification: "same  " } }), same, criteria, "https://x.test", 1);
+  assert.deepEqual(repeat.skipped.map((s) => s.why), ["both sides already have this answer"]);
+  assert.deepEqual([repeat.custom.size, repeat.fileText, repeat.proposals.urls], [0, null, []]);
+
+  // File ahead or site ahead: neither is a conflict, but an amendment now would race the sync's own change.
+  const ahead = stateOf({ contribution: answer("Met", "file is newer") }, { contribution: answer("Met", "site") }, []);
+  const waiting = applyDecisions(map({ contribution: { status: "Met", justification: "x" } }), ahead, criteria, "https://x.test", 1);
+  assert.match(waiting.skipped[0].why, /change on one side is waiting/);
+  assert.deepEqual([waiting.custom.size, waiting.fileText], [0, null]);
 
   const bad = stateOf({ contribution: answer("Met", "f") }, { contribution: answer("Met", "s") }, ["contribution"], { invalid: ["description_good"] });
   const blocked = applyDecisions(map({ contribution: { status: "Met", justification: "x" } }), bad, criteria, "https://x.test", 1);
