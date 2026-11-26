@@ -177,6 +177,16 @@ test("a bad decisions file or arguments are usage errors, exit 2", async () => {
   assert.equal((await run(["--nope"])).status, 2);
 });
 
+test("text from the site or the file cannot send a terminal escape sequence or reorder what is shown", async () => {
+  const evil = "evil\u001b[2J\u001b]0;owned\u0007 after‮ reversed\u0085 end";
+  site = { status: 200, body: [project(answers("Met", evil))] };
+  const out = await run([], { file: answers("Met", `file ${evil}`), decisions: { [NAME]: { description_good: "file" } } });
+  assert.equal(out.status, 0, out.stderr);
+  // eslint-disable-next-line no-control-regex
+  assert.ok(!/[\u0000-\u0008\u000b-\u001f\u007f-\u009f‪-‮⁦-⁩]/.test(out.stdout), "no control or bidirectional character reaches the terminal");
+  assert.match(out.stdout, /site: Met: evil/, "the readable text is still shown");
+});
+
 test("keys that start with an underscore are comments", async () => {
   site = { status: 200, body: [project(answers("Met", "site"))] };
   const out = await run([], { file: answers("Met", "file"), decisions: { _comment: "ignored", [NAME]: { _note: "ignored", description_good: "file" } } });

@@ -93,10 +93,16 @@ function readDecisions(file) {
   return out;
 }
 
+// What a justification says is typed by whoever can edit the project on the site or in the repository, and
+// it is printed to a terminal. A control character could carry an escape sequence that rewrites what the
+// screen shows, and a bidirectional override reorders how text is displayed, so both are removed from
+// everything this prints.
+const clean = (text) => String(text).replace(/[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/g, "");
+
 const clip = (text, n = 150) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);
 const show = (answer) => (!answer ? "unset" : clip(answer.justification === "" ? answer.status : `${answer.status}: ${answer.justification.replace(/\s+/g, " ")}`));
 
-export async function main(argv, out = (line) => process.stdout.write(`${line}\n`)) {
+export async function main(argv, out = (line) => process.stdout.write(`${clean(line)}\n`)) {
   if (process.env.GITHUB_ACTIONS === "true") {
     throw new UsageError("this prints project and criterion names, so it runs by hand, not in a workflow");
   }
