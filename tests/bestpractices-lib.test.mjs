@@ -219,16 +219,65 @@ test("nextAgreed keeps the old base for every open criterion", () => {
   assert.ok(!next.has("description_good"), "unset answers are not stored");
 });
 
-test("renderFile: sorted, canonical, keeps keys that are not criteria, same bytes twice", () => {
+test("renderFile keeps the file's own order and spelling, adds new keys where they belong, same bytes twice", () => {
   const existing = { name: "demo", "OSPS-AC-01.01_status": "Unmet", zeta: 1 };
   const answers = map({ osps_ac_01_01: answer("Met", "MFA"), contribution: answer("N/A") });
   const text = renderFile(existing, answers, criteria);
   assert.equal(
     text,
-    `{\n  "contribution_status": "N/A",\n  "name": "demo",\n  "osps_ac_01_01_justification": "MFA",\n  "osps_ac_01_01_status": "Met",\n  "zeta": 1\n}\n`,
+    `{\n  "name": "demo",\n  "OSPS-AC-01.01_status": "Met",\n  "OSPS-AC-01.01_justification": "MFA",\n  "zeta": 1,\n  "contribution_status": "N/A"\n}\n`,
   );
   assert.equal(renderFile(JSON.parse(text), readAnswers(JSON.parse(text), criteria).answers, criteria), text);
   assert.equal(renderFile(null, new Map(), criteria), "{}\n");
+});
+
+test("renderFile: a file that does not exist yet comes out in criteria order", () => {
+  const answers = map({ osps_ac_01_01: answer("Met", "MFA"), contribution: answer("Met"), description_good: answer("Met", "readme") });
+  assert.deepEqual(Object.keys(JSON.parse(renderFile(null, answers, criteria))), [
+    "description_good_status",
+    "description_good_justification",
+    "contribution_status",
+    "osps_ac_01_01_status",
+    "osps_ac_01_01_justification",
+  ]);
+});
+
+// The case that showed it: a file in criteria order, one criterion the site answered that it lacks.
+// The change must be those two lines, not the whole file reordered.
+test("renderFile: a pull request for one new answer changes only that answer", () => {
+  const original = {
+    osps_ac_01_01_status: "Met",
+    osps_ac_01_01_justification: "MFA, with a trailing newline\n",
+    description_good_status: "Met",
+    description_good_justification: "readme",
+    contribution_status: "unknown",
+  };
+  const before = `${JSON.stringify(original, null, 2)}\n`;
+  const { answers } = readAnswers(original, criteria);
+  const after = renderFile(original, new Map(answers).set("hardened_site", answer("Met", "site text")), criteria);
+  // Appending after the last key puts a comma on the line before it; that is the whole of the noise.
+  const lines = (text) => text.split("\n").map((l) => l.replace(/,$/, ""));
+  const removed = lines(before).filter((line) => !lines(after).includes(line));
+  const added = lines(after).filter((line) => !lines(before).includes(line));
+  assert.deepEqual(removed, [], "no line of the original is lost or rewritten");
+  assert.deepEqual(added.map((l) => l.trim()), ['"hardened_site_status": "Met"', '"hardened_site_justification": "site text"']);
+  assert.ok(after.startsWith(before.slice(0, before.lastIndexOf('"contribution_status"'))), "everything before the last key is byte for byte the same");
+  assert.match(after, /"contribution_status": "unknown"/, "an `unknown` placeholder is kept as written");
+});
+
+test("renderFile: a changed answer is rewritten in place, an unchanged one is left as written", () => {
+  const existing = { a_other: 1, contribution_status: "met", contribution_justification: "old", hardened_site_status: "Met" };
+  const answers = map({ contribution: answer("Met", "new"), hardened_site: answer("Met") });
+  const out = JSON.parse(renderFile(existing, answers, criteria));
+  assert.deepEqual(Object.keys(out), ["a_other", "contribution_status", "contribution_justification", "hardened_site_status"]);
+  assert.equal(out.contribution_status, "met", "the same answer in another case is not a change");
+  assert.equal(out.contribution_justification, "new");
+});
+
+test("renderFile: an answer the site cleared loses its keys, a ? placeholder stays", () => {
+  const existing = { contribution_status: "Met", contribution_justification: "x", hardened_site_status: "?", keep: true };
+  const out = JSON.parse(renderFile(existing, new Map(), criteria));
+  assert.deepEqual(Object.keys(out), ["hardened_site_status", "keep"]);
 });
 
 test("proposalUrls: one link per section, forcing exactly its own keys", () => {

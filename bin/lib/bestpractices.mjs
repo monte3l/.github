@@ -229,24 +229,56 @@ export function applySiteAhead(fileAnswers, siteAnswers, names) {
 }
 
 /**
- * The file text for `answers`: every key that is not a criterion stays as it
- * was, criterion keys are rewritten in the lowercase form, keys sorted, two
- * spaces, trailing newline. The same input always gives the same bytes, so a
- * rerun does not push a new commit.
+ * The file text for `answers`, changing as little as it can: a pull request
+ * should show the answers that moved, not a reordered file. Every key already in
+ * the file keeps its place and its spelling, and a value is rewritten only when
+ * its answer is not the one the file already holds (so `unknown` stays `unknown`
+ * and a trailing newline in a justification stays). A key that is not a criterion
+ * is never touched. A criterion with no answer any more loses its keys, except a
+ * `?` or empty placeholder, which stays. A new status key goes at the end, in
+ * criteria order, and a new justification goes right after its status key. A file
+ * that does not exist yet comes out in criteria order. Two spaces, trailing
+ * newline, and the same input always gives the same bytes, so a rerun does not
+ * push a new commit.
  */
 export function renderFile(existing, answers, criteria) {
-  const kept = {};
+  const pairs = [];
+  const placed = new Set();
   for (const [key, value] of Object.entries(existing ?? {})) {
     const norm = normKey(key);
-    const isCriterion = [...criteria.keys()].some((name) => norm === `${name}_status` || norm === `${name}_justification`);
-    if (!isCriterion) kept[key] = value;
+    const match = /^(.*)_(status|justification)$/.exec(norm);
+    const name = match && criteria.has(match[1]) ? match[1] : null;
+    if (name === null) {
+      pairs.push([key, value]);
+      continue;
+    }
+    placed.add(norm);
+    const answer = answers.get(name);
+    const isStatus = match[2] === "status";
+    if (!answer) {
+      const unset = isStatus ? normStatus(value) === "?" : normJustification(value) === "";
+      if (unset) pairs.push([key, value]);
+      continue;
+    }
+    if (isStatus) pairs.push([key, normStatus(value) === answer.status ? value : answer.status]);
+    else if (answer.justification !== "") pairs.push([key, normJustification(value) === answer.justification ? value : answer.justification]);
   }
-  for (const [name, answer] of answers) {
-    kept[`${name}_status`] = answer.status;
-    if (answer.justification !== "") kept[`${name}_justification`] = answer.justification;
+  for (const name of criteria.keys()) {
+    const answer = answers.get(name);
+    if (!answer) continue;
+    const statusKey = `${name}_status`;
+    const justificationKey = `${name}_justification`;
+    const hasJustification = answer.justification !== "" && !placed.has(justificationKey);
+    if (!placed.has(statusKey)) {
+      pairs.push([statusKey, answer.status]);
+      if (hasJustification) pairs.push([justificationKey, answer.justification]);
+    } else if (hasJustification) {
+      // Spelled like the status key beside it, so a file that writes `OSPS-AC-01.01_status` stays consistent.
+      const at = pairs.findIndex(([key]) => normKey(key) === statusKey);
+      pairs.splice(at + 1, 0, [pairs[at][0].replace(/_status$/i, "_justification"), answer.justification]);
+    }
   }
-  const sorted = Object.fromEntries(Object.entries(kept).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
-  return `${JSON.stringify(sorted, null, 2)}\n`;
+  return `${JSON.stringify(Object.fromEntries(pairs), null, 2)}\n`;
 }
 
 /**
