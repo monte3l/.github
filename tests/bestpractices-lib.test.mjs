@@ -384,6 +384,79 @@ test("applyDecisions: the file is not rewritten while it holds an answer the sit
   assert.match(out.skipped[0].why, /would reject/);
 });
 
+test("applyDecisions: custom wording goes to the file AND to the Save link, the same text in both", () => {
+  const file = { description_good: answer("Met", "file one"), contribution: answer("Met", "file two") };
+  const site = { description_good: answer("Met", "site one"), contribution: answer("Met", "site two") };
+  const object = {
+    description_good_status: "Met",
+    description_good_justification: "file one",
+    contribution_status: "Met",
+    contribution_justification: "file two",
+    name: "kept",
+  };
+  const state = stateOf(file, site, ["description_good", "contribution"], { object });
+  const wording = { status: "Met", justification: "the corrected text" };
+  const out = applyDecisions(map({ description_good: wording, contribution: "file" }), state, criteria, "https://x.test", 7);
+  assert.deepEqual([...out.custom], [["description_good", answer("Met", "the corrected text")]]);
+  assert.deepEqual(out.keepFile, ["contribution"]);
+  assert.deepEqual(out.skipped, []);
+  // The link forces both: the custom text for one, the file's own text for the other.
+  const url = new URL(out.proposals.urls[0].url);
+  assert.equal(url.searchParams.get("description_good_justification"), "the corrected text");
+  assert.equal(url.searchParams.get("contribution_justification"), "file two");
+  // The file's own answers first, then the custom ones: a fixed order, so the same decisions give the same link.
+  assert.equal(url.searchParams.get("overrides"), "contribution_status,contribution_justification,description_good_status,description_good_justification");
+  // And the file gets the custom text, with the other answer and the other keys as they were.
+  const written = JSON.parse(out.fileText);
+  assert.equal(written.description_good_justification, "the corrected text");
+  assert.equal(written.contribution_justification, "file two");
+  assert.equal(written.name, "kept");
+});
+
+test("applyDecisions: a custom answer is checked, and one the site would reject is skipped with a reason", () => {
+  const state = stateOf(
+    { description_good: answer("Met", "f"), contribution: answer("Met", "f"), hardened_site: answer("Met", "f") },
+    { description_good: answer("Met", "s"), contribution: answer("Met", "s"), hardened_site: answer("Met", "s") },
+    ["description_good", "contribution", "hardened_site"],
+  );
+  const out = applyDecisions(
+    map({
+      description_good: { status: "N/A", justification: "not for this one" }, // N/A not allowed here
+      contribution: { status: "Maybe", justification: "x" },
+      hardened_site: { status: "?", justification: "x" }, // a reset is not an answer
+    }),
+    state,
+    criteria,
+    "https://x.test",
+    1,
+  );
+  assert.deepEqual(out.skipped.map((s) => [s.name, s.why]), [
+    ["description_good", "N/A is not allowed for this criterion"],
+    ["contribution", "the custom status must be Met, Unmet or N/A"],
+    ["hardened_site", "the custom status must be Met, Unmet or N/A"],
+  ]);
+  assert.deepEqual([out.custom.size, out.fileText, out.proposals.urls], [0, null, []]);
+});
+
+test("applyDecisions: custom N/A is accepted where the criterion allows it, and the text is normalized", () => {
+  const state = stateOf({ contribution: answer("Met", "f") }, { contribution: answer("Met", "s") }, ["contribution"], { object: {} });
+  const out = applyDecisions(map({ contribution: { status: "n/a", justification: "not applicable here  \r\n" } }), state, criteria, "https://x.test", 1);
+  assert.deepEqual(out.custom.get("contribution"), answer("N/A", "not applicable here"));
+  assert.equal(JSON.parse(out.fileText).contribution_status, "N/A");
+});
+
+test("applyDecisions: custom wording is skipped when it is no longer a conflict, or the file holds an answer the site would reject", () => {
+  const settled = stateOf({ contribution: answer("Met", "same") }, { contribution: answer("Met", "same") }, []);
+  const stale = applyDecisions(map({ contribution: { status: "Met", justification: "x" } }), settled, criteria, "https://x.test", 1);
+  assert.deepEqual(stale.skipped.map((s) => s.why), ["not a conflict any more"]);
+  assert.equal(stale.fileText, null);
+
+  const bad = stateOf({ contribution: answer("Met", "f") }, { contribution: answer("Met", "s") }, ["contribution"], { invalid: ["description_good"] });
+  const blocked = applyDecisions(map({ contribution: { status: "Met", justification: "x" } }), bad, criteria, "https://x.test", 1);
+  assert.match(blocked.skipped[0].why, /would reject/);
+  assert.deepEqual([blocked.custom.size, blocked.fileText, blocked.proposals.urls], [0, null, []], "neither half is applied");
+});
+
 test("a retired criterion is not synced", () => {
   const retired = parseCriteria(`- '0': !!omap\n  - A: !!omap\n    - B: !!omap\n      - old_one:\n          category: MUST\n          obsolete: true\n      - new_one:\n          category: MUST\n`, "");
   assert.deepEqual([...retired.keys()], ["new_one"]);

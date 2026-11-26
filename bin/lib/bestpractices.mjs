@@ -337,30 +337,61 @@ export function proposalUrls(base, projectId, names, fileAnswers, criteria) {
  * sync CLI's `inspect` found: conflicts, the two sets of answers, the file's
  * object and its invalid answers.
  *
+ * A decision can also carry its own wording, `{ status, justification }`, for a
+ * conflict where neither side's text is right. That answer goes to both places:
+ * into the file, and into a Save link for the site, so the two end up the same.
+ *
  * A decision applies only to a criterion that is a conflict now. If either side
  * moved since the person looked, it is skipped and reported, so a stale choice
  * never overwrites a newer answer. Nothing is decided here for a conflict with
  * no decision: it stays a conflict.
+ *
+ * Returns `custom` as a Map from criterion to the answer that will be written.
  */
 export function applyDecisions(decisions, state, criteria, base, projectId) {
   const open = new Set(state.conflicts);
   const keepFile = [];
   const keepSite = [];
+  const custom = new Map();
   const skipped = [];
   for (const [name, choice] of decisions) {
     if (!criteria.has(name)) skipped.push({ name, why: "not a criterion" });
     else if (!open.has(name)) skipped.push({ name, why: "not a conflict any more" });
     else if (choice === "file") keepFile.push(name);
     else if (choice === "site") keepSite.push(name);
-    else skipped.push({ name, why: `unknown choice "${choice}"` });
+    else if (choice !== null && typeof choice === "object" && !Array.isArray(choice)) {
+      const status = normStatus(choice.status);
+      if (typeof choice.status !== "string" || status === null || status === "?") {
+        skipped.push({ name, why: "the custom status must be Met, Unmet or N/A" });
+      } else if (status === "N/A" && !criteria.get(name).naAllowed) {
+        skipped.push({ name, why: "N/A is not allowed for this criterion" });
+      } else if (typeof choice.justification !== "string") {
+        skipped.push({ name, why: "the custom wording needs a justification text" });
+      } else {
+        custom.set(name, { status, justification: normJustification(choice.justification) });
+      }
+    } else skipped.push({ name, why: `unknown choice ${JSON.stringify(choice)}` });
   }
   // Rewriting a file that holds an answer the site would reject would drop it without a word.
-  if (keepSite.length > 0 && state.invalid.length > 0) {
-    for (const name of keepSite.splice(0)) skipped.push({ name, why: "the file holds an answer the site would reject: fix that first" });
+  if ((keepSite.length > 0 || custom.size > 0) && state.invalid.length > 0) {
+    const why = "the file holds an answer the site would reject: fix that first";
+    for (const name of keepSite.splice(0)) skipped.push({ name, why });
+    for (const name of [...custom.keys()]) {
+      skipped.push({ name, why });
+      custom.delete(name);
+    }
   }
-  const proposals = proposalUrls(base, projectId, keepFile, state.file, criteria);
-  const fileText = keepSite.length > 0 ? renderFile(state.object, applySiteAhead(state.file, state.site, keepSite), criteria) : null;
-  return { keepFile, keepSite, skipped, proposals, fileText };
+  // A link carries the file's answer for a "file" decision and the custom answer for a custom one.
+  const linkAnswers = new Map(state.file);
+  for (const [name, answer] of custom) linkAnswers.set(name, answer);
+  const proposals = proposalUrls(base, projectId, [...keepFile, ...custom.keys()], linkAnswers, criteria);
+  let fileText = null;
+  if (keepSite.length > 0 || custom.size > 0) {
+    const merged = applySiteAhead(state.file, state.site, keepSite);
+    for (const [name, answer] of custom) merged.set(name, answer);
+    fileText = renderFile(state.object, merged, criteria);
+  }
+  return { keepFile, keepSite, custom, skipped, proposals, fileText };
 }
 
 const MARKER = /<!-- bp-agreed:(\{.*?\}) -->/gs;

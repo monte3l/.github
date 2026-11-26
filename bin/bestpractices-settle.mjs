@@ -23,6 +23,15 @@
  * (one repository) it writes the file into the checkout at DIR, and you review,
  * commit with `git commit -s` and open the pull request as for any change.
  *
+ * When neither wording is right, a decision can carry its own:
+ *
+ *   { "m3l-design": { "osps_br_07_01": { "status": "Met", "justification": "..." } } }
+ *
+ * That answer goes to both places at once: into the file (with --write, as for
+ * "site") and into a Save link for the site (as for "file"), so the two end up
+ * the same. The status must be Met, Unmet or N/A, and N/A only where the
+ * criterion allows it.
+ *
  * Each decision is checked against the state it finds now. A criterion that is
  * no longer a conflict (a side moved since the choice was made) is skipped and
  * reported, never applied, so a stale choice cannot overwrite a newer answer.
@@ -68,7 +77,10 @@ function parseArgs(argv) {
   return opts;
 }
 
-/** Repository -> Map criterion -> "file" | "site". Keys starting with an underscore are comments. */
+/**
+ * Repository -> Map criterion -> "file" | "site" | { status, justification }. Keys starting with an
+ * underscore are comments.
+ */
 function readDecisions(file) {
   let parsed;
   try {
@@ -81,11 +93,14 @@ function readDecisions(file) {
   for (const [repo, byCriterion] of Object.entries(parsed)) {
     if (repo.startsWith("_")) continue;
     if (!/^[A-Za-z0-9._-]+$/.test(repo)) throw new UsageError(`invalid repository name ${repo}`);
-    if (byCriterion === null || typeof byCriterion !== "object" || Array.isArray(byCriterion)) throw new UsageError(`${repo}: decisions must be an object of criterion to "file" or "site"`);
+    if (byCriterion === null || typeof byCriterion !== "object" || Array.isArray(byCriterion)) throw new UsageError(`${repo}: decisions must be an object of criterion to "file", "site" or custom wording`);
     const decisions = new Map();
     for (const [name, choice] of Object.entries(byCriterion)) {
       if (name.startsWith("_")) continue;
-      if (choice !== "file" && choice !== "site") throw new UsageError(`${repo}: ${name} must be "file" or "site", not ${JSON.stringify(choice)}`);
+      const isCustom = choice !== null && typeof choice === "object" && !Array.isArray(choice) && typeof choice.status === "string" && typeof choice.justification === "string";
+      if (choice !== "file" && choice !== "site" && !isCustom) {
+        throw new UsageError(`${repo}: ${name} must be "file", "site" or an object with a status and a justification text, not ${JSON.stringify(choice)}`);
+      }
       decisions.set(name, choice);
     }
     out.set(repo, decisions);
@@ -97,7 +112,7 @@ function readDecisions(file) {
 // it is printed to a terminal. A control character could carry an escape sequence that rewrites what the
 // screen shows, and a bidirectional override reorders how text is displayed, so both are removed from
 // everything this prints.
-const clean = (text) => String(text).replace(/[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/g, "");
+const clean = (text) => String(text).replace(/[\p{Cc}\p{Cf}]/gu, "");
 
 const clip = (text, n = 150) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);
 const show = (answer) => (!answer ? "unset" : clip(answer.justification === "" ? answer.status : `${answer.status}: ${answer.justification.replace(/\s+/g, " ")}`));
@@ -123,7 +138,7 @@ export async function main(argv, out = (line) => process.stdout.write(`${clean(l
       continue;
     }
     const done = applyDecisions(all.get(name), state, criteria, baseUrl(), state.id);
-    const decided = done.keepFile.length + done.keepSite.length;
+    const decided = done.keepFile.length + done.keepSite.length + done.custom.size;
     out(`${name} (project ${state.id}): ${state.conflicts.length} conflicts now, ${decided} decided, ${state.conflicts.length - decided} left`);
 
     if (done.keepFile.length > 0) {
@@ -133,12 +148,6 @@ export async function main(argv, out = (line) => process.stdout.write(`${clean(l
         out(`      site: ${show(state.site.get(c))}`);
         out(`      file: ${show(state.file.get(c))}`);
       }
-      out("  Save links: log in to bestpractices.dev, open each, check the answers, click Save:");
-      for (const { section, count, url } of done.proposals.urls) {
-        out(`    ${section}: ${count} answer${count === 1 ? "" : "s"}`);
-        out(`      ${url}`);
-      }
-      for (const c of done.proposals.oversize) out(`    ${c}: too long for a link, paste it from the file into the form by hand`);
     }
     if (done.keepSite.length > 0) {
       out(`  keep the site's wording (${done.keepSite.length}):`);
@@ -147,10 +156,31 @@ export async function main(argv, out = (line) => process.stdout.write(`${clean(l
         out(`      site: ${show(state.site.get(c))}`);
         out(`      file: ${show(state.file.get(c))}`);
       }
-      if (opts.write !== null && done.fileText !== null) {
+    }
+    if (done.custom.size > 0) {
+      out(`  custom wording (${done.custom.size}): goes to the file and to a Save link, so both match:`);
+      for (const [c, answer] of done.custom) {
+        out(`    ${c}`);
+        out(`      site: ${show(state.site.get(c))}`);
+        out(`      file: ${show(state.file.get(c))}`);
+        out(`      new:  ${show(answer)}`);
+      }
+    }
+    // One Save link set covers the file's wording and the custom wording together: both are an answer to put on the site.
+    if (done.proposals.urls.length > 0 || done.proposals.oversize.length > 0) {
+      out("  Save links: log in to bestpractices.dev, open each, check the answers, click Save:");
+      for (const { section, count, url } of done.proposals.urls) {
+        out(`    ${section}: ${count} answer${count === 1 ? "" : "s"}`);
+        out(`      ${url}`);
+      }
+      for (const c of done.proposals.oversize) out(`    ${c}: too long for a link, paste it from the file into the form by hand`);
+    }
+    // One file write covers the site's wording and the custom wording together: both are an answer to put in the file.
+    if (done.fileText !== null) {
+      if (opts.write !== null) {
         writeInto(opts.write, state.filePath, done.fileText);
         out(`  wrote ${state.filePath} into ${opts.write}. Review the diff, commit with \`git commit -s\` and open a pull request.`);
-      } else if (done.fileText !== null) {
+      } else {
         out("  nothing written: add --write DIR (a checkout of the repository) to write the file.");
       }
     }

@@ -178,13 +178,53 @@ test("a bad decisions file or arguments are usage errors, exit 2", async () => {
 });
 
 test("text from the site or the file cannot send a terminal escape sequence or reorder what is shown", async () => {
-  const evil = "evil\u001b[2J\u001b]0;owned\u0007 after‮ reversed\u0085 end";
+  const evil = ["evil", String.fromCharCode(0x1b), "[2J", String.fromCharCode(0x1b), "]0;owned", String.fromCharCode(7), " after", String.fromCharCode(0x202e), " reversed", String.fromCharCode(0x85), " end"].join("");
   site = { status: 200, body: [project(answers("Met", evil))] };
   const out = await run([], { file: answers("Met", `file ${evil}`), decisions: { [NAME]: { description_good: "file" } } });
   assert.equal(out.status, 0, out.stderr);
-  // eslint-disable-next-line no-control-regex
-  assert.ok(!/[\u0000-\u0008\u000b-\u001f\u007f-\u009f‪-‮⁦-⁩]/.test(out.stdout), "no control or bidirectional character reaches the terminal");
+  assert.ok(!/[\p{Cc}\p{Cf}]/u.test(out.stdout.replace(/\n/g, "")), "no control or bidirectional character reaches the terminal");
   assert.match(out.stdout, /site: Met: evil/, "the readable text is still shown");
+});
+
+test("custom wording prints the new text, makes a Save link with it, and writes the same text into the file", async () => {
+  site = { status: 200, body: [project(answers("Met", "the site's wording"))] };
+  const file = { name: "kept", ...answers("Met", "the file's wording") };
+  const wording = { status: "Met", justification: "the corrected wording, for both" };
+  const dir = mkdtempSync(path.join(tmpdir(), "bp-settle-custom-"));
+  const out = await run(["--repos", NAME, "--write", dir], { file, decisions: { [NAME]: { description_good: wording } } });
+  assert.equal(out.status, 0, out.stderr);
+  assert.match(out.stdout, /custom wording \(1\)/);
+  assert.match(out.stdout, /new: {2}Met: the corrected wording, for both/);
+  const url = out.stdout.match(/https?:\/\/\S+\/en\/projects\/5\/passing\/edit\?\S+/)?.[0];
+  assert.ok(url, out.stdout);
+  assert.equal(new URL(url).searchParams.get("description_good_justification"), "the corrected wording, for both");
+  const written = JSON.parse(readFileSync(path.join(dir, ".bestpractices.json"), "utf8"));
+  assert.deepEqual(written, { name: "kept", ...answers("Met", "the corrected wording, for both") });
+  assert.equal(written.description_good_justification, new URL(url).searchParams.get("description_good_justification"), "the file and the link say the same");
+});
+
+test("custom wording with no --write still prints the link, and says nothing was written", async () => {
+  site = { status: 200, body: [project(answers("Met", "site"))] };
+  const out = await run([], { file: answers("Met", "file"), decisions: { [NAME]: { description_good: { status: "Unmet", justification: "new" } } } });
+  assert.equal(out.status, 0, out.stderr);
+  assert.match(out.stdout, /passing\/edit/);
+  assert.match(out.stdout, /nothing written: add --write DIR/);
+});
+
+test("a custom answer the site would reject is skipped, exit 1, and nothing is written or linked", async () => {
+  site = { status: 200, body: [project(answers("Met", "site"))] };
+  const dir = mkdtempSync(path.join(tmpdir(), "bp-settle-badcustom-"));
+  const out = await run(["--repos", NAME, "--write", dir], { file: answers("Met", "file"), decisions: { [NAME]: { description_good: { status: "N/A", justification: "no" } } } });
+  assert.equal(out.status, 1);
+  assert.match(out.stdout, /skipped description_good: N\/A is not allowed for this criterion/);
+  assert.ok(!existsSync(path.join(dir, ".bestpractices.json")));
+  assert.ok(!/passing\/edit/.test(out.stdout));
+});
+
+test("an object decision with no justification text is a usage error, exit 2", async () => {
+  assert.equal((await run([], { decisions: { [NAME]: { description_good: { status: "Met" } } } })).status, 2);
+  assert.equal((await run([], { decisions: { [NAME]: { description_good: { status: 1, justification: "x" } } } })).status, 2);
+  assert.equal((await run([], { decisions: { [NAME]: { description_good: ["Met", "x"] } } })).status, 2);
 });
 
 test("keys that start with an underscore are comments", async () => {
