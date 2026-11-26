@@ -81,15 +81,15 @@ has_env() {
   exit 3
 }
 
-# env_locked REPO ENV: the environment deploys from main only, with the settings the baseline owns. A
+# env_locked REPO ENV: the environment deploys from the branch main only (a tag policy named main is not one), with the settings the baseline owns. A
 # secret written to one that does not is readable from any branch, which is what an organization secret
 # was, so the write is refused. A failed read stops the run (fail closed), it is never "not locked".
 env_locked() {
   local settings names
   settings="$(gh api "repos/$owner/$1/environments/$2" --jq '.deployment_branch_policy | (.custom_branch_policies == true and .protected_branches == false)')"
   [[ "$settings" == "true" ]] || return 1
-  names="$(gh api "repos/$owner/$1/environments/$2/deployment-branch-policies" --jq '[.branch_policies[].name] | join(",")')"
-  [[ "$names" == "main" ]]
+  names="$(gh api "repos/$owner/$1/environments/$2/deployment-branch-policies" --jq '[.branch_policies[] | "\(.type // "branch"):\(.name)"] | join(",")')"
+  [[ "$names" == "branch:main" ]]
 }
 
 if [[ "$cmd" == "set" ]]; then

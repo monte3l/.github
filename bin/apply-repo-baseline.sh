@@ -1100,25 +1100,25 @@ else
   settle "env-janitor: environment" "$current" "$desired" PUT "repos/$repo/environments/$janitor_env"
 
   # Missing main is added. Extra policies are reported and never removed.
-  if policies="$(gh api "repos/$repo/environments/$janitor_env/deployment-branch-policies" --jq '[.branch_policies[].name]' 2>/dev/null)"; then :; else policies='[]'; fi
+  if policies="$(gh api "repos/$repo/environments/$janitor_env/deployment-branch-policies" --jq '[.branch_policies[] | "\(.type // "branch"):\(.name)"]' 2>/dev/null)"; then :; else policies='[]'; fi
   policies="$(jq -c . <<<"$policies")"
   # The secrets are only as narrow as the environment: held in one open to any branch they are no better
   # than an organization secret, so they are not reported as in order then.
   env_locked=""
-  if [[ "$policies" == '["main"]' && "$(jq -S . <<<"$current")" == "$(jq -S . <<<"$desired")" ]]; then env_locked=1; fi
-  if [[ "$policies" == '["main"]' ]]; then
+  if [[ "$policies" == '["branch:main"]' && "$(jq -S . <<<"$current")" == "$(jq -S . <<<"$desired")" ]]; then env_locked=1; fi
+  if [[ "$policies" == '["branch:main"]' ]]; then
     printf 'OK     env-janitor: branch policy: main only\n'
     ok=$((ok + 1))
   else
     drift=$((drift + 1))
-    printf 'DRIFT  env-janitor: branch policy: %s, want ["main"]\n' "$policies"
-    if jq -e 'index("main") != null' <<<"$policies" >/dev/null; then
+    printf 'DRIFT  env-janitor: branch policy: %s, want ["branch:main"]\n' "$policies"
+    if jq -e 'index("branch:main") != null' <<<"$policies" >/dev/null; then
       [[ "$mode" == "check" ]] || printf '         extra policies are never removed here: delete them by hand in %s\n' "$repo"
     else
       case "$mode" in
-        dry-run) printf '         would run: gh api -X POST repos/%s/environments/%s/deployment-branch-policies -f name=main\n' "$repo" "$janitor_env" ;;
+        dry-run) printf '         would run: gh api -X POST repos/%s/environments/%s/deployment-branch-policies -f name=main -f type=branch\n' "$repo" "$janitor_env" ;;
         apply)
-          gh api -X POST "repos/$repo/environments/$janitor_env/deployment-branch-policies" -f name=main >/dev/null
+          gh api -X POST "repos/$repo/environments/$janitor_env/deployment-branch-policies" -f name=main -f type=branch >/dev/null
           printf '         applied\n'
           ;;
       esac
@@ -1256,23 +1256,23 @@ else
   settle "docs-cloudflare: environment" "$current" "$desired" PUT "repos/$repo/environments/$cloudflare_env"
 
   # Missing main is added. Extra policies are reported and never removed.
-  if policies="$(gh api "repos/$repo/environments/$cloudflare_env/deployment-branch-policies" --jq '[.branch_policies[].name]' 2>/dev/null)"; then :; else policies='[]'; fi
+  if policies="$(gh api "repos/$repo/environments/$cloudflare_env/deployment-branch-policies" --jq '[.branch_policies[] | "\(.type // "branch"):\(.name)"]' 2>/dev/null)"; then :; else policies='[]'; fi
   policies="$(jq -c . <<<"$policies")"
   env_locked=""
-  if [[ "$policies" == '["main"]' && "$(jq -S . <<<"$current")" == "$(jq -S . <<<"$desired")" ]]; then env_locked=1; fi
-  if [[ "$policies" == '["main"]' ]]; then
+  if [[ "$policies" == '["branch:main"]' && "$(jq -S . <<<"$current")" == "$(jq -S . <<<"$desired")" ]]; then env_locked=1; fi
+  if [[ "$policies" == '["branch:main"]' ]]; then
     printf 'OK     docs-cloudflare: branch policy: main only\n'
     ok=$((ok + 1))
   else
     drift=$((drift + 1))
-    printf 'DRIFT  docs-cloudflare: branch policy: %s, want ["main"]\n' "$policies"
-    if jq -e 'index("main") != null' <<<"$policies" >/dev/null; then
+    printf 'DRIFT  docs-cloudflare: branch policy: %s, want ["branch:main"]\n' "$policies"
+    if jq -e 'index("branch:main") != null' <<<"$policies" >/dev/null; then
       [[ "$mode" == "check" ]] || printf '         extra policies are never removed here: delete them by hand in %s\n' "$repo"
     else
       case "$mode" in
-        dry-run) printf '         would run: gh api -X POST repos/%s/environments/%s/deployment-branch-policies -f name=main\n' "$repo" "$cloudflare_env" ;;
+        dry-run) printf '         would run: gh api -X POST repos/%s/environments/%s/deployment-branch-policies -f name=main -f type=branch\n' "$repo" "$cloudflare_env" ;;
         apply)
-          gh api -X POST "repos/$repo/environments/$cloudflare_env/deployment-branch-policies" -f name=main >/dev/null
+          gh api -X POST "repos/$repo/environments/$cloudflare_env/deployment-branch-policies" -f name=main -f type=branch >/dev/null
           printf '         applied\n'
           ;;
       esac
