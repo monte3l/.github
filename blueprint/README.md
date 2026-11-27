@@ -1115,7 +1115,9 @@ a repository whose root is a plugin has no `bin/`. The copy in this repository i
 `.claude/settings.json`: the secret guard inside a `Write|Edit|NotebookEdit`
 matcher (a notebook edit names its file `notebook_path` and carries
 `new_source`, which the guard reads like `file_path` and `content`), the other
-three inside `Bash`.
+three inside `Bash`. The secret guard also judges a `Bash` command that writes a
+file (a redirect or `tee` to a `.env*` file, or a token literal in a command that
+writes one), so wire the same entry under `Bash` as well.
 
 ```json
 {

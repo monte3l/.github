@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * PreToolUse blocking (Write|Edit|NotebookEdit): refuse to write a real secret to disk.
+ * PreToolUse blocking (Write|Edit|NotebookEdit|Bash): refuse to write a real secret to disk.
  *
  * CLAUDE.md's Security section requires that no secret or token ever land in
  * source, tests, or fixtures. A CI secret-scanning step is the backstop;
@@ -17,6 +17,12 @@
  *      recognised high-entropy token/private-key literal. References and
  *      placeholders (`${{ secrets.X }}`, `process.env.X`, `<your-token>`, ...)
  *      are NOT flagged -- the point is to catch values, not names.
+ *
+ * A Bash command is held to the same rules where it writes a file: a redirect
+ * (`>`, `>>`, `&>`, `>|`) or `tee` aimed at a dotenv file is blocked, and so is a
+ * command that has such a write (other than to /dev/null or a file descriptor)
+ * and carries a secret literal, which covers `echo KEY=value > f` and a heredoc.
+ * A command that writes nothing is not judged: it holds a token only in memory.
  *
  * Detection is deliberately conservative: prefix-anchored token shapes and
  * placeholder exclusion keep false positives off legitimate config/docs
@@ -433,6 +439,32 @@ export function isSecretWrite(filePath, content) {
   return reasons;
 }
 
+const WORD = "\"[^\"]*\"|'[^']*'|[^\\s;&|<>()]+";
+
+/** The file targets a Bash command writes to by redirect or `tee`, quotes removed. */
+export function bashWriteTargets(command) {
+  const targets = [];
+  for (const m of command.matchAll(new RegExp(`(?:&>>?|\\d*>>?\\|?)\\s*(&\\d+|${WORD})`, "g"))) targets.push(m[1]);
+  for (const m of command.matchAll(new RegExp(`\\btee\\b((?:\\s+(?:${WORD}))+)`, "g"))) {
+    for (const w of m[1].match(new RegExp(WORD, "g")) ?? []) if (!w.startsWith("-")) targets.push(w);
+  }
+  return targets.map((t) => t.replace(/^["']|["']$/g, ""));
+}
+
+/**
+ * Block reasons for a Bash command (empty when allowed).
+ *
+ * @param {string} command
+ * @returns {string[]}
+ */
+export function isSecretBash(command) {
+  const targets = bashWriteTargets(command);
+  const reasons = targets.filter(isEnvFilePath).map((t) => `writing a dotenv secret file (${path.basename(t)})`);
+  const writesFile = targets.some((t) => t !== "/dev/null" && !t.startsWith("&"));
+  if (writesFile) reasons.push(...findSecrets(command));
+  return reasons;
+}
+
 // Kept as a duplicated, self-contained block in every hook file rather than
 // imported from a shared helper -- each hook stays a single independent
 // file, which keeps this project's hook count easy to reason about against
@@ -467,6 +499,18 @@ if (isEntryPoint()) {
 
   // A notebook edit names its file `notebook_path` and carries `new_source`.
   const ti = input.tool_input ?? {};
+  if (typeof ti.command === "string" && ti.file_path === undefined && ti.notebook_path === undefined) {
+    const bashReasons = isSecretBash(ti.command);
+    if (bashReasons.length === 0) process.exit(0);
+    process.stderr.write(`\
+[guard-secret-writes] Blocked Bash command that writes a secret:
+${bashReasons.map((r) => `  - ${r}`).join("\n")}
+
+Secrets and tokens must never be written to the working tree. Use an env var
+reference, and keep real dotenv files out of the repo (author .env.example).
+`);
+    process.exit(2);
+  }
   const filePath = ti.file_path ?? ti.notebook_path ?? "";
   if (typeof filePath !== "string" || filePath.length === 0) process.exit(0);
 
