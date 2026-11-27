@@ -1,0 +1,118 @@
+name: Release publish
+
+# Reusable workflow: publishes a DRAFT release, then tells the repositories
+# that consume it. It is `release-finalize.yml` without the attestation: use it
+# from a repository whose own job already attested the assets and attached its
+# own bundle to the draft (what `attest: false` meant there).
+#
+# Why a second file: a called job's permissions are fixed in the called file
+# and cannot exceed what the caller job grants, so `release-finalize.yml`
+# forces every caller to grant `id-token` and `attestations` too. This file
+# asks for `contents: write` only, and so does the caller job.
+#
+# Publish is the last step on purpose: with immutable releases on, publishing
+# locks the tag and every asset for good, so everything must be on the draft
+# first.
+#
+# The caller job must grant `contents: write`.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Tag of the draft release to publish
+        type: string
+        required: true
+      notify:
+        description: JSON array of repository names (same owner) that receive a `release-published` dispatch
+        type: string
+        default: "[]"
+    secrets:
+      RELEASE_APP_CLIENT_ID:
+        description: Client ID of the release App. Needed only when `notify` is not empty
+        required: false
+      RELEASE_APP_PRIVATE_KEY:
+        description: Private key of the release App. Needed only when `notify` is not empty
+        required: false
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Same group as release-finalize.yml, so the two cannot race.
+    concurrency:
+      group: release-finalize-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      # `gh release view <tag>` cannot see a draft, so find it by listing.
+      - name: Find the draft and check its tag
+        id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          id="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" |
+            jq -r --arg tag "$TAG" '.[] | select(.tag_name == $tag) | .id' | head -n 1)"
+          if [[ -z "$id" ]]; then
+            echo "No release for tag $TAG" >&2
+            exit 1
+          fi
+          # A tag that points anywhere but the commit being released means
+          # someone moved it or the release was cut from the wrong run.
+          ref="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG")"
+          if [[ "$(jq -r .object.type <<<"$ref")" == "commit" && "$(jq -r .object.sha <<<"$ref")" != "$GITHUB_SHA" ]]; then
+            echo "Tag $TAG does not point at $GITHUB_SHA" >&2
+            exit 1
+          fi
+          echo "id=$id" >>"$GITHUB_OUTPUT"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ steps.draft.outputs.id }}
+        run: gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -F draft=false >/dev/null
+
+  # A release published with `GITHUB_TOKEN` fires no `release` event, so the
+  # consumers are told with an explicit dispatch, sent as the App.
+  notify:
+    name: Notify ${{ matrix.repository }}
+    needs: [publish]
+    if: inputs.notify != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix:
+        repository: ${{ fromJSON(inputs.notify) }}
+    steps:
+      - name: Mint a token for the consumer only
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ matrix.repository }}
+          permission-contents: write
+
+      - name: Dispatch release-published
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TARGET: ${{ matrix.repository }}
+          TAG: ${{ inputs.tag }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          if [[ ! "$TARGET" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "Not a repository name: $TARGET" >&2
+            exit 1
+          fi
+          gh api -X POST "repos/$OWNER/$TARGET/dispatches" \
+            -f event_type=release-published \
+            -f "client_payload[repository]=$GITHUB_REPOSITORY" \
+            -f "client_payload[tag]=$TAG" \
+            -f "client_payload[sha]=$GITHUB_SHA"
