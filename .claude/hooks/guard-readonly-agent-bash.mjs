@@ -39,7 +39,7 @@ function isEntryPoint() {
 }
 
 // Anything here, in or out of quotes, makes the command one this guard does not judge.
-const REFUSED = /[|;&<>$`\\(){}[\]*?~!#\n\r]/;
+const REFUSED = /[|;&<>$`\\(){}[\]*?!#\n\r]/;
 
 /** The words of a single simple command, or null when it is not one. Quotes only group; they hide nothing. */
 function words(command) {
@@ -61,7 +61,8 @@ function words(command) {
   }
   if (quote !== "") return null;
   if (word !== null) out.push(word);
-  return out.length > 0 ? out : null;
+  // A word that starts with `~` is a home directory.
+  return out.length > 0 && !out.some((w) => w.startsWith("~")) ? out : null;
 }
 
 const TEMPLATE_SUFFIX = /\.(example|sample|template|dist)$/;
@@ -142,17 +143,17 @@ function judgeGit(args, cwd, top) {
   const parsed = parse(`git ${sub}`, rest, spec);
   if (parsed.reason) return parsed.reason;
   if (sub === "branch" && !rest.includes("--list") && !rest.includes("--show-current")) return "git branch only with --list or --show-current";
-  // A patch or a file body can show a secret; only a listing of names passes.
-  if ((sub === "diff" || sub === "show") && !rest.some((f) => ["--name-only", "--name-status", "--stat", "--shortstat", "--numstat"].includes(f))) {
-    return `git ${sub} needs --name-only, --name-status or --stat`;
-  }
+  // git show and git diff print a patch or a file body, which can show a secret, and take refs, ranges and paths
+  // that cannot be judged by name. They pass only as a listing of names (one of the flags below) with no operand,
+  // or with exactly HEAD, HEAD~N or HEAD^. Anything else asks.
   if (sub === "diff" || sub === "show") {
-    // Only a plain ref or range: no `REV:path`, no bare object ID, nothing that is not a revision form.
-    for (const operand of parsed.operands) {
-      if (operand.includes(":") || operand.split(/\.{2,3}/).some((side) => /^[0-9a-f]{4,}$/i.test(side)) || !REVISION.test(operand) || operand.split("/").includes("..")) {
-        return `git ${sub} takes only a plain ref or range, not ${operand}`;
-      }
+    if (!rest.some((f) => ["--name-only", "--name-status", "--stat", "--shortstat", "--numstat"].includes(f))) {
+      return `git ${sub} needs --name-only, --name-status or --stat`;
     }
+    if (parsed.operands.length > 1 || (parsed.operands.length === 1 && !/^HEAD(?:~[0-9]{1,3}|\^)?$/.test(parsed.operands[0]))) {
+      return `git ${sub} takes no operand, or exactly HEAD, HEAD~N or HEAD^`;
+    }
+    return null;
   }
   for (const operand of parsed.operands) {
     // Whatever else is true of a revision or path, no part may be a secrets directory or a dotenv file (it need not exist).
