@@ -507,14 +507,12 @@ export function isSecretBash(command) {
   const text = command.replace(/\d*>&(?:\d+|-)(?=$|[\s;&|()<>])|\d*>>?\s*\/dev\/null(?=$|[\s;&|()<>])/g, " ");
   const redirect = text.includes(">");
   const untokenisable = tokens === null || /\$'/.test(command) || /\\/.test(command);
-  // When the words cannot be trusted, the writers are found by a regex over the raw text instead.
-  const sedInPlace = untokenisable
-    ? /\bsed\b/.test(command) && /(?:^|\s)(?:-[A-Za-z]*i|--in-place(?:=|\b))/.test(command)
-    : names.includes("sed") && words.some((w) => /^-[A-Za-z]*i|^--in-place(?:=|$)/.test(w));
-  const writer = untokenisable
-    ? /\b(?:tee|cp|mv|dd|install|ln|touch|truncate)\b/.test(command) || sedInPlace
-    : names.some((n) => COPY_WRITERS.has(n)) || sedInPlace;
-  const contentWrite = redirect || sedInPlace || (untokenisable ? /\b(?:tee|dd)\b/.test(command) : names.some((n) => CONTENT_WRITERS.has(n)));
+  // The words are checked, and so is the raw text: tokenising never weakens a check (the results are ORed).
+  const RAW_WRITER = /\b(?:tee|cp|mv|dd|install|ln|touch|truncate)\b/;
+  const rawSedInPlace = /\bsed\b/.test(command) && /(?:^|\s)(?:-[A-Za-z]*i|--in-place(?:=|\b))/.test(command);
+  const sedInPlace = rawSedInPlace || (names.includes("sed") && words.some((w) => /^-[A-Za-z]*i|^--in-place(?:=|$)/.test(w)));
+  const writer = RAW_WRITER.test(command) || names.some((n) => COPY_WRITERS.has(n)) || sedInPlace;
+  const contentWrite = redirect || sedInPlace || /\b(?:tee|dd)\b/.test(command) || names.some((n) => CONTENT_WRITERS.has(n));
   const dotenv = hasDotenvWord(command) || words.some(hasDotenvWord);
   const reasons = [];
   if (dotenv && tokens?.some((t) => t.start && /[$`]/.test(t.text))) reasons.push("a dotenv file named in a command whose name is built by an expansion");
@@ -529,6 +527,10 @@ export function isSecretBash(command) {
         words.some((w) => w === "--split-string" || w.startsWith("--split-string=")) ||
         (names.includes("env") && words.some((w) => /^-[A-Za-z]*S/.test(w)));
   if (runsText) reasons.push("a shell -c, eval, source, . or env -S: it runs text the guard does not read");
+  // A command it cannot tokenise is blocked outright when it names a dotenv file, holds a secret, or mentions a writer.
+  if (untokenisable && (dotenv || findSecrets(command).length > 0 || /\b(?:sed|tee|dd|cp|mv|install|ln|touch|truncate)\b/.test(command))) {
+    reasons.push("a command the guard cannot tokenise (unclosed quote, escape, $'..') that names a dotenv file, a secret or a writer");
+  }
   // A shell script or an unreadable command (unclosed quote, escape) is blocked when it could write.
   const shellScript = tokens !== null && names.some((n) => SHELLS.has(n));
   if ((untokenisable || shellScript) && (dotenv || redirect || writer)) {

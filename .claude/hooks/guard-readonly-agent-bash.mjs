@@ -126,7 +126,7 @@ function parse(cmd, args, { allowed = [], valued = [], numbered = false, valueNe
 const GIT_SUBCOMMANDS = {
   log: { allowed: ["--oneline", "--name-only", "--name-status", "--stat", "--shortstat", "--numstat", "--no-color", "--graph", "--decorate", "--first-parent", "--merges", "--no-merges"], valued: ["--max-count", "--since", "--until", "--author", "--pretty", "--format"], numbered: true, valueNext: ["-n"] },
   show: { allowed: ["--oneline", "--name-only", "--name-status", "--stat", "--shortstat", "--numstat", "--no-color"], valued: ["--pretty", "--format"], numbered: false, valueNext: [] },
-  diff: { allowed: ["--name-only", "--name-status", "--stat", "--shortstat", "--numstat", "--cached", "--staged", "--no-color", "--check"], valued: [], numbered: false, valueNext: [] },
+  diff: { allowed: ["--name-only", "--name-status", "--stat", "--shortstat", "--numstat", "--cached", "--staged", "--no-color"], valued: [], numbered: false, valueNext: [] },
   status: { allowed: ["--short", "--porcelain", "--branch", "-s", "-b"], valued: [], numbered: false, valueNext: [] },
   "ls-files": { allowed: ["--cached", "--others", "--modified", "--deleted", "--exclude-standard", "-c", "-o", "-m"], valued: [], numbered: false, valueNext: [] },
   "rev-parse": { allowed: ["--show-toplevel", "--abbrev-ref", "--short", "--verify", "--git-dir"], valued: [], numbered: false, valueNext: [] },
@@ -145,6 +145,14 @@ function judgeGit(args, cwd, top) {
   // A patch or a file body can show a secret; only a listing of names passes.
   if ((sub === "diff" || sub === "show") && !rest.some((f) => ["--name-only", "--name-status", "--stat", "--shortstat", "--numstat"].includes(f))) {
     return `git ${sub} needs --name-only, --name-status or --stat`;
+  }
+  if (sub === "diff" || sub === "show") {
+    // Only a plain ref or range: no `REV:path`, no bare object ID, nothing that is not a revision form.
+    for (const operand of parsed.operands) {
+      if (operand.includes(":") || /^[0-9a-f]{7,40}$/i.test(operand) || !REVISION.test(operand) || operand.split("/").includes("..")) {
+        return `git ${sub} takes only a plain ref or range, not ${operand}`;
+      }
+    }
   }
   for (const operand of parsed.operands) {
     // Whatever else is true of a revision or path, no part may be a secrets directory or a dotenv file (it need not exist).
