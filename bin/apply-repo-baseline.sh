@@ -944,21 +944,26 @@ if [[ -n "$release_exempt" ]]; then
   fi
 else
   release_prepare="$(jq -r .workflow "$here/release.json")"
-  release_finalize="${release_prepare/prepare/finalize}"
+  # The files that end a release: release-finalize.yml, and release-publish.yml
+  # for a repository whose own job attests. A repository calls either one.
+  release_finalize_list="$(jq -r '.finalize[]' "$here/release.json")"
+  release_finalize_files=()
+  while IFS= read -r finalize_file; do release_finalize_files+=("$finalize_file"); done <<<"$release_finalize_list"
+  release_finalize_alt="$(printf '%s\n' "${release_finalize_files[@]//./\\.}" | paste -sd'|' -)"
   report_file "release: config" "start from blueprint/files/release-please/ and save it as release-please-config.json" \
     release-please-config.json
   report_file "release: manifest" "start from blueprint/files/release-please/manifest.json and save it as .release-please-manifest.json" \
     .release-please-manifest.json
   report_workflow "release: workflow" "copy workflow-templates/release.yml" \
     "${release_prepare//./\\.}@[0-9a-f]{40}" \
-    "${release_finalize//./\\.}@[0-9a-f]{40}"
+    "(${release_finalize_alt})@[0-9a-f]{40}"
   # A pin must be a commit of the shared repository's default branch. One that
   # only lived on a pull request branch (a squash merge drops it) still
   # resolves for a while, then fails every release of every repository that
   # copied it. `compare` says `ahead` or `identical` when the pin is an
   # ancestor of main, and `diverged` or `behind` when it is not.
   shared_repo="${release_prepare%%/.github/workflows/*}"
-  release_pins="$(grep -Eo "(${release_prepare//./\\.}|${release_finalize//./\\.})@[0-9a-f]{40}" <<<"$workflows_text" | sed 's/.*@//' | sort -u || true)"
+  release_pins="$(grep -Eo "(${release_prepare//./\\.}|${release_finalize_alt})@[0-9a-f]{40}" <<<"$workflows_text" | sed 's/.*@//' | sort -u || true)"
   if [[ -z "$release_pins" ]]; then
     skip "release: workflow pin" "no release workflow call pinned by SHA"
   else
@@ -988,8 +993,10 @@ else
     if [[ -z "$pin_problem" ]]; then
       pin_list=()
       while IFS= read -r pin; do pin_list+=("$pin"); done <<<"$release_pins"
+      age_files=("${release_prepare#"$shared_repo"/}")
+      for finalize_file in "${release_finalize_files[@]}"; do age_files+=("${finalize_file#"$shared_repo"/}"); done
       age_rc=0
-      age_out="$("$here/../bin/lib/release-pin-age.sh" "$shared_repo" "${release_prepare#"$shared_repo"/}" "${release_finalize#"$shared_repo"/}" "${pin_list[@]}")" || age_rc=$?
+      age_out="$("$here/../bin/lib/release-pin-age.sh" "$shared_repo" "${age_files[@]}" "${pin_list[@]}")" || age_rc=$?
       if [[ "$age_rc" -eq 0 ]]; then
         printf 'OK     release: workflow pin age %s\n' "${age_out:0:7}"
         ok=$((ok + 1))

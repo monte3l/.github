@@ -5,13 +5,14 @@
 # Says whether the commits a repository pins the shared release workflows at
 # already contain the newest change to them.
 #
-#   release-pin-age.sh SHARED-REPO FILE FILE PIN...
+#   release-pin-age.sh SHARED-REPO FILE... PIN...
 #
-# SHARED-REPO is OWNER/REPO, each FILE a path in it (the two workflows), each PIN
+# SHARED-REPO is OWNER/REPO, each FILE a path in it (the shared release workflows:
+# prepare, finalize and publish; every argument that is not a SHA), each PIN
 # a 40-character commit that the repository's `release.yml` calls them at. Nothing
 # moves a pin: the shared repository has no tags for Dependabot to follow. A pin
 # can sit on the default branch and still miss a later change, so this compares
-# each pin with the newest commit that touched either file.
+# each pin with the newest commit that touched any of the files.
 #
 # Prints the newest commit. Exit codes: 0 every pin has it, 1 a pin is behind it
 # (the line is `PIN NEWEST`, for the first pin that is), 2 usage, 3 a GitHub call
@@ -23,15 +24,22 @@
 # report a pin as current that was never looked at.
 set -euo pipefail
 
-[[ $# -ge 4 ]] || {
-  printf 'usage: %s SHARED-REPO FILE FILE PIN...\n' "${0##*/}" >&2
+usage() {
+  printf 'usage: %s SHARED-REPO FILE... PIN...\n' "${0##*/}" >&2
   exit 2
 }
+[[ $# -ge 3 ]] || usage
 repo="$1"
-files=("$2" "$3")
-shift 3
+shift
+# A pin is a full commit SHA; every other argument is a file path.
+files=()
+pins=()
+for arg in "$@"; do
+  if [[ "$arg" =~ ^[0-9a-f]{40}$ ]]; then pins+=("$arg"); else files+=("$arg"); fi
+done
+[[ ${#files[@]} -ge 1 && ${#pins[@]} -ge 1 ]] || usage
 
-# The newest commit that touched either file, by committer date. `gh` writes its
+# The newest commit that touched any file, by committer date. `gh` writes its
 # own error to stderr, which is left visible.
 lines=""
 for file in "${files[@]}"; do
@@ -42,7 +50,7 @@ done
 [[ -n "$lines" ]] || exit 4
 newest="$(sort <<<"$lines" | tail -n 1 | cut -d' ' -f2)"
 
-for pin in "$@"; do
+for pin in "${pins[@]}"; do
   status="$(gh api "repos/$repo/compare/$newest...$pin" --jq .status)" || exit 3
   if [[ "$status" != "identical" && "$status" != "ahead" ]]; then
     printf '%s %s\n' "$pin" "$newest"
