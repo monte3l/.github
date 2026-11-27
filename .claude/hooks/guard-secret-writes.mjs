@@ -504,17 +504,22 @@ export function isSecretBash(command) {
   const words = tokens?.map((t) => t.text) ?? [];
   const names = words.map((w) => path.basename(w));
   // A redirect that is not a descriptor copy (`2>&1`) or a write to /dev/null.
-  const text = command.replace(/\d*>&\d+|\d*>>?\s*\/dev\/null/g, " ");
+  const text = command.replace(/\d*>&(?:\d+|-)(?=$|[\s;&|()<>])|\d*>>?\s*\/dev\/null(?=$|[\s;&|()<>])/g, " ");
   const redirect = text.includes(">");
-  const sedInPlace = names.includes("sed") && words.some((w) => /^-[A-Za-z]*i|^--in-place$/.test(w));
-  const writer = names.some((n) => COPY_WRITERS.has(n)) || sedInPlace;
-  const contentWrite = redirect || names.some((n) => CONTENT_WRITERS.has(n)) || sedInPlace;
+  const untokenisable = tokens === null || /\$'/.test(command) || /\\/.test(command);
+  // When the words cannot be trusted, the writers are found by a regex over the raw text instead.
+  const sedInPlace = untokenisable
+    ? /\bsed\b/.test(command) && /(?:^|\s)(?:-[A-Za-z]*i|--in-place(?:=|\b))/.test(command)
+    : names.includes("sed") && words.some((w) => /^-[A-Za-z]*i|^--in-place(?:=|$)/.test(w));
+  const writer = untokenisable
+    ? /\b(?:tee|cp|mv|dd|install|ln|touch|truncate)\b/.test(command) || sedInPlace
+    : names.some((n) => COPY_WRITERS.has(n)) || sedInPlace;
+  const contentWrite = redirect || sedInPlace || (untokenisable ? /\b(?:tee|dd)\b/.test(command) : names.some((n) => CONTENT_WRITERS.has(n)));
   const dotenv = hasDotenvWord(command) || words.some(hasDotenvWord);
   const reasons = [];
   if (dotenv && tokens?.some((t) => t.start && /[$`]/.test(t.text))) reasons.push("a dotenv file named in a command whose name is built by an expansion");
   if (dotenv && (redirect || writer)) reasons.push("a command that names a dotenv file and writes");
   if (dotenv && (/\$\(|`|<<(?!<)/.test(command))) reasons.push("a dotenv file named in a command with a substitution or heredoc");
-  const untokenisable = tokens === null || /\$'/.test(command) || /\\/.test(command);
   // A shell with -c, eval, source, `.` and env -S run text this guard does not read: blocked whatever else is visible.
   const runsText =
     tokens === null
@@ -533,7 +538,7 @@ export function isSecretBash(command) {
   // A target built by an expansion, a glob or a brace list: its name cannot be read.
   if (redirect || writer) {
     const dynamic = (target) => /[$`{*?[]/.test(target) && !KNOWN_DIRECTORY.test(target);
-    const targets = [...text.matchAll(/(?:&>>?|\d*>>?\|?)[ \t]*([^\s;&|()<>]+)/g)].map((m) => m[1].replace(/["']/g, ""));
+    const targets = [...text.matchAll(/(?:&>>?|\d*>>?\|?&?)[ \t]*([^\s;&|()<>]+)/g)].map((m) => m[1].replace(/["']/g, ""));
     for (let i = 0; i < words.length; i++) {
       if (COPY_WRITERS.has(names[i]) || (names[i] === "sed" && sedInPlace)) {
         for (const w of words.slice(i + 1)) if (!w.startsWith("-") || w.startsWith("of=")) targets.push(w.replace(/^of=/, ""));

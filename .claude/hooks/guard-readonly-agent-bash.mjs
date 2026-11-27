@@ -133,7 +133,7 @@ const GIT_SUBCOMMANDS = {
   branch: { allowed: ["--list", "--all", "--remotes", "--show-current", "-a", "-r"], valued: [], numbered: false, valueNext: [] },
 };
 // A revision, a range or a ref: no leading dash, no absolute path, no `..` directory.
-const REVISION = /^[A-Za-z0-9_@~^][A-Za-z0-9_.\/@~^-]*$/;
+const REVISION = /^[A-Za-z0-9_@~^][A-Za-z0-9_./@~^-]*$/;
 
 function judgeGit(args, cwd, top) {
   const [sub, ...rest] = args;
@@ -142,7 +142,15 @@ function judgeGit(args, cwd, top) {
   const parsed = parse(`git ${sub}`, rest, spec);
   if (parsed.reason) return parsed.reason;
   if (sub === "branch" && !rest.includes("--list") && !rest.includes("--show-current")) return "git branch only with --list or --show-current";
+  // A patch or a file body can show a secret; only a listing of names passes.
+  if ((sub === "diff" || sub === "show") && !rest.some((f) => ["--name-only", "--name-status", "--stat", "--shortstat", "--numstat"].includes(f))) {
+    return `git ${sub} needs --name-only, --name-status or --stat`;
+  }
   for (const operand of parsed.operands) {
+    // Whatever else is true of a revision or path, no part may be a secrets directory or a dotenv file (it need not exist).
+    for (const part of operand.toLowerCase().split(/[/:]/)) {
+      if (part === "secrets" || (part.startsWith(".env") && !TEMPLATE_SUFFIX.test(part))) return `${operand} is a secrets path`;
+    }
     // `REV:path` names a file at a revision; the path part is checked as a path.
     const [rev, ...pathParts] = operand.split(":");
     if (pathParts.length > 1) return `${operand} is not a plain revision or path`;
