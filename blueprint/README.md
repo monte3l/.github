@@ -689,6 +689,9 @@ whether the last run succeeded, as the `env-janitor:` items in
 > reference the two secrets, and the script reports any other workflow that
 > does, and any organization secret of the same name still shared with the
 > repository.
+> The organization secrets that are shared on purpose, and the review that
+> controls them, are recorded in this repository's `SECURITY.md` under
+> "Accepted: organization secrets".
 
 To rotate the App's key, generate a new one in the App's settings, then run
 `bin/env-secrets.sh set JANITOR_APP_PRIVATE_KEY` (the value is read from a hidden
@@ -1570,7 +1573,8 @@ every marketplace. Check the file before pasting it.
 > absolute path, and a `Read` deny does not cover `grep -r` run outside the
 > sandbox. The console policy is also a client-side control on a machine
 > without admin rights. The sandbox is the planned follow-up that closes both
-> gaps. The sources are the
+> gaps, and it is not enabled. No issue is opened for it until someone commits
+> to the work (owner decision). The sources are the
 > [managed settings](https://code.claude.com/docs/en/managed-settings),
 > [permissions](https://code.claude.com/docs/en/permissions) and
 > [plugin policy](https://code.claude.com/docs/en/plugins/org) pages.
