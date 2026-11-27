@@ -13,7 +13,10 @@ name: Release finalize
 # attests an immutable release itself, and this workflow attests assets only.
 #
 # The caller job must grant `contents: write`, `id-token: write` and
-# `attestations: write`.
+# `attestations: write`, even with `attest: false`: a called job's permissions
+# cannot be conditional on a step. A caller that attests on its own and only
+# wants the publish should call `release-publish.yml`, which needs
+# `contents: write` alone.
 on:
   workflow_call:
     inputs:
