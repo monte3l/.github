@@ -42,9 +42,11 @@ test("docs-config-parity: this repository's own config has one", () => {
 
 const FILE_A = ".github/workflows/release-prepare.yml";
 const FILE_B = ".github/workflows/release-finalize.yml";
+const FILE_C = ".github/workflows/release-publish.yml";
 const OLD = "1".repeat(40);
 const MID = "2".repeat(40);
 const NEWEST = "3".repeat(40);
+const LATEST = "4".repeat(40);
 
 /**
  * Runs release-pin-age.sh against a stub gh.
@@ -52,7 +54,7 @@ const NEWEST = "3".repeat(40);
  *   `compare` maps a pin to the status GitHub returns, or "error"; `history` is what the commit listing does:
  *   answer, fail like an API error, or answer with nothing.
  */
-function pinAge({ pins, compare = {}, history = "ok" }) {
+function pinAge({ pins, compare = {}, history = "ok", files = [FILE_A, FILE_B] }) {
   const dir = mkdtempSync(path.join(tmpdir(), "pin-age-"));
   const stub = path.join(dir, "gh");
   const statuses = Object.entries(compare)
@@ -68,6 +70,7 @@ case "$2" in
       ${history === "empty" ? "*) ;;" : ""}
       *"path=${FILE_A}"*) printf '%s\n' '2026-11-01T00:00:00Z ${MID}' ;;
       *"path=${FILE_B}"*) printf '%s\n' '2026-11-10T00:00:00Z ${NEWEST}' ;;
+      *"path=${FILE_C}"*) printf '%s\n' '2026-11-20T00:00:00Z ${LATEST}' ;;
     esac ;;
   *"/compare/"*)
     case "$2" in
@@ -78,7 +81,7 @@ esac
 `,
   );
   chmodSync(stub, 0o755);
-  const result = spawnSync("bash", [lib("release-pin-age.sh"), "monte3l/.github", FILE_A, FILE_B, ...pins], {
+  const result = spawnSync("bash", [lib("release-pin-age.sh"), "monte3l/.github", ...files, ...pins], {
     encoding: "utf8",
     env: { ...process.env, PATH: `${dir}:${process.env.PATH}` },
   });
@@ -118,5 +121,32 @@ test("release-pin-age: a history that was read and is empty is exit 4", () => {
 
 test("release-pin-age: too few arguments is a usage error", () => {
   const result = spawnSync("bash", [lib("release-pin-age.sh"), "monte3l/.github", FILE_A, FILE_B], { encoding: "utf8" });
+  assert.equal(result.status, 2);
+});
+
+test("release-pin-age: release-publish.yml counts: a change only to it is the newest", () => {
+  const { status, out } = pinAge({ files: [FILE_A, FILE_B, FILE_C], pins: [OLD], compare: { [OLD]: "behind" } });
+  assert.equal(status, 1);
+  assert.equal(out, `${OLD} ${LATEST}`);
+});
+
+test("release-pin-age: a pin that has the change to release-publish.yml is current", () => {
+  const { status, out } = pinAge({ files: [FILE_A, FILE_B, FILE_C], pins: [MID], compare: { [MID]: "ahead" } });
+  assert.equal(status, 0);
+  assert.equal(out, LATEST);
+});
+
+test("release-pin-age: without release-publish.yml in the list it is not looked at", () => {
+  assert.equal(pinAge({ pins: [OLD], compare: { [OLD]: "identical" } }).out, NEWEST);
+});
+
+test("release-pin-age: files and pins are told apart by shape, so one file is enough", () => {
+  const { status, out } = pinAge({ files: [FILE_C], pins: [OLD], compare: { [OLD]: "identical" } });
+  assert.equal(status, 0);
+  assert.equal(out, LATEST);
+});
+
+test("release-pin-age: no file is a usage error", () => {
+  const result = spawnSync("bash", [lib("release-pin-age.sh"), "monte3l/.github", OLD], { encoding: "utf8" });
   assert.equal(result.status, 2);
 });
