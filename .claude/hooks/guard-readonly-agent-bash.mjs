@@ -149,7 +149,7 @@ function judgeGit(args, cwd, top) {
   if (sub === "diff" || sub === "show") {
     // Only a plain ref or range: no `REV:path`, no bare object ID, nothing that is not a revision form.
     for (const operand of parsed.operands) {
-      if (operand.includes(":") || /^[0-9a-f]{7,40}$/i.test(operand) || !REVISION.test(operand) || operand.split("/").includes("..")) {
+      if (operand.includes(":") || operand.split(/\.{2,3}/).some((side) => /^[0-9a-f]{4,}$/i.test(side)) || !REVISION.test(operand) || operand.split("/").includes("..")) {
         return `git ${sub} takes only a plain ref or range, not ${operand}`;
       }
     }
