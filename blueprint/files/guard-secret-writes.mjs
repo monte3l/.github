@@ -454,6 +454,7 @@ const CONTENT_WRITERS = new Set(["tee", "dd"]);
 // Commands that only read, when the command has no redirect, substitution or heredoc (see readOnlyOnly).
 const READ_ONLY = new Set(["cat", "ls", "head", "tail", "wc", "grep", "rg", "echo", "printf", "pwd", "jq"]);
 const READ_ONLY_GIT = new Set(["log", "show", "diff", "status"]);
+const GIT_OPTIONS = new Set(["--oneline", "--stat", "--name-only", "--name-status", "--shortstat", "--numstat", "-n", "--", "--no-pager"]);
 // A flag that makes an otherwise read-only command write or run something.
 const WRITING_FLAG = /^(?:--output(?:=|$)|--pre(?:=|$)|--ext-diff|--textconv|--open-files-in-pager)/;
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "ash", "fish"]);
@@ -530,7 +531,9 @@ function readOnlyOnly(tokens, command, redirect) {
     const [name, sub] = group;
     if (group.some((w) => WRITING_FLAG.test(w))) return false;
     if (name === "git") {
+      // Git accepts abbreviated long options, so only an explicit list of options passes.
       if (!READ_ONLY_GIT.has(sub)) return false;
+      if (group.slice(2).some((w) => w.startsWith("-") && !GIT_OPTIONS.has(w) && !/^-\d+$/.test(w))) return false;
     } else if (!READ_ONLY.has(name)) return false;
   }
   return true;
