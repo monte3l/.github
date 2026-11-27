@@ -54,9 +54,7 @@ describe("guard-readonly-agent-bash: a read-only reviewer", () => {
     "tail -n 5 CLAUDE.md",
     "wc -l CLAUDE.md",
     "grep -n persist-credentials workflow-templates/verify.yml",
-    "grep -r -n persist-credentials workflow-templates",
     "grep -n 'a b' CLAUDE.md",
-    "grep -r --include=yml TOKEN workflow-templates",
     "rg -n TOKEN workflow-templates",
     "rg -n -i TOKEN workflow-templates blueprint",
     "rg --files design",
@@ -149,6 +147,11 @@ describe("guard-readonly-agent-bash: a read-only reviewer", () => {
     "git diff --",
     "ls -la blueprint",
     "grep -rn TOKEN workflow-templates",
+    "grep -r -n persist-credentials workflow-templates",
+    "grep -R TOKEN workflow-templates",
+    "grep --recursive TOKEN workflow-templates",
+    "grep -r --include=yml TOKEN workflow-templates",
+    "grep --include=yml TOKEN workflow-templates/verify.yml",
     "grep -e TOKEN workflow-templates",
     "grep -f x workflow-templates",
     "rg -ni TOKEN workflow-templates",
@@ -243,6 +246,23 @@ describe("guard-readonly-agent-bash: a read-only reviewer", () => {
       assert.equal(at("ls ."), "ask");
       assert.equal(at("cat missing.txt"), "ask");
     });
+    it("lets rg search a file, or a directory with no dotenv or secrets entry one level down", () => {
+      fs.mkdirSync(path.join(tmp, "clean"));
+      fs.writeFileSync(path.join(tmp, "clean", "a.txt"), "x\n");
+      fs.mkdirSync(path.join(tmp, "dirty-env"));
+      fs.writeFileSync(path.join(tmp, "dirty-env", ".ENV"), "x\n");
+      fs.mkdirSync(path.join(tmp, "dirty-secrets", "Secrets"), { recursive: true });
+      fs.writeFileSync(path.join(tmp, "dirty-env", "b.txt"), "x\n");
+      assert.equal(at("rg x ok.txt"), "allow");
+      assert.equal(at("rg x clean"), "allow");
+      assert.equal(at("rg x clean ok.txt"), "allow");
+      assert.equal(at("rg x dirty-env"), "ask");
+      assert.equal(at("rg x dirty-secrets"), "ask");
+      assert.equal(at("rg x clean dirty-env"), "ask");
+      assert.equal(at("rg --files dirty-env"), "ask");
+      assert.equal(at("rg x missing"), "ask");
+      assert.equal(at("grep x dirty-env/b.txt"), "allow");
+    });
     it("asks when the working directory is not in a git repository", () => {
       const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ro-guard-nogit-")));
       fs.writeFileSync(path.join(outside, "a.txt"), "x\n");
@@ -301,6 +321,27 @@ describe("guard-secret-writes: Bash (best effort, blocks when in doubt)", () => 
     'eval "echo x > .env"',
     'eval "$X > out.txt"',
     "source ./x.sh > out.txt",
+    // run text the guard does not read: blocked whatever else is visible
+    "bash -c 'echo hi'",
+    'sh -c "echo hi"',
+    "zsh -c ls",
+    "dash -c ls",
+    "ksh -c ls",
+    "ash -c ls",
+    "fish -c ls",
+    "bash -ec 'echo hi'",
+    'eval "echo hi"',
+    "eval $X",
+    "source ./x.sh",
+    ". ./x.sh",
+    "env -S 'echo hi'",
+    "env --split-string='echo hi'",
+    "echo 'unclosed; bash -c 'echo hi'",
+    // a heredoc marker anywhere, with a write or a dotenv word, even inside a quoted string
+    "cat <<EOF > out.txt\nx\nEOF",
+    'echo "<<EOF"; cp a b',
+    "echo '<<X'; cat > out.txt",
+    "cat <<EOF\n.env\nEOF",
     "bash script.sh > out.txt",
     "env -S 'cp a .env'",
     "cp a b.txt\\",
@@ -342,13 +383,10 @@ describe("guard-secret-writes: Bash (best effort, blocks when in doubt)", () => 
     "mv a b.txt",
     "sed -i s/a/b/ notes.txt",
     "sed s/a/b/ .envrc.txt",
-    "bash -c 'echo hi'",
     "bash script.sh",
-    "source ./x.sh",
-    'eval "echo hi"',
     "cat <<EOF\nhello\nEOF",
     "echo $(date)",
-    "git commit -s -m \"$(cat <<'EOF'\nit's fine -> ok\nEOF\n)\"",
+    "git commit -s -m \"$(cat <<'EOF'\nit's fine\nEOF\n)\"",
   ];
   for (const command of blocked) {
     it(`blocks ${JSON.stringify(command).slice(0, 70)}`, () => assert.equal(bash(command), 2));

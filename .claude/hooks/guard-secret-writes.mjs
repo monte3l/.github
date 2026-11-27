@@ -447,7 +447,7 @@ export function isSecretWrite(filePath, content) {
 const TEMPLATE_SUFFIX = /\.(example|sample|template|dist)$/;
 const COPY_WRITERS = new Set(["tee", "cp", "mv", "dd", "install", "ln", "touch", "truncate"]);
 const CONTENT_WRITERS = new Set(["tee", "dd"]);
-const SHELLS = new Set(["sh", "bash", "zsh", "dash"]);
+const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "ash", "fish"]);
 // `$VAR/name` is a known file name in an unknown directory; any other expansion in a target is a dynamic target.
 const KNOWN_DIRECTORY = /^(?:\$\w+|\$\{\w+\})\/[^$`{}*?[\\\s]+$/;
 
@@ -457,23 +457,6 @@ export function hasDotenvWord(text) {
     const base = path.basename(part).toLowerCase();
     return base.startsWith(".env") && !TEMPLATE_SUFFIX.test(base);
   });
-}
-
-/** The command without heredoc bodies (their text is data, and may hold quotes). */
-function stripHeredocs(command) {
-  const lines = command.split("\n");
-  const kept = [];
-  let delimiter = null;
-  for (const line of lines) {
-    if (delimiter !== null) {
-      if (line.replace(/^\t+/, "") === delimiter) delimiter = null;
-      continue;
-    }
-    kept.push(line);
-    const m = /<<-?[ \t]*(?:'([^']*)'|"([^"]*)"|([^\s;&|()<>'"]+))/.exec(line);
-    if (m && !line.includes("<<<")) delimiter = m[1] ?? m[2] ?? m[3];
-  }
-  return kept.join("\n");
 }
 
 /**
@@ -517,12 +500,11 @@ function tokenise(command) {
  * @returns {string[]}
  */
 export function isSecretBash(command) {
-  const stripped = stripHeredocs(command);
-  const tokens = tokenise(stripped);
+  const tokens = tokenise(command);
   const words = tokens?.map((t) => t.text) ?? [];
   const names = words.map((w) => path.basename(w));
   // A redirect that is not a descriptor copy (`2>&1`) or a write to /dev/null.
-  const text = stripped.replace(/\d*>&\d+|\d*>>?\s*\/dev\/null/g, " ");
+  const text = command.replace(/\d*>&\d+|\d*>>?\s*\/dev\/null/g, " ");
   const redirect = text.includes(">");
   const sedInPlace = names.includes("sed") && words.some((w) => /^-[A-Za-z]*i|^--in-place$/.test(w));
   const writer = names.some((n) => COPY_WRITERS.has(n)) || sedInPlace;
@@ -532,16 +514,22 @@ export function isSecretBash(command) {
   if (dotenv && tokens?.some((t) => t.start && /[$`]/.test(t.text))) reasons.push("a dotenv file named in a command whose name is built by an expansion");
   if (dotenv && (redirect || writer)) reasons.push("a command that names a dotenv file and writes");
   if (dotenv && (/\$\(|`|<<(?!<)/.test(command))) reasons.push("a dotenv file named in a command with a substitution or heredoc");
-  const untokenisable = tokens === null || /\$'/.test(stripped) || /\\/.test(stripped);
-  const wrapper =
-    tokens !== null &&
-    (tokens.some((t) => ["eval", "source"].includes(path.basename(t.text)) || (t.start && t.text === ".")) ||
-      names.some((n) => SHELLS.has(n)) ||
-      words.includes("--split-string") ||
-      (names.includes("env") && words.some((w) => /^-[A-Za-z]*S/.test(w))));
-  if ((untokenisable || wrapper) && (dotenv || redirect || writer)) {
-    reasons.push("a command the guard cannot read completely (unclosed quote, escape, -c, eval, source, wrapper) that could write");
+  const untokenisable = tokens === null || /\$'/.test(command) || /\\/.test(command);
+  // A shell with -c, eval, source, `.` and env -S run text this guard does not read: blocked whatever else is visible.
+  const runsText =
+    tokens === null
+      ? /(?:^|[\s;&|(])(?:eval|source)\s|\b(?:sh|bash|zsh|dash|ksh|ash|fish)\b[^\n]*\s-[A-Za-z]*c|--split-string/.test(command)
+      : tokens.some((t) => ["eval", "source"].includes(path.basename(t.text)) || (t.start && t.text === ".")) ||
+        (names.some((n) => SHELLS.has(n)) && words.some((w) => /^-[A-Za-z]*c/.test(w))) ||
+        words.some((w) => w === "--split-string" || w.startsWith("--split-string=")) ||
+        (names.includes("env") && words.some((w) => /^-[A-Za-z]*S/.test(w)));
+  if (runsText) reasons.push("a shell -c, eval, source, . or env -S: it runs text the guard does not read");
+  // A shell script or an unreadable command (unclosed quote, escape) is blocked when it could write.
+  const shellScript = tokens !== null && names.some((n) => SHELLS.has(n));
+  if ((untokenisable || shellScript) && (dotenv || redirect || writer)) {
+    reasons.push("a command the guard cannot read completely (unclosed quote, escape, shell) that could write");
   }
+  if (/<<(?!<)/.test(command) && (dotenv || redirect || writer)) reasons.push("a heredoc in a command that could write");
   // A target built by an expansion, a glob or a brace list: its name cannot be read.
   if (redirect || writer) {
     const dynamic = (target) => /[$`{*?[]/.test(target) && !KNOWN_DIRECTORY.test(target);

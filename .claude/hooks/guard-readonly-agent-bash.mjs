@@ -14,7 +14,7 @@
  * in front, and no bundled short options (`-rn`). Only quotes group a word. The shapes are:
  *   git log|show|diff|status|ls-files|rev-parse|branch --list   with a short fixed flag list
  *   ls, cat, head, tail, wc                                       with fixed flags and named paths
- *   grep, rg                                                      with fixed flags, a pattern and named paths
+ *   grep (never recursive), rg (a named file or directory with no dotenv or secrets entry one level down)
  *   gh pr|issue|run|workflow|release|repo|label view|list         with fixed flags
  *   node --test tests/NAME.test.mjs
  * Everything else asks: jq, gh api, find, sort, uniq, diff, shellcheck, wrappers, and so on.
@@ -165,10 +165,25 @@ function judgePaths(cmd, args, cwd, top, spec, { minPaths = 1, skipFirst = false
   if (skipFirst && parsed.operands.length === 0) return `${cmd} needs a pattern`;
   if (operands.length < minPaths) return `${cmd} needs a named path`;
   for (const operand of operands) {
-    const problem = pathProblem(operand, cwd, top);
+    const problem = pathProblem(operand, cwd, top) ?? (cmd === "rg" ? listingProblem(operand, cwd) : null);
     if (problem !== null) return problem;
   }
   return null;
+}
+
+/** rg searches a directory recursively, so a directory must show no dotenv or secrets entry one level down. */
+function listingProblem(operand, cwd) {
+  try {
+    const real = fs.realpathSync(path.resolve(fs.realpathSync(cwd), operand));
+    if (!fs.statSync(real).isDirectory()) return null;
+    for (const entry of fs.readdirSync(real)) {
+      const name = entry.toLowerCase();
+      if (name === "secrets" || (name.startsWith(".env") && !TEMPLATE_SUFFIX.test(name))) return `${operand} holds a dotenv or secrets entry`;
+    }
+    return null;
+  } catch {
+    return `${operand} cannot be listed`;
+  }
 }
 
 const SIMPLE = {
@@ -179,7 +194,7 @@ const SIMPLE = {
   wc: { allowed: ["-l", "-w", "-c"] },
 };
 const SEARCH = {
-  grep: { allowed: ["-n", "-i", "-v", "-w", "-F", "-E", "-r", "-l", "-c", "-H", "-h", "-s", "-x", "-o"], valued: ["--include", "--exclude", "--exclude-dir", "--max-count"] },
+  grep: { allowed: ["-n", "-i", "-v", "-w", "-F", "-E", "-l", "-c", "-H", "-h", "-s", "-x", "-o"], valued: ["--max-count"] },
   rg: { allowed: ["-n", "-i", "-w", "-F", "-l", "-c", "-v", "-s", "--files"], valued: ["--glob", "--type", "--max-count"] },
 };
 const GH_GROUPS = new Set(["pr", "issue", "run", "workflow", "release", "repo", "label"]);
