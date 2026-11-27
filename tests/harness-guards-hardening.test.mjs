@@ -832,7 +832,7 @@ describe("secret guard over this repository", () => {
 
 describe("settings.json wires the file guards for notebooks", () => {
   const settings = JSON.parse(fs.readFileSync(path.join(root, ".claude/settings.json"), "utf8"));
-  const group = settings.hooks.PreToolUse.find((g) => g.hooks.some((h) => h.command.includes("guard-secret-writes.mjs")));
+  const group = settings.hooks.PreToolUse.find((g) => g.matcher.includes("NotebookEdit") && g.hooks.some((h) => h.command.includes("guard-secret-writes.mjs")));
 
   it("matches NotebookEdit beside Write and Edit, and the guards there block on failure", () => {
     assert.equal(group.matcher, "Write|Edit|NotebookEdit");
