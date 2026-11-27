@@ -67,3 +67,20 @@ defects. Do not "fix" the first one into a standing bypass.
 | Maintained | 0 | Scorecard scores any repository under 90 days old as 0. This one was created on 2026-09-29, so it resolves itself on 2026-12-28 |
 | Fuzzing | 0 | Not applicable. The repository holds Markdown, JSON and one bash script that calls `gh`. It has no parser of untrusted input, and no dependencies to fuzz |
 | CII-Best-Practices | 0 | Not applicable. This is a community-health and configuration repository, not a software project with releases, tests or a build. The code repositories register for the badge instead |
+
+## Accepted: organization secrets
+
+> [!NOTE]
+> This section describes the `monte3l/.github` repository itself.
+
+`GITLEAKS_LICENSE`, `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_PRIVATE_KEY` are
+organization secrets, shared with seven repositories: this one, `m3l-design`,
+`m3l-groundwork`, `m3l-mentor`, `m3l-output-governor`, `m3l-plugins` and
+`m3l-prompt-optimizer`. An organization secret reaches every workflow in those
+repositories, on any branch a collaborator pushes. The risk is accepted, and
+the control is review: `.github/CODEOWNERS` assigns every path to both owners,
+and the `main` ruleset requires a code-owner approval, so a workflow change
+cannot merge unreviewed. A secret that can do more than release is kept out of
+the organization's secrets. The Cloudflare and janitor secrets are environment
+secrets limited to `main` (see `blueprint/env-secrets.json` and
+`.github/environments.json`).
