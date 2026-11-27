@@ -19,7 +19,7 @@ in `m3l-groundwork`.
 | `actions.json`           | Read-only workflow token, workflows cannot approve PRs, approve fork PR runs for all outside contributors, SHA pinning required |
 | `labels.json`            | Labels that Dependabot, the baseline's scheduled audit and the PR labeler apply, coloured with m3l-design's primitives: status colours for `dependencies`, `security` and `freshness`, the brand colour for the four shared `area:*` labels. `freshness` marks every issue a scheduled check opens, so one search (`gh search issues --owner monte3l --state open --label freshness`) lists what is waiting across the organization; `org-audit.yml` prints only the counts, because this repository is public. Labels are create-only, so existing repositories keep their old colours |
 | `design-system.json`     | The m3l-design release tag (`vX.Y.Z`) every repository should record in `design/README.md`, and `consumers`, the repositories `design-resync.yml` opens re-sync pull requests in. The tag is checked by the script, never applied. See [Design system](#design-system) |
-| `release.json`           | The shared release workflow the script looks for in each repository's workflows, and the repositories exempt from releasing, each with its reason. Checked by the script, never applied. See [Releases](#releases) |
+| `release.json`           | The shared release workflows the script looks for in each repository's workflows (`workflow` is prepare, `finalize` lists the files that end a release), and the repositories exempt from releasing, each with its reason. Checked by the script, never applied. See [Releases](#releases) |
 | `dependabot-exemptions.json` | The lockfile folders a repository leaves out of `dependabot.yml` on purpose, each with its reason, keyed by repository and folder. The `Dependabot: lockfile folders` item reads it. A folder that is not here and has no `npm` entry is drift |
 | `projects.json`          | Every monte3l repository: its docs-site URL, card line, description and topics. The org site's project cards, `profile/README.md`'s table and each repository's GitHub description and topics are checked against it. See [Descriptions](#descriptions) |
 | `openssf.json`           | The OpenSSF Best Practices level every public repository should reach (`minimum`: a metal level and a Baseline level), and the repositories exempt from it, each with its reason. Checked by the script, never applied |
@@ -40,7 +40,7 @@ in `m3l-groundwork`.
 | `../.github/workflows/template-sync.yml`, `../bin/template-sync-pr.sh` | Opens the pull requests that refresh stale workflow copies. See [Refreshing stale copies](#refreshing-stale-copies) |
 | `../.github/workflows/org-audit.yml`, `../bin/org-audit.sh` | The weekly read-only run of the script over every repository, reported in one tracking issue. See [Org audit](#org-audit) |
 | `../workflow-templates/environments.yml` | The weekly `env-janitor` cleanup workflow. See [Environment cleanup](#environment-cleanup) |
-| `../workflow-templates/release.yml`, `commit-lint.yml` | The release caller and the Conventional Commits check. The shared workflows they call are `../.github/workflows/release-prepare.yml` and `release-finalize.yml`. See [Releases](#releases) |
+| `../workflow-templates/release.yml`, `commit-lint.yml` | The release caller and the Conventional Commits check. The shared workflows they call are `../.github/workflows/release-prepare.yml`, `release-finalize.yml` and `release-publish.yml`. See [Releases](#releases) |
 
 `integration_id` values in the `main` ruleset are GitHub's own apps (15368 is
 GitHub Actions, 57789 is code scanning), so they are the same in every
@@ -714,6 +714,7 @@ repo release.yml
   prepare   calls release-prepare.yml   release PR, or on merge: tag + DRAFT release
   <own job> runs only if a release was created; attaches assets to the draft
   finalize  calls release-finalize.yml  attest assets, publish, dispatch to consumers
+            (or release-publish.yml: publish and dispatch only, for a repository that attests itself)
 ```
 
 | Step | Who | What |
@@ -722,8 +723,31 @@ repo release.yml
 | Release PR | `release-prepare.yml` | release-please opens or updates one pull request with the version bump and changelog. Review and merge it like any other |
 | Draft | `release-prepare.yml` | On merge it tags the commit and creates a **draft** release |
 | Assets | The repository's own job | Attaches its files to the draft. A repository with no assets has no such job |
-| Publish | `release-finalize.yml` | Attests the assets, if there are any, and attaches the attestation's bundle to the draft as `<tag>.sigstore.json`, because OpenSSF Scorecard's Signed-Releases check only reads release assets (`attest: false` skips both for a repository whose own job already attested them and attached its own bundle), then publishes. Publishing is last because an immutable release locks its tag and assets. GitHub attests an immutable release itself, so a release with no assets has an attestation only when immutable releases are on for the repository |
-| Notify | `release-finalize.yml` | Sends `release-published` to each repository in `notify`, so a consumer such as `m3l-plugins` can open its pin pull request |
+| Publish | `release-finalize.yml` | Attests the assets, if there are any, and attaches the attestation's bundle to the draft as `<tag>.sigstore.json`, because OpenSSF Scorecard's Signed-Releases check only reads release assets then publishes. A repository whose own job already attested the assets and attached its own bundle calls `release-publish.yml` instead, which only publishes (see below). Publishing is last because an immutable release locks its tag and assets. GitHub attests an immutable release itself, so a release with no assets has an attestation only when immutable releases are on for the repository |
+| Notify | `release-finalize.yml` or `release-publish.yml` | Sends `release-published` to each repository in `notify`, so a consumer such as `m3l-plugins` can open its pin pull request |
+
+### Which finalize file to call
+
+A called job's permissions are fixed in the called file, and a caller job must
+grant at least what they ask for. So the choice is made by the file, not by an
+input:
+
+| File | Use it when | The caller job grants |
+| ---- | ----------- | --------------------- |
+| `release-finalize.yml` | The shared workflow attests the assets. The default, and what `workflow-templates/release.yml` uses | `contents: write`, `id-token: write` and `attestations: write` |
+| `release-publish.yml` | The repository's own job already attested the assets and attached its own bundle, so only the publish is left | `contents: write` |
+
+`release-finalize.yml` still has `attest: false`, but it cannot lower what the
+file asks for, so a caller that uses it must grant all three permissions
+anyway. Both files share one concurrency group, so they cannot race.
+
+> [!WARNING]
+> A caller job that grants less than the called file asks for does not fail one
+> job: GitHub refuses the whole run before any job starts (a `startup_failure`
+> with no jobs). The message is on the run page:
+> `The nested job 'publish' is requesting 'attestations: write, id-token: write',
+> but is only allowed 'attestations: none, id-token: none'.` Seen by calling
+> `release-finalize.yml` from a job that granted `contents: write` only.
 
 The pull request and its commits are made as the **release App**, not
 `GITHUB_TOKEN`. A `GITHUB_TOKEN` pull request triggers no required checks, and
@@ -870,9 +894,9 @@ exceptions are the `env-janitor` branch policy and dropping an org-secret share,
 | Pull request template | `pull request template: org checklist` | Either no template of its own, so the org's applies, or one that keeps the org's three items: the sign-off (`git commit -s`), the Conventional Commit title and the regression test. A local template replaces the org's the way a local issue form does, so a repository may add its own checks but not drop these. Several templates in `.github/PULL_REQUEST_TEMPLATE/` replace it too. `.github` itself is skipped | `.github/pull_request_template.md` of this repository |
 | Build output | `build output: dist not committed` | No `dist/` in the repository. Compiled output goes stale against `src/` and cannot be reviewed as a diff, and OpenSSF Baseline OSPS-QA-05.01 names generated executable artifacts. The package and the release assets are built in CI | `.gitignore` |
 | Release config | `release: config`, `release: manifest` | `release-please-config.json` and `.release-please-manifest.json`, unless `release.json` exempts the repository | `files/release-please/` |
-| Release workflow | `release: workflow` | `release.yml` calls both shared workflows, each pinned to a full commit SHA | `workflow-templates/release.yml` |
+| Release workflow | `release: workflow` | `release.yml` calls `release-prepare.yml` and one of `release-finalize.yml` or `release-publish.yml`, each pinned to a full commit SHA | `workflow-templates/release.yml` |
 | Release workflow pin | `release: workflow pin` | Each pinned SHA is a commit on `.github`'s default branch. A commit that lived only on a pull request branch, which a squash merge drops, fails every release that copied it | `workflow-templates/release.yml` |
-| Release workflow pin age | `release: workflow pin age` | Each pinned SHA already contains the newest change to `release-prepare.yml` and `release-finalize.yml` on `.github`'s default branch. Nothing moves a pin: this repository has no tags for Dependabot to follow, so a pin that is behind stays behind until a person reviews the compare link the script prints and moves it. Skipped when the pin is not on the default branch, which `release: workflow pin` reports | `workflow-templates/release.yml` |
+| Release workflow pin age | `release: workflow pin age` | Each pinned SHA already contains the newest change to `release-prepare.yml`, `release-finalize.yml` and `release-publish.yml` on `.github`'s default branch. Nothing moves a pin: this repository has no tags for Dependabot to follow, so a pin that is behind stays behind until a person reviews the compare link the script prints and moves it. Skipped when the pin is not on the default branch, which `release: workflow pin` reports | `workflow-templates/release.yml` |
 | Release App | `release: app installation`, `release: app secrets` | The repository is in the `monte3l-release` App's installation, and can read the org secrets `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_PRIVATE_KEY`. Checked for every repository that releases and for each one `release.json` lists under `appUsers` (`m3l-plugins`, which opens pin pull requests as the App). Never applied: see [Releases](#releases) | Installation settings of the App, and `gh api -X PUT orgs/OWNER/actions/secrets/NAME/repositories/ID` |
 | Immutable releases | `release: immutable releases` | Publishing a release locks its tag and assets. Turn it on for the whole organization | See [Releases](#releases) |
 | Dependabot | `Dependabot` | `.github/dependabot.yml` with the `github-actions` ecosystem, a 7-day cooldown, and one `npm` entry per lockfile directory, none under the root `.github/` (1-day cooldown) | `files/dependabot.yml` |
