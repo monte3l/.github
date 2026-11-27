@@ -32,7 +32,7 @@ const GIT_READ = new Set([
 ]);
 const GH_GROUPS = new Set(["pr", "issue", "run", "workflow", "release", "repo", "label", "gist", "ruleset", "cache"]);
 const GH_READ_VERBS = new Set(["view", "list", "status", "diff", "checks"]);
-const PLAIN = new Set(["ls", "cat", "head", "tail", "wc", "grep", "egrep", "fgrep", "rg", "jq", "sort", "uniq", "stat", "file", "pwd", "basename", "dirname", "realpath", "cut", "tr", "nl", "diff", "cmp", "test", "[", "true", "which", "shellcheck", "actionlint"]);
+const PLAIN = new Set(["ls", "cat", "head", "tail", "wc", "grep", "egrep", "fgrep", "rg", "jq", "sort", "uniq", "stat", "file", "pwd", "basename", "dirname", "realpath", "cut", "tr", "nl", "diff", "cmp", "test", "true", "which", "shellcheck", "actionlint"]);
 
 function isEntryPoint() {
   try {
@@ -90,6 +90,7 @@ export function split(command) {
     if (c === ";" || c === "&" || c === "\n" || c === "\r") return { reason: "a second command" };
     if (c === ">" || c === "<") return { reason: "a redirect" };
     if (c === "(" || c === ")" || c === "{" || c === "}") return { reason: "a subshell or group" };
+    if (c === "*" || c === "?" || c === "[" || (c === "~" && word === null)) return { reason: "an unquoted glob or tilde" };
     if (c === " " || c === "\t") {
       endWord();
       continue;
@@ -103,16 +104,52 @@ export function split(command) {
   return { segments };
 }
 
-const isEnvArg = (arg) => {
-  const base = path.basename(arg);
-  return /^\.env(\.|$)/.test(base) && !/\.(example|sample|template|dist)$/.test(base);
+// Any word, or the part of one after `=` or `:` (`--file=.env`, `HEAD:.env`), that names a dotenv file or a variant.
+const isEnvArg = (arg) =>
+  arg.split(/[=:]/).some((part) => {
+    const base = path.basename(part);
+    return base.startsWith(".env") && !/\.(example|sample|template|dist)$/.test(base);
+  });
+
+// Flags each command may carry; any other argument that starts with `-` is asked about.
+const FLAGS = {
+  ls: /^-[alhRtrS1dF]+$/,
+  cat: /^-[nbsEv]+$/,
+  head: /^-(?:[nc]|\d+|q)$/,
+  tail: /^-(?:[nc]|\d+|q)$/,
+  wc: /^-[lwcm]+$/,
+  grep: /^-[EFGPiIvwxcLlonshHrRqabzABCe]+$|^--(?:include|exclude|exclude-dir|color|line-number|ignore-case|files-with-matches|recursive)(?:=.*)?$/,
+  rg: /^-[nilwvcFEHhsSIAB]+$|^--(?:files|line-number|ignore-case|fixed-strings|files-with-matches|count|no-heading|type|glob)(?:=.*)?$/,
+  jq: /^-[nrcsSeR]+$|^--(?:arg|argjson|slurp|raw-output|compact-output|sort-keys|exit-status|null-input|tab)$/,
+  sort: /^-[nrufbdVkt]+$/,
+  uniq: /^-[cdui]+$/,
+  file: /^-[bi]+$/,
+  cut: /^-[dfcb].*$/,
+  tr: /^-[dsc]+$/,
+  diff: /^-[uqrNiwB]+$/,
+  cmp: /^-[sl]+$/,
+  find: /^-(?:name|iname|path|ipath|type|maxdepth|mindepth|mtime|size|empty|print|print0|not|and|or|o|a|newer|prune|H|L|P)$/,
+  shellcheck: /^-[xaSsfeP]$|^--(?:format|severity|shell|exclude|external-sources|check-sourced|color|source-path|norc)(?:=.*)?$/,
+  actionlint: /^-(?:oneline|no-color|color|verbose|version)$/,
 };
+const GREP_RECURSIVE = /^-[A-Za-z]*[rR]|^--recursive$/;
+const BROAD_PATH = /^(?:\.|\.\.|\/.*|~.*|\.\.\/.*)$/;
 
 /** @returns {string | null} why `words` is not a known read command, or null when it is. */
 function judge(words) {
   const [cmd, ...args] = words;
   if (/^[A-Za-z_]\w*=/.test(cmd)) return "an environment assignment before the command";
   if (args.some(isEnvArg)) return "a dotenv secret file";
+  if (FLAGS[cmd]) {
+    const bad = args.find((a) => a.length > 1 && a.startsWith("-") && !FLAGS[cmd].test(a));
+    if (bad !== undefined) return `${cmd} flag ${bad} is not on the allowed list`;
+  }
+  // A recursive search with no named path, or one that starts at the root, home or a parent, can reach a dotenv file.
+  if (cmd === "rg" || (cmd === "grep" && args.some((a) => GREP_RECURSIVE.test(a)))) {
+    const operands = args.filter((a) => !a.startsWith("-"));
+    const needed = cmd === "rg" && args.includes("--files") ? 1 : args.some((a) => a === "-e" || a === "-f") ? 1 : 2;
+    if (operands.length < needed || operands.some((a) => BROAD_PATH.test(a))) return `recursive ${cmd} needs a named path below the repository`;
+  }
   switch (cmd) {
     case "git": {
       const sub = args[0];
@@ -123,18 +160,17 @@ function judge(words) {
     case "gh":
       return judgeGh(args);
     case "node": {
-      if (args[0] === "--test") return null;
+      // Only the test runner on test files: any other flag (`--import`, `-e`, `--env-file`, ...) runs or loads code.
+      if (args[0] === "--test" && args.slice(1).every((a) => /^tests\/[\w.-]+\.test\.mjs$/.test(a) || a === "tests/*.test.mjs")) return null;
       if (args[0] === "design/source/docs-kit/build.mjs" && args[1] === "--check" && args.length === 2) return null;
       return "node outside --test and the docs-kit --check";
     }
     case "bash":
       return args[0] === "-n" && args.length === 2 ? null : "bash other than `bash -n FILE`";
     case "find":
-      return args.some((a) => /^-(exec|execdir|ok|okdir|delete|fprint\w*|fls)$/.test(a)) ? "find with an action that runs or writes" : null;
+      return null;
     case "rg":
-      return args.some((a) => /^--(pre|hostname-bin|search-zip)/.test(a) || a === "-z") ? "rg option that runs a program" : null;
     case "sort":
-      return args.some((a) => a === "-o" || a.startsWith("--output")) ? "sort -o writes" : null;
     case "diff":
       return null;
     default:
