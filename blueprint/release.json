@@ -1,5 +1,9 @@
 {
   "workflow": "monte3l/.github/.github/workflows/release-prepare.yml",
+  "finalize": [
+    "monte3l/.github/.github/workflows/release-finalize.yml",
+    "monte3l/.github/.github/workflows/release-publish.yml"
+  ],
   "app": "monte3l-release",
   "secrets": [
     "RELEASE_APP_CLIENT_ID",
