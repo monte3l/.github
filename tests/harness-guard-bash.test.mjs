@@ -55,9 +55,9 @@ describe("guard-readonly-agent-bash: a read-only reviewer", () => {
     "wc -l CLAUDE.md",
     "grep -n persist-credentials workflow-templates/verify.yml",
     "grep -n 'a b' CLAUDE.md",
-    "rg -n TOKEN workflow-templates",
-    "rg -n -i TOKEN workflow-templates blueprint",
-    "rg --files design",
+    "rg -n TOKEN workflow-templates/verify.yml",
+    "rg -n -i TOKEN workflow-templates/verify.yml blueprint/sync.json",
+    "rg --files CLAUDE.md",
     "gh pr view 12 --json=title",
     "gh pr list",
     "gh issue list --label=bug --limit=5",
@@ -154,7 +154,13 @@ describe("guard-readonly-agent-bash: a read-only reviewer", () => {
     "grep --include=yml TOKEN workflow-templates/verify.yml",
     "grep -e TOKEN workflow-templates",
     "grep -f x workflow-templates",
-    "rg -ni TOKEN workflow-templates",
+    "rg -ni TOKEN workflow-templates/verify.yml",
+    "rg -n TOKEN workflow-templates",
+    "rg --files design",
+    "rg --glob=yml TOKEN CLAUDE.md",
+    "rg -g yml TOKEN CLAUDE.md",
+    "grep -n TOKEN workflow-templates",
+    "grep -n x blueprint",
     "rg --hidden TOKEN workflow-templates",
     "rg -uu TOKEN workflow-templates",
     "rg --no-ignore TOKEN workflow-templates",
@@ -246,7 +252,7 @@ describe("guard-readonly-agent-bash: a read-only reviewer", () => {
       assert.equal(at("ls ."), "ask");
       assert.equal(at("cat missing.txt"), "ask");
     });
-    it("lets rg search a file, or a directory with no dotenv or secrets entry one level down", () => {
+    it("lets rg and grep search regular files only, never a directory", () => {
       fs.mkdirSync(path.join(tmp, "clean"));
       fs.writeFileSync(path.join(tmp, "clean", "a.txt"), "x\n");
       fs.mkdirSync(path.join(tmp, "dirty-env"));
@@ -254,8 +260,8 @@ describe("guard-readonly-agent-bash: a read-only reviewer", () => {
       fs.mkdirSync(path.join(tmp, "dirty-secrets", "Secrets"), { recursive: true });
       fs.writeFileSync(path.join(tmp, "dirty-env", "b.txt"), "x\n");
       assert.equal(at("rg x ok.txt"), "allow");
-      assert.equal(at("rg x clean"), "allow");
-      assert.equal(at("rg x clean ok.txt"), "allow");
+      assert.equal(at("rg x clean"), "ask");
+      assert.equal(at("rg x clean/a.txt ok.txt"), "allow");
       assert.equal(at("rg x dirty-env"), "ask");
       assert.equal(at("rg x dirty-secrets"), "ask");
       assert.equal(at("rg x clean dirty-env"), "ask");
