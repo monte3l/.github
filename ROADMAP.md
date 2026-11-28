@@ -8,7 +8,7 @@ What this repository intends to do, and not do, over roughly the next year. It l
 
 ## Now
 
-- **Keep the standard current.** The scheduled checks report and a person decides: `freshness.yml` (pinned tools, upstream policies, the knowledge wiki, stale workflow copies), `org-audit.yml`, `template-sync.yml` and `project-backfill.yml`. A finding never blocks a merge.
+- **Keep the standard current.** The scheduled checks report and a person decides: `freshness.yml` (pinned tools, upstream policies, the knowledge wiki, stale workflow copies), `org-audit.yml`, `template-sync.yml` and `project-sync.yml`. A finding never blocks a merge.
 - **Bring every repository to the tracking policy.** The baseline items `roadmap`, `roadmap: sections`, `decision records` and `issue forms: org defaults` say what is left.
 
 ## Next 12 months

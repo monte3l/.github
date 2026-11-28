@@ -12,7 +12,7 @@ Issues can be assigned, closed and counted.
 | ---- | ----- | ---- |
 | Bug | Issue | Type **Bug**, from the bug form |
 | Committed new work | Issue, in a milestone or the org Project. `ROADMAP.md` links it under Now or Next 12 months | Type **Feature** or **Task** |
-| Direction not yet committed | `ROADMAP.md`, Next 12 months, or a Discussion in Ideas | None |
+| Direction not yet committed | `ROADMAP.md`, Next 12 months, or a Discussion in Ideas. A members-only idea may be a draft item in the org Project | None |
 | Gap, drift or inconsistency | Issue. The scheduled checks open theirs the same way | Type **Gap** |
 | Tech debt or a deprecation | Issue with a target milestone | Type **Debt** |
 | Known limit that is accepted | `ROADMAP.md`, Known limits. Link an issue if a fix is planned | None |
@@ -91,29 +91,62 @@ old record links forward. `monte3l/.github` keeps its decisions as pages of the
 A **milestone** is a repository's release or a dated target. Use one when work
 is bound to a release, and not otherwise.
 
-The org Project **monte3l roadmap** is the one cross-repository view: a table, a
-board by Status and a roadmap by target date. It shows issues from every
-repository. Use it for work that spans repositories or needs a priority. A
-repository's own issue list is enough for the rest.
+The org Project **monte3l planning** is the organization's hub. It is private,
+so only members see it, and it exists so that nobody has to open each repository
+to know what is going on. It shows, for every repository:
+
+| Shows | How it gets there |
+| ----- | ----------------- |
+| Issues and pull requests, bots included | Added by the hourly sync |
+| Milestones | The built-in Milestone field, and markers on the Roadmap view |
+| Ideas | Open discussions in the **Ideas** category, mirrored as draft items with **Kind** = Idea discussion. A member may also write a draft straight into the Project for an idea that is not for the public |
+| Releases | Stable releases of the last 30 days, mirrored as draft items with **Kind** = Release. Pre-releases and drafts are left out |
+| Roadmaps | Each repository's `ROADMAP.md`, linked from the Project README. The Roadmap view plots Start date and Target date |
+
+A Project can hold only issues, pull requests and draft issues. Discussions,
+milestones and releases cannot be items, which is why the last three rows are
+fields, drafts and links. A mirror is read-only in spirit: the discussion or the
+release stays the source, and the draft carries its link in **Source**.
 
 The issue forms add a new issue to the Project through `projects:`, but GitHub
 does that only when the person filing the issue can write to the Project. A
-report from outside the org is created and left off the board. A scheduled job
-adds what the forms miss, and the Project's one built-in auto-add rule covers a
-single repository on the Free plan, so the job is required, not optional.
+report from outside the org is created and left off the board, and the Project's
+one built-in auto-add rule covers a single repository on the Free plan. The sync
+(`project-sync.yml`) runs hourly and fills in what both miss. It adds and
+updates, and never removes or archives an item.
 
 | Field | Source |
 | ----- | ------ |
-| Status | The Project's own field, with the default automations on |
+| Status | The Project's own field: Backlog, Todo, In progress, In review, Done, Not planned, Duplicate. GitHub's issue statuses (public preview) use the same names and follow it when the names match |
 | Type | The issue type |
-| Priority, Target date | Org issue fields, shown on the issue and in the Project |
+| Priority, Effort, Start date, Target date | Org issue fields, shown on the issue and in the Project |
+| Kind, Source | Project fields the sync sets on a mirrored draft |
+
+The views are listed in `blueprint/project.json`, which `bin/project-config.mjs`
+checks against the live Project:
+
+| View | Answers |
+| ---- | ------- |
+| My work | What is assigned to me |
+| Review requests | Pull requests waiting on me |
+| In flight | What is under way, by Status |
+| Triage | Issues with no Priority |
+| Pull requests | Every open pull request, by repository |
+| Ideas | Mirrored discussions and members' drafts |
+| Roadmap | What ships when, by Start date and Target date |
+| Recently changed | What was closed, merged or released in the last 30 days |
+| All open | Everything not Done, by repository |
+
+Closed and merged items are archived after 30 days without an update, so
+**Recently changed** is the last 30 days and the Project does not fill up.
 
 ## Discussions
 
 Questions, support requests and ideas are Discussions in `monte3l/.github`: the
 **Q&A** and **Ideas** categories. GitHub's guidance is that Discussions suit open
 questions and early ideas, and issues suit work someone will do. Convert a
-Discussion to an issue once someone commits to it.
+Discussion to an issue once someone commits to it. The org Project mirrors the
+open **Ideas** discussions, so members see them next to the work.
 
 ## What the baseline reports
 
@@ -146,13 +179,14 @@ organization. They are done once.
 | Step | Where | Notes |
 | ---- | ----- | ----- |
 | Issue types | Organization settings, Planning, Issue types | The six above. Check that no issue uses a type before you delete it |
-| Issue fields | Organization settings, Planning, Issue fields | Priority and Target date. Make a field public if outsiders should see it |
-| Project | Organization, Projects | **monte3l roadmap**, linked to every repository, with Table, Board and Roadmap views. Add the Priority and Target date issue fields in the Project's field settings |
+| Issue fields | Organization settings, Planning, Issue fields | Priority, Effort, Start date and Target date, which every organization starts with. Make a field public if outsiders should see it |
+| Project | Organization, Projects | **monte3l planning**, private, linked to every repository. Run `bin/project-config.mjs` to see what differs from `blueprint/project.json`, and `--apply` to set the title, README, Status options, fields and views. It never deletes anything |
+| Project, by hand | The Project's own settings | What the API cannot set, printed by `bin/project-config.mjs` as `SKIP` lines: each view's grouping, sort, slice and roadmap dates, and the built-in workflows (Item added to Backlog, Item closed and Pull request merged to Done, auto-archive after 30 days, auto-add of sub-issues) |
 | Discussions | Organization settings, Discussions | Source repository `monte3l/.github`, with Q&A and Ideas |
-| Backfill App | Organization settings, GitHub Apps | `monte3l-planning`, no webhook. Organization permission **Projects**: read and write. Repository permissions **Issues** and **Metadata**: read |
-| Backfill environment | `monte3l/.github`, Settings, Environments | `project-backfill`, deployment branches limited to `main`, with the secrets `PLANNING_APP_CLIENT_ID` and `PLANNING_APP_PRIVATE_KEY` |
-| Project number | `monte3l/.github`, Settings, Variables | `PLANNING_PROJECT_NUMBER`, the number in the Project's address |
+| Sync App | Organization settings, GitHub Apps | `monte3l-planning`, no webhook. Organization permission **Projects**: read and write. Repository permissions **Issues**, **Pull requests**, **Discussions**, **Contents** and **Metadata**: read. After adding a permission, accept it on the organization's installation |
+| Sync environment | `monte3l/.github`, Settings, Environments | `project-backfill`, deployment branches limited to `main`, with the secrets `PLANNING_APP_CLIENT_ID` and `PLANNING_APP_PRIVATE_KEY`. The name is from the job's first version and is kept so no secret has to move |
+| Project number | `monte3l/.github`, Settings, Variables | `PLANNING_PROJECT_NUMBER`, the number in the Project's address. The number does not change when the Project is renamed |
 
-The backfill is `.github/workflows/project-backfill.yml`. It runs weekly and by
-hand, and by hand it only counts unless `dry_run` is turned off. Its log and
-summary carry counts only, because this repository is public.
+The sync is `.github/workflows/project-sync.yml`, which runs `bin/project-sync.mjs`.
+It runs hourly and by hand, and by hand it only counts unless `dry_run` is turned
+off. Its log and summary carry counts only, because this repository is public.
