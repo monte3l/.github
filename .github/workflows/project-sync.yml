@@ -1,0 +1,83 @@
+name: Project sync (Scheduled)
+
+# What this does: once an hour, keeps the org Project "monte3l planning" in step
+# with the organization (`bin/project-sync.mjs`). It adds every open issue and open
+# pull request, mirrors open Ideas discussions and the stable releases of the last
+# 30 days as draft items (a Project holds only issues, pull requests and drafts),
+# and gives an item with no Status one. It adds and updates, and never removes or
+# archives an item. An issue form adds a new issue only when its author can write
+# to the Project, and the Free plan's auto-add rule covers one repository, so this
+# fills in what both miss.
+#
+# This repository is public, so the log and the job summary carry counts only:
+# never a repository name, a title or a URL.
+#
+# The `monte3l-planning` App has Projects write, and Issues, Pull requests,
+# Discussions, Contents and Metadata read. Its key lives in the `project-backfill`
+# environment (main only; the name is kept so no secret has to move), and only the
+# step that runs the script can see the token it mints. The Project's number is the
+# repository variable `PLANNING_PROJECT_NUMBER`.
+#
+# A run by hand only counts, unless `dry_run` is turned off. A scheduled run writes.
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Count what would be written, and write nothing"
+        type: boolean
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: project-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync the org Project
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: project-backfill
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .node-version
+
+      # No `repositories:` on purpose: a new repository must be reached without
+      # someone editing this file. zizmor's github-app audit flags that, so it is
+      # ignored here and only here. The key sits in a main-only environment and
+      # no other step sees the token.
+      - name: Mint a token for the organization's Project, issues, pull requests, discussions and releases
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.PLANNING_APP_CLIENT_ID }}
+          private-key: ${{ secrets.PLANNING_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }} # zizmor: ignore[github-app]
+          permission-organization-projects: write
+          permission-issues: read
+          permission-pull-requests: read
+          permission-discussions: read
+          permission-contents: read
+          permission-metadata: read
+
+      - name: Sync the Project
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          OWNER: ${{ github.repository_owner }}
+          PROJECT: ${{ vars.PLANNING_PROJECT_NUMBER }}
+          # A scheduled run has no inputs, so it writes. By hand, dry_run decides.
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+        run: |
+          flag=()
+          [[ "$DRY_RUN" != "true" ]] || flag=(--dry-run)
+          node bin/project-sync.mjs "${flag[@]}" | tee -a "$GITHUB_STEP_SUMMARY"

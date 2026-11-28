@@ -31,6 +31,8 @@ bin/org-audit.sh [--repos a,b]                      # the same over every repo, 
 bin/apply-repo-baseline.sh monte3l/REPO --dry-run   # also prints the gh api call per drifted item
 bin/apply-repo-baseline.sh monte3l/REPO --apply     # mutates the repository — confirm with the user first
 node --test "tests/*.test.mjs"                      # the tests: parity gates, the template classifier, and new-repo.sh against stubs (about a minute)
+bin/project-config.mjs [--apply [--yes]]            # the org Project against blueprint/project.json (OWNER=monte3l PROJECT=N); read-only by default, --apply mutates the Project — confirm first
+bin/project-sync.mjs [--dry-run]                    # what the hourly project-sync.yml runs; writes to the Project, so use --dry-run by hand
 bin/new-repo.sh NAME [--kind K] [--claude] [--private] [--docs] [--scaffold] [--apply [--yes]]   # plan by default; --apply creates a repository and changes org settings — confirm first
 ```
 

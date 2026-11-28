@@ -1,0 +1,77 @@
+{
+  "$comment": "The declared state of the org Project (monte3l planning). bin/project-config.mjs reports drift and, with --apply, sets what the GraphQL API allows: title, description, README, Status options, custom fields, issue fields, and each view's name, layout and filter. Group, sort, slice, roadmap dates, visible columns and the built-in workflows are not settable through the API: they are printed as a checklist from the `ui` and `workflows` keys. A view is matched by name (or `renamedFrom`); nothing is ever deleted. Filters use only the syntax on docs.github.com 'Filtering projects' (a space is AND, a comma is OR inside one field, a hyphen negates). Cross-field OR is left out on purpose: the docs say it is unsupported.",
+  "title": "monte3l planning",
+  "shortDescription": "Cross-repo hub for the monte3l organization: issues, pull requests, ideas, milestones, releases and roadmaps in one place. Policy: https://github.com/monte3l/.github/blob/main/blueprint/tracking.md",
+  "readmeIntro": "One private view of the whole organization, so nobody has to open each repository. Issues and pull requests are added hourly. Open Ideas discussions and stable releases appear as draft items marked by Kind. Where an item belongs is set by the org tracking policy (blueprint/tracking.md). Limits, direction and non-goals stay in each repo's ROADMAP.md.",
+  "status": ["Backlog", "Todo", "In progress", "In review", "Done", "Not planned", "Duplicate"],
+  "issueFields": ["Priority", "Effort", "Start date", "Target date"],
+  "fields": [
+    { "name": "Kind", "type": "SINGLE_SELECT", "options": ["Idea discussion", "Release"] },
+    { "name": "Source", "type": "TEXT" }
+  ],
+  "views": [
+    {
+      "name": "In flight",
+      "renamedFrom": "Board",
+      "layout": "BOARD_LAYOUT",
+      "filter": "-status:Backlog,Done",
+      "ui": "Columns by Status. Slice by Repository."
+    },
+    {
+      "name": "Roadmap",
+      "layout": "ROADMAP_LAYOUT",
+      "filter": "",
+      "ui": "Dates: Start date and Target date. Show milestone markers. Group by Repository."
+    },
+    {
+      "name": "Recently changed",
+      "layout": "TABLE_LAYOUT",
+      "filter": "status:Done",
+      "ui": "Sort by Updated, newest first. Done items are archived after 30 days, so this is the last 30 days, releases included."
+    },
+    {
+      "name": "All open",
+      "renamedFrom": "View 1",
+      "layout": "TABLE_LAYOUT",
+      "filter": "-status:Done",
+      "ui": "Group by Repository."
+    },
+    {
+      "name": "My work",
+      "layout": "TABLE_LAYOUT",
+      "filter": "assignee:@me -status:Done",
+      "ui": "Group by Status."
+    },
+    {
+      "name": "Review requests",
+      "layout": "TABLE_LAYOUT",
+      "filter": "is:pr -status:Done reviewers:@me",
+      "ui": "Group by Repository. The docs describe reviewers: as items reviewed by that person: check on the Project that it also lists the PRs waiting for you."
+    },
+    {
+      "name": "Triage",
+      "layout": "TABLE_LAYOUT",
+      "filter": "is:issue no:priority -status:Done",
+      "ui": "Sort by Created, oldest first."
+    },
+    {
+      "name": "Pull requests",
+      "layout": "TABLE_LAYOUT",
+      "filter": "is:pr -status:Done",
+      "ui": "Group by Repository. Show the Assignees and Reviewers columns."
+    },
+    {
+      "name": "Ideas",
+      "layout": "BOARD_LAYOUT",
+      "filter": "is:draft -status:Done",
+      "ui": "Columns by Status. Mirrored discussions carry Kind = Idea discussion and a Source link."
+    }
+  ],
+  "workflows": [
+    "Item added to project: set Status to Backlog",
+    "Item closed: set Status to Done",
+    "Pull request merged: set Status to Done",
+    "Auto-archive: closed and merged items not updated for 30 days (the docs allow the `is`, `reason` and `updated` filters here: build it in the UI and check its preview)",
+    "Auto-add sub-issues to project: on"
+  ]
+}
